@@ -15,40 +15,53 @@ enum HealthGoal {
 }
 
 model User {
-  id        String           @id @default(cuid())
-  email     String           @unique
-  firstName String?
-  lastName  String?
-  createdAt DateTime         @default(now())
-  profile   Profile?
-  surveys   SurveyResponse[]
-}
-
-model Profile {
-  id     String @id @default(cuid())
-  userId String @unique
-  user   User   @relation(fields: [userId], references: [id])
+  id              String           @id @default(cuid())
+  email           String           @unique
+  password        String           // bcrypt hashed password
+  firstName       String
+  lastName        String
+  createdAt       DateTime         @default(now())
+  updatedAt       DateTime         @updatedAt
+  
+  // Relations
+  surveys         SurveyResponse[]
+  activeSurveyId  String?          @unique
+  activeSurvey    SurveyResponse?  @relation("ActiveSurvey", fields: [activeSurveyId], references: [id])
 }
 
 model SurveyResponse {
   id              String     @id @default(cuid())
-  userId          String
-  user            User       @relation(fields: [userId], references: [id])
-  createdAt       DateTime   @default(now())
-  firstName       String?
-  lastName        String?
-  age             Int?
-  sex             String?
-  height          String?
-  weight          Int?
-  zipCode         String?
+  
+  // User connection (null for guests)
+  userId          String?
+  user            User?      @relation(fields: [userId], references: [id])
+  activeForUser   User?      @relation("ActiveSurvey")
+  
+  // All survey data (stored for both guests and users)
+  email           String
+  firstName       String
+  lastName        String
+  age             Int
+  sex             String
+  height          String
+  weight          Int
+  zipCode         String
   goal            HealthGoal
-  activityLevel   String?
+  activityLevel   String
   budgetTier      String
-  dietPrefs       String[] // ["vegetarian","gluten_free"]
-  mealsOutPerWeek Int? // Number of meals per week eaten out (0-14)
-  biomarkerJson   Json? // e.g., { cholesterol: 210, vitaminD: 20, iron: 50 }
-  source          String? // "web_v2"
+  dietPrefs       String[]
+  mealsOutPerWeek Int
+  biomarkerJson   Json?
+  source          String     @default("web")
+  
+  // Guest tracking
+  isGuest         Boolean    @default(true)
+  sessionId       String?    // For linking guest to browser session
+  
+  createdAt       DateTime   @default(now())
+  updatedAt       DateTime   @updatedAt
 
-  @@index([userId, createdAt])
+  @@index([userId])
+  @@index([sessionId])
+  @@index([email])
 }
