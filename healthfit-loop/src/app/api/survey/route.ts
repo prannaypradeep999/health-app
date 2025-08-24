@@ -1,19 +1,12 @@
-/*
-Validates the incoming JSON with your Zod schema
-Upserts a User by email (temporary “auth” for Stage 1)
-Inserts a new SurveyResponse row
-Returns { ok: true, surveyId } on success
-*/
-
 import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/db';
 import { SurveySchema } from '@/lib/schemas';
 
+export const runtime = 'nodejs';
+
 export async function POST(req: Request) {
   try {
     const payload = await req.json();
-
-    // Validate input
     const parsed = SurveySchema.safeParse(payload);
     if (!parsed.success) {
       return NextResponse.json(
@@ -22,25 +15,55 @@ export async function POST(req: Request) {
       );
     }
 
-    const { email, goal, budgetTier, dietPrefs, biomarkers, source } = parsed.data;
+    const {
+      email,
+      firstName,
+      lastName,
+      age,
+      sex,
+      height,
+      weight,
+      zipCode,
+      goal,
+      activityLevel,
+      budgetTier,
+      dietPrefs,
+      mealsOutPerWeek,
+      biomarkers,
+      source,
+    } = parsed.data;
 
-    // Upsert user by email (we’ll replace this with real auth later)
+    // Upsert user by email
     const user = await prisma.user.upsert({
       where: { email },
-      create: { email, profile: { create: {} } },
-      update: {},
+      create: { email, firstName, lastName, profile: { create: {} } },
+      update: {
+        // keep names synced if provided
+        ...(firstName ? { firstName } : {}),
+        ...(lastName ? { lastName } : {}),
+      },
       select: { id: true },
     });
 
-    // Create survey response
+    // Create survey response with ALL fields
     const survey = await prisma.surveyResponse.create({
       data: {
         userId: user.id,
-        goal,
-        budgetTier,
-        dietPrefs,
+        firstName: firstName ?? null,
+        lastName: lastName ?? null,
+        age: typeof age === 'number' ? age : null,
+        sex: sex ?? null,
+        height: height ?? null,
+        weight: typeof weight === 'number' ? weight : null,
+        zipCode: zipCode ?? null,
+        goal, // enum HealthGoal
+        activityLevel: activityLevel ?? null,
+        budgetTier, // non-null string in schema
+        dietPrefs: dietPrefs ?? [],
+        mealsOutPerWeek:
+          typeof mealsOutPerWeek === 'number' ? mealsOutPerWeek : null,
         biomarkerJson: biomarkers ?? undefined,
-        source: source ?? 'web_v1',
+        source: source ?? 'web_v2',
       },
       select: { id: true, createdAt: true },
     });

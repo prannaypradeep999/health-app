@@ -17,6 +17,8 @@ enum HealthGoal {
 model User {
   id        String           @id @default(cuid())
   email     String           @unique
+  firstName String?
+  lastName  String?
   createdAt DateTime         @default(now())
   profile   Profile?
   surveys   SurveyResponse[]
@@ -29,15 +31,24 @@ model Profile {
 }
 
 model SurveyResponse {
-  id            String     @id @default(cuid())
-  userId        String
-  user          User       @relation(fields: [userId], references: [id])
-  createdAt     DateTime   @default(now())
-  goal          HealthGoal
-  budgetTier    String
-  dietPrefs     String[]   // ["vegetarian","gluten_free"]
-  biomarkerJson Json?      // e.g., { cholesterol: 210, vitaminD: 20, iron: 50 }
-  source        String?    // "web_v1"
+  id              String     @id @default(cuid())
+  userId          String
+  user            User       @relation(fields: [userId], references: [id])
+  createdAt       DateTime   @default(now())
+  firstName       String?
+  lastName        String?
+  age             Int?
+  sex             String?
+  height          String?
+  weight          Int?
+  zipCode         String?
+  goal            HealthGoal
+  activityLevel   String?
+  budgetTier      String
+  dietPrefs       String[] // ["vegetarian","gluten_free"]
+  mealsOutPerWeek Int? // Number of meals per week eaten out (0-14)
+  biomarkerJson   Json? // e.g., { cholesterol: 210, vitaminD: 20, iron: 50 }
+  source          String? // "web_v2"
 
   @@index([userId, createdAt])
 }
