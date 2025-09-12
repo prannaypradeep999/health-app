@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import Image from 'next/image';
 import { ChevronRight, ChevronLeft, Check } from 'lucide-react';
 
@@ -18,6 +18,8 @@ interface SurveyData {
   budgetTier: string;
   mealsOutPerWeek: number | '';
   dietPrefs: string[];
+  preferredCuisines: string[];
+  preferredFoods: string[];
   biomarkers: {
     cholesterol?: number;
     vitaminD?: number;
@@ -45,14 +47,15 @@ const SurveyPage: React.FC = () => {
     budgetTier: '',
     mealsOutPerWeek: 7,
     dietPrefs: [],
+    preferredCuisines: [],
+    preferredFoods: [],
     biomarkers: {},
     source: 'web_v2'
   });
 
-  // Dropdown option helpers
-  const ageOptions = Array.from({ length: 88 }, (_, i) => i + 13); // 13 - 100
-  const weightOptions = Array.from({ length: 321 }, (_, i) => i + 80); // 80 - 400 lbs
-  const mealsOutOptions = Array.from({ length: 15 }, (_, i) => i); // 0 - 14 meals
+  const ageOptions = Array.from({ length: 88 }, (_, i) => i + 13);
+  const weightOptions = Array.from({ length: 321 }, (_, i) => i + 80);
+  const mealsOutOptions = Array.from({ length: 15 }, (_, i) => i);
   const [heightFeet, setHeightFeet] = useState<number | ''>('');
   const [heightInches, setHeightInches] = useState<number | ''>('');
 
@@ -87,7 +90,177 @@ const SurveyPage: React.FC = () => {
     { value: 'paleo', label: 'Paleo', icon: '🥩' },
   ];
 
-  const totalSteps = 4; // Condensed to 4 pages as requested
+  // Cuisine data structure
+  const cuisineData = {
+    mediterranean: {
+      label: 'Mediterranean',
+      icon: '🫒',
+      foods: ['gyros', 'hummus', 'falafel', 'pita_wraps', 'greek_salad', 'grilled_fish', 'kebabs', 'tabouli']
+    },
+    italian: {
+      label: 'Italian',
+      icon: '🍝',
+      foods: ['pasta', 'pizza', 'lasagna', 'risotto', 'caprese', 'minestrone_soup', 'panini', 'antipasto']
+    },
+    mexican: {
+      label: 'Mexican',
+      icon: '🌮',
+      foods: ['tacos', 'burritos', 'quesadillas', 'enchiladas', 'nachos', 'guacamole', 'fajitas', 'tortilla_soup']
+    },
+    indian: {
+      label: 'Indian',
+      icon: '🍛',
+      foods: ['curry', 'biryani', 'tandoori', 'samosa', 'naan_bread', 'chutneys', 'dal_lentils', 'paneer_dishes']
+    },
+    japanese: {
+      label: 'Japanese',
+      icon: '🍣',
+      foods: ['sushi', 'ramen', 'tempura', 'teriyaki', 'donburi_rice_bowls', 'udon_soba_noodles', 'miso_soup', 'bento_boxes']
+    },
+    thai: {
+      label: 'Thai',
+      icon: '🌶️',
+      foods: ['pad_thai', 'green_curry', 'red_curry', 'tom_yum_soup', 'papaya_salad', 'spring_rolls', 'fried_rice', 'stir_fried_veggies']
+    },
+    middle_eastern: {
+      label: 'Middle Eastern',
+      icon: '🥙',
+      foods: ['shawarma', 'falafel', 'hummus', 'baba_ganoush', 'lentil_soup', 'kebabs', 'pita_wraps', 'couscous']
+    },
+    american: {
+      label: 'American',
+      icon: '🍔',
+      foods: ['burgers', 'sandwiches', 'bbq', 'fried_chicken', 'hot_dogs', 'salads', 'mac_and_cheese', 'pancakes']
+    },
+    chinese: {
+      label: 'Chinese',
+      icon: '🥢',
+      foods: ['fried_rice', 'lo_mein', 'dumplings', 'sweet_sour_chicken', 'kung_pao_chicken', 'hot_pot', 'spring_rolls', 'mapo_tofu']
+    },
+    korean: {
+      label: 'Korean',
+      icon: '🥘',
+      foods: ['bibimbap', 'korean_bbq', 'kimchi', 'bulgogi', 'japchae_glass_noodles', 'tteokbokki_rice_cakes', 'stews_kimchi_jjigae', 'kimbap']
+    },
+    french: {
+      label: 'French',
+      icon: '🥐',
+      foods: ['baguette', 'croissants', 'quiche', 'ratatouille', 'crepes', 'onion_soup', 'beef_bourguignon', 'nicoise_salad']
+    },
+    african: {
+      label: 'African',
+      icon: '🍲',
+      foods: ['tagine_moroccan', 'couscous', 'injera_with_stews_ethiopian', 'jollof_rice_west_african', 'grilled_meats', 'plantains', 'peanut_stew', 'lentil_dishes']
+    }
+  };
+
+  // Generate readable food labels
+  const foodLabels: { [key: string]: string } = {
+    gyros: 'Gyros',
+    hummus: 'Hummus',
+    falafel: 'Falafel',
+    pita_wraps: 'Pita & Wraps',
+    greek_salad: 'Greek Salad',
+    grilled_fish: 'Grilled Fish',
+    kebabs: 'Kebabs',
+    tabouli: 'Tabouli',
+    pasta: 'Pasta',
+    pizza: 'Pizza',
+    lasagna: 'Lasagna',
+    risotto: 'Risotto',
+    caprese: 'Caprese',
+    minestrone_soup: 'Minestrone Soup',
+    panini: 'Panini',
+    antipasto: 'Antipasto',
+    tacos: 'Tacos',
+    burritos: 'Burritos',
+    quesadillas: 'Quesadillas',
+    enchiladas: 'Enchiladas',
+    nachos: 'Nachos',
+    guacamole: 'Guacamole',
+    fajitas: 'Fajitas',
+    tortilla_soup: 'Tortilla Soup',
+    curry: 'Curry',
+    biryani: 'Biryani',
+    tandoori: 'Tandoori',
+    samosa: 'Samosa',
+    naan_bread: 'Naan Bread',
+    chutneys: 'Chutneys',
+    dal_lentils: 'Dal (lentils)',
+    paneer_dishes: 'Paneer Dishes',
+    sushi: 'Sushi',
+    ramen: 'Ramen',
+    tempura: 'Tempura',
+    teriyaki: 'Teriyaki',
+    donburi_rice_bowls: 'Donburi (rice bowls)',
+    udon_soba_noodles: 'Udon/Soba Noodles',
+    miso_soup: 'Miso Soup',
+    bento_boxes: 'Bento Boxes',
+    pad_thai: 'Pad Thai',
+    green_curry: 'Green Curry',
+    red_curry: 'Red Curry',
+    tom_yum_soup: 'Tom Yum Soup',
+    papaya_salad: 'Papaya Salad',
+    spring_rolls: 'Spring Rolls',
+    fried_rice: 'Fried Rice',
+    stir_fried_veggies: 'Stir-Fried Veggies',
+    shawarma: 'Shawarma',
+    baba_ganoush: 'Baba Ganoush',
+    lentil_soup: 'Lentil Soup',
+    couscous: 'Couscous',
+    burgers: 'Burgers',
+    sandwiches: 'Sandwiches',
+    bbq: 'BBQ',
+    fried_chicken: 'Fried Chicken',
+    hot_dogs: 'Hot Dogs',
+    salads: 'Salads',
+    mac_and_cheese: 'Mac & Cheese',
+    pancakes: 'Pancakes',
+    lo_mein: 'Lo Mein',
+    dumplings: 'Dumplings',
+    sweet_sour_chicken: 'Sweet & Sour Chicken',
+    kung_pao_chicken: 'Kung Pao Chicken',
+    hot_pot: 'Hot Pot',
+    mapo_tofu: 'Mapo Tofu',
+    bibimbap: 'Bibimbap',
+    korean_bbq: 'Korean BBQ',
+    kimchi: 'Kimchi',
+    bulgogi: 'Bulgogi',
+    japchae_glass_noodles: 'Japchae (glass noodles)',
+    tteokbokki_rice_cakes: 'Tteokbokki (rice cakes)',
+    stews_kimchi_jjigae: 'Stews (Kimchi Jjigae)',
+    kimbap: 'Kimbap',
+    baguette: 'Baguette',
+    croissants: 'Croissants',
+    quiche: 'Quiche',
+    ratatouille: 'Ratatouille',
+    crepes: 'Crepes',
+    onion_soup: 'Onion Soup',
+    beef_bourguignon: 'Beef Bourguignon',
+    nicoise_salad: 'Nicoise Salad',
+    tagine_moroccan: 'Tagine (Moroccan)',
+    injera_with_stews_ethiopian: 'Injera with Stews (Ethiopian)',
+    jollof_rice_west_african: 'Jollof Rice (West African)',
+    grilled_meats: 'Grilled Meats',
+    plantains: 'Plantains',
+    peanut_stew: 'Peanut Stew',
+    lentil_dishes: 'Lentil Dishes'
+  };
+
+  // Get available foods based on selected cuisines
+  const availableFoods = useMemo(() => {
+    if (formData.preferredCuisines.length === 0) return [];
+    
+    const foods: string[] = [];
+    formData.preferredCuisines.forEach(cuisine => {
+      if (cuisineData[cuisine as keyof typeof cuisineData]) {
+        foods.push(...cuisineData[cuisine as keyof typeof cuisineData].foods);
+      }
+    });
+    return foods;
+  }, [formData.preferredCuisines]);
+
+  const totalSteps = 6; // Updated to 6 steps
 
   const handleNext = () => {
     if (currentStep < totalSteps - 1) {
@@ -128,6 +301,8 @@ const SurveyPage: React.FC = () => {
           budgetTier: formData.budgetTier,
           mealsOutPerWeek: Number(formData.mealsOutPerWeek),
           dietPrefs: formData.dietPrefs,
+          preferredCuisines: formData.preferredCuisines,
+          preferredFoods: formData.preferredFoods,
           biomarkers,
           source: formData.source,
         }),
@@ -138,7 +313,6 @@ const SurveyPage: React.FC = () => {
       
       setMessage({ ok: true });
       
-      // Redirect to dashboard after success
       setTimeout(() => {
         window.location.href = '/dashboard';
       }, 1500);
@@ -159,6 +333,39 @@ const SurveyPage: React.FC = () => {
     }));
   };
 
+  const toggleCuisine = (cuisine: string) => {
+    setFormData(prev => {
+      const newCuisines = prev.preferredCuisines.includes(cuisine)
+        ? prev.preferredCuisines.filter(c => c !== cuisine)
+        : [...prev.preferredCuisines, cuisine];
+      
+      // Remove foods that are no longer available when cuisines are deselected
+      const newAvailableFoods: string[] = [];
+      newCuisines.forEach(c => {
+        if (cuisineData[c as keyof typeof cuisineData]) {
+          newAvailableFoods.push(...cuisineData[c as keyof typeof cuisineData].foods);
+        }
+      });
+      
+      const filteredFoods = prev.preferredFoods.filter(food => newAvailableFoods.includes(food));
+      
+      return {
+        ...prev,
+        preferredCuisines: newCuisines,
+        preferredFoods: filteredFoods
+      };
+    });
+  };
+
+  const toggleFood = (food: string) => {
+    setFormData(prev => ({
+      ...prev,
+      preferredFoods: prev.preferredFoods.includes(food)
+        ? prev.preferredFoods.filter(f => f !== food)
+        : [...prev.preferredFoods, food]
+    }));
+  };
+
   const isStepValid = () => {
     switch (currentStep) {
       case 0: 
@@ -167,17 +374,17 @@ const SurveyPage: React.FC = () => {
                formData.age && formData.sex && formData.height && formData.weight && formData.zipCode;
       case 1: return formData.goal && formData.activityLevel;
       case 2: return formData.budgetTier && formData.mealsOutPerWeek !== '';
-      case 3: return true; // Biomarkers are optional
+      case 3: return true; // Cuisine selection is optional
+      case 4: return true; // Food selection is optional
+      case 5: return true; // Biomarkers are optional
       default: return false;
     }
   };
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-[#F4F4F5] via-white to-[#FAFAFA] flex items-center justify-center p-4">
-      <div className="w-full max-w-3xl">
-        {/* Logo and Title */}
+      <div className="w-full max-w-4xl">
         <div className="text-center mb-6">
-          {/* FYTR AI Logo Icon */}
           <div className="flex justify-center mb-4">
             <Image 
               src="/fytr-icon.svg" 
@@ -188,7 +395,6 @@ const SurveyPage: React.FC = () => {
             />
           </div>
           
-          {/* FYTR AI Text Logo */}
           <div className="flex justify-center mb-3">
             <Image 
               src="/fytr-text-gradient.svg" 
@@ -203,7 +409,6 @@ const SurveyPage: React.FC = () => {
           <p className="text-[#52525B]">Step {currentStep + 1} of {totalSteps}</p>
         </div>
 
-        {/* Progress Bar */}
         <div className="mb-6">
           <div className="h-2 bg-[#F4F4F5] rounded-full overflow-hidden">
             <div 
@@ -213,7 +418,6 @@ const SurveyPage: React.FC = () => {
           </div>
         </div>
 
-        {/* Survey Card */}
         <div className="bg-white rounded-2xl shadow-xl p-8 border border-[#F4F4F5]">
           {/* Step 1: Basic Information */}
           {currentStep === 0 && (
@@ -428,7 +632,6 @@ const SurveyPage: React.FC = () => {
             <div className="space-y-6 animate-fadeIn">
               <h2 className="text-2xl font-bold text-[#0A0A0B] mb-6">Nutrition & Budget</h2>
               
-              {/* Budget */}
               <div>
                 <label className="block text-sm font-medium text-[#18181B] mb-3">Monthly Food Budget *</label>
                 <div className="grid md:grid-cols-2 gap-3">
@@ -449,7 +652,6 @@ const SurveyPage: React.FC = () => {
                 </div>
               </div>
               
-              {/* Dietary Preferences */}
               <div>
                 <label className="block text-sm font-medium text-[#18181B] mb-3">Dietary Preferences (optional)</label>
                 <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
@@ -472,7 +674,6 @@ const SurveyPage: React.FC = () => {
                 </div>
               </div>
               
-              {/* Meals Out Per Week */}
               <div>
                 <label className="block text-sm font-medium text-[#18181B] mb-3">How many meals per week would you like to eat out or order in? *</label>
                 <select
@@ -491,8 +692,136 @@ const SurveyPage: React.FC = () => {
             </div>
           )}
 
-          {/* Step 4: Optional Health Markers */}
+          {/* Step 4: Cuisine Preferences */}
           {currentStep === 3 && (
+            <div className="space-y-6 animate-fadeIn">
+              <div className="text-center mb-8">
+                <h2 className="text-2xl font-bold text-[#0A0A0B] mb-2">Choose Your Favorite Cuisines</h2>
+                <p className="text-[#52525B]">Select the types of food you enjoy most (optional)</p>
+              </div>
+              
+              <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
+                {Object.entries(cuisineData).map(([key, cuisine]) => (
+                  <button
+                    key={key}
+                    onClick={() => toggleCuisine(key)}
+                    className={`p-6 rounded-2xl border-2 transition-all duration-200 hover:scale-[1.02] ${
+                      formData.preferredCuisines.includes(key)
+                        ? 'border-[#4338CA] bg-gradient-to-r from-[#4338CA]/10 to-[#DC2626]/10 shadow-lg scale-[1.02]'
+                        : 'border-[#A1A1AA] hover:border-[#4338CA]/50 hover:shadow-md'
+                    }`}
+                  >
+                    <div className="text-4xl mb-3">{cuisine.icon}</div>
+                    <div className="font-semibold text-[#0A0A0B] text-sm">{cuisine.label}</div>
+                    {formData.preferredCuisines.includes(key) && (
+                      <div className="mt-2">
+                        <div className="w-6 h-6 mx-auto rounded-full bg-gradient-to-r from-[#4338CA] to-[#DC2626] flex items-center justify-center">
+                          <Check className="w-4 h-4 text-white" />
+                        </div>
+                      </div>
+                    )}
+                  </button>
+                ))}
+              </div>
+              
+              {formData.preferredCuisines.length > 0 && (
+                <div className="mt-6 p-4 bg-gradient-to-r from-[#4338CA]/5 to-[#DC2626]/5 rounded-xl border border-[#4338CA]/20">
+                  <p className="text-sm text-[#18181B]">
+                    <span className="font-medium">{formData.preferredCuisines.length}</span> cuisine{formData.preferredCuisines.length !== 1 ? 's' : ''} selected. 
+                    Next, we'll help you pick specific foods you love!
+                  </p>
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* Step 5: Specific Food Preferences */}
+          {currentStep === 4 && (
+            <div className="space-y-6 animate-fadeIn">
+              <div className="text-center mb-8">
+                <h2 className="text-2xl font-bold text-[#0A0A0B] mb-2">Pick Your Favorite Foods</h2>
+                <p className="text-[#52525B]">
+                  {formData.preferredCuisines.length > 0 
+                    ? `Select specific dishes from your chosen cuisines`
+                    : `Select any cuisines first to see food options, or skip this step`
+                  }
+                </p>
+              </div>
+              
+              {availableFoods.length > 0 ? (
+                <div className="space-y-8">
+                  {formData.preferredCuisines.map((cuisineKey) => {
+                    const cuisine = cuisineData[cuisineKey as keyof typeof cuisineData];
+                    if (!cuisine) return null;
+                    
+                    return (
+                      <div key={cuisineKey} className="space-y-4">
+                        <div className="flex items-center gap-3">
+                          <span className="text-2xl">{cuisine.icon}</span>
+                          <h3 className="text-lg font-semibold text-[#0A0A0B]">{cuisine.label}</h3>
+                          <div className="flex-1 h-px bg-gradient-to-r from-[#4338CA]/20 to-transparent"></div>
+                        </div>
+                        
+                        <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3">
+                          {cuisine.foods.map((food) => (
+                            <button
+                              key={food}
+                              onClick={() => toggleFood(food)}
+                              className={`p-4 rounded-xl border-2 transition-all duration-200 text-center relative ${
+                                formData.preferredFoods.includes(food)
+                                  ? 'border-[#4338CA] bg-gradient-to-r from-[#4338CA] to-[#DC2626] text-white shadow-md scale-[1.02]'
+                                  : 'border-[#4338CA]/30 hover:border-[#4338CA]/60 hover:shadow-sm text-[#0A0A0B] bg-[#4338CA]/5'
+                              }`}
+                            >
+                              <div className="font-medium text-sm">{foodLabels[food]}</div>
+                              <div className={`absolute -top-1 -right-1 w-3 h-3 rounded-full ${
+                                cuisineKey === 'mediterranean' ? 'bg-emerald-400' :
+                                cuisineKey === 'italian' ? 'bg-red-400' :
+                                cuisineKey === 'mexican' ? 'bg-orange-400' :
+                                cuisineKey === 'indian' ? 'bg-yellow-400' :
+                                cuisineKey === 'japanese' ? 'bg-pink-400' :
+                                cuisineKey === 'thai' ? 'bg-purple-400' :
+                                cuisineKey === 'middle_eastern' ? 'bg-amber-400' :
+                                cuisineKey === 'american' ? 'bg-blue-400' :
+                                cuisineKey === 'chinese' ? 'bg-red-500' :
+                                cuisineKey === 'korean' ? 'bg-indigo-400' :
+                                cuisineKey === 'french' ? 'bg-rose-400' :
+                                'bg-teal-400'
+                              }`}></div>
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              ) : (
+                <div className="text-center py-12">
+                  <div className="text-6xl mb-4">🍽️</div>
+                  <h3 className="text-lg font-medium text-[#0A0A0B] mb-2">No cuisines selected yet</h3>
+                  <p className="text-[#52525B] mb-6">Go back to select some cuisines, or skip to continue</p>
+                  <button
+                    onClick={() => setCurrentStep(3)}
+                    className="px-6 py-3 rounded-lg border-2 border-[#4338CA] text-[#4338CA] font-medium hover:bg-[#4338CA]/5 transition-all"
+                  >
+                    Choose Cuisines
+                  </button>
+                </div>
+              )}
+              
+              {formData.preferredFoods.length > 0 && (
+                <div className="mt-6 p-4 bg-gradient-to-r from-[#4338CA]/5 to-[#DC2626]/5 rounded-xl border border-[#4338CA]/20">
+                  <p className="text-sm text-[#18181B]">
+                    <span className="font-medium">{formData.preferredFoods.length}</span> food{formData.preferredFoods.length !== 1 ? 's' : ''} selected. 
+                    We'll prioritize these in your meal plans!
+                  </p>
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* Step 6: Optional Health Markers */}
+          {currentStep === 5 && (
             <div className="space-y-6 animate-fadeIn">
               <h2 className="text-2xl font-bold text-[#0A0A0B] mb-6">Optional Health Markers</h2>
               <p className="text-[#52525B] -mt-4 mb-6">
@@ -570,7 +899,6 @@ const SurveyPage: React.FC = () => {
             </div>
           )}
 
-          {/* Messages */}
           {message && (
             <div className={`mt-6 p-4 rounded-xl ${
               message.ok 
@@ -581,7 +909,6 @@ const SurveyPage: React.FC = () => {
             </div>
           )}
 
-          {/* Navigation Buttons */}
           <div className="flex justify-between mt-8">
             {currentStep > 0 && (
               <button
@@ -629,7 +956,6 @@ const SurveyPage: React.FC = () => {
           </div>
         </div>
 
-        {/* Skip Link */}
         <div className="text-center mt-6">
           <a href="/dashboard" className="text-sm text-[#52525B] hover:text-[#4338CA] transition-colors">
             Skip for now →

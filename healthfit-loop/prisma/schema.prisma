@@ -17,18 +17,16 @@ enum HealthGoal {
 model User {
   id              String           @id @default(cuid())
   email           String           @unique
-  password        String           // bcrypt hashed password
+  password        String
   firstName       String
   lastName        String
   createdAt       DateTime         @default(now())
   updatedAt       DateTime         @updatedAt
   
-  // Relations
   surveys         SurveyResponse[]
   activeSurveyId  String?          @unique
   activeSurvey    SurveyResponse?  @relation("ActiveSurvey", fields: [activeSurveyId], references: [id])
   
-  // NEW: Meal planning relations
   mealPlans       MealPlan[]
   mealFeedback    MealFeedback[]
   userPreferences UserFoodPreferences?
@@ -37,12 +35,10 @@ model User {
 model SurveyResponse {
   id              String     @id @default(cuid())
   
-  // User connection (null for guests)
   userId          String?
   user            User?      @relation(fields: [userId], references: [id])
   activeForUser   User?      @relation("ActiveSurvey")
   
-  // All survey data (stored for both guests and users)
   email           String
   firstName       String
   lastName        String
@@ -56,12 +52,16 @@ model SurveyResponse {
   budgetTier      String
   dietPrefs       String[]
   mealsOutPerWeek Int
+  
+  // New cuisine and food preferences
+  preferredCuisines String[] @default([])
+  preferredFoods    String[] @default([])
+  
   biomarkerJson   Json?
   source          String     @default("web")
   
-  // Guest tracking
   isGuest         Boolean    @default(true)
-  sessionId       String?    // For linking guest to browser session
+  sessionId       String?
   
   createdAt       DateTime   @default(now())
   updatedAt       DateTime   @updatedAt
@@ -71,26 +71,20 @@ model SurveyResponse {
   @@index([email])
 }
 
-// NEW: Meal Planning Models
-
 model MealPlan {
   id                String   @id @default(cuid())
-  userId            String?  // Nullable for guest users
+  userId            String?
   user              User?    @relation(fields: [userId], references: [id])
-  surveyId          String   // Link to survey data
+  surveyId          String
   
-  // Plan metadata
-  weekOf            DateTime // Monday of the week
-  status            String   @default("active") // "active", "completed", "archived"
+  weekOf            DateTime
+  status            String   @default("active")
   
-  // Generation tracking
   generatedAt       DateTime @default(now())
-  regenerationCount Int      @default(0) // Track regenerations (max 2)
+  regenerationCount Int      @default(0)
   
-  // Context used for generation (for debugging/improvement)
   userContext       Json
   
-  // Relations
   meals             Meal[]
   
   createdAt         DateTime @default(now())
@@ -106,14 +100,11 @@ model Meal {
   mealPlanId String
   mealPlan   MealPlan @relation(fields: [mealPlanId], references: [id], onDelete: Cascade)
   
-  // Meal timing
-  day        String   // "monday", "tuesday", etc.
-  mealType   String   // "breakfast", "lunch", "dinner"
+  day        String
+  mealType   String
   
-  // Meal options (always 2 options)
   options    MealOption[]
   
-  // User choice tracking
   selectedOptionId String?
   selectedOption   MealOption? @relation("SelectedOption", fields: [selectedOptionId], references: [id])
   
@@ -128,25 +119,21 @@ model MealOption {
   mealId   String
   meal     Meal   @relation(fields: [mealId], references: [id], onDelete: Cascade)
   
-  // Option metadata
-  optionNumber Int    // 1 or 2
-  optionType   String // "restaurant" or "home"
+  optionNumber Int
+  optionType   String
   
-  // Restaurant option fields
   restaurantName String?
   dishName       String?
-  estimatedPrice Int?    // in cents
-  orderingUrl    String? // DoorDash/delivery link
-  deliveryTime   String? // "30-45 min"
+  estimatedPrice Int?
+  orderingUrl    String?
+  deliveryTime   String?
   
-  // Home cooking option fields
   recipeName     String?
   ingredients    String[]
-  cookingTime    Int?     // minutes
+  cookingTime    Int?
   instructions   String?
-  difficulty     String?  // "easy", "medium", "hard"
+  difficulty     String?
   
-  // Nutritional info (for both types)
   calories       Int
   protein        Float
   carbs          Float
@@ -154,11 +141,9 @@ model MealOption {
   fiber          Float?
   sodium         Int?
   
-  // User interaction
   wasEaten       Boolean @default(false)
-  userRating     Int?    // 1-5 stars
+  userRating     Int?
   
-  // Relations
   feedback       MealFeedback[]
   selectedForMeal Meal[] @relation("SelectedOption")
   
@@ -175,7 +160,7 @@ model MealFeedback {
   mealOptionId String
   mealOption   MealOption @relation(fields: [mealOptionId], references: [id], onDelete: Cascade)
   
-  feedbackType String     // "loved", "liked", "disliked", "too_much", "too_little", "too_expensive", "cant_find"
+  feedbackType String
   notes        String?
   
   createdAt    DateTime   @default(now())
@@ -183,40 +168,34 @@ model MealFeedback {
   @@index([userId])
 }
 
-// User food preferences that evolve over time
 model UserFoodPreferences {
   id     String @id @default(cuid())
   userId String @unique
   user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
   
-  // Learned preferences
   preferredCuisines     String[] @default([])
   avoidedFoods          String[] @default([])
   portionSizeMultiplier Float    @default(1.0)
   
-  // Spending patterns
-  averageMealCost       Int?     // learned from actual orders
-  budgetFlexibility     Float    @default(1.0) // how much over budget they're willing to go
+  averageMealCost       Int?
+  budgetFlexibility     Float    @default(1.0)
   
-  // Behavioral patterns  
-  cookingDays           String[] @default([]) // days they prefer to cook
-  restaurantDays        String[] @default([]) // days they prefer restaurants
+  cookingDays           String[] @default([])
+  restaurantDays        String[] @default([])
   
   createdAt             DateTime @default(now())
   updatedAt             DateTime @updatedAt
 }
 
-// Cache for external API data (cost optimization)
 model RestaurantCache {
   id          String   @id @default(cuid())
   zipcode     String
   cuisineType String?
   
-  // Google Places data
   restaurants Json
   
   createdAt   DateTime @default(now())
-  expiresAt   DateTime // Cache for 7 days
+  expiresAt   DateTime
   
   @@unique([zipcode, cuisineType])
 }
@@ -226,11 +205,10 @@ model MenuCache {
   restaurantName String
   location       String
   
-  // Scraped menu data from DoorDash/etc
   menuData       Json
   
   createdAt      DateTime @default(now())
-  expiresAt      DateTime // Cache for 3 days (menus change more frequently)
+  expiresAt      DateTime
   
   @@unique([restaurantName, location])
 }

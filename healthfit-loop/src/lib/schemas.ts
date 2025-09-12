@@ -1,4 +1,3 @@
-// Zod schemas to validate the survey payload (client + server). Catches bad inputs early and gives typed safety across the app.
 import { z } from 'zod';
 
 export const SurveySchema = z.object({
@@ -15,6 +14,11 @@ export const SurveySchema = z.object({
   budgetTier: z.string().min(1),
   dietPrefs: z.array(z.string()).default([]),
   mealsOutPerWeek: z.number().int().min(0).max(14).optional(),
+  
+  // New cuisine and food preferences
+  preferredCuisines: z.array(z.string()).default([]),
+  preferredFoods: z.array(z.string()).default([]),
+  
   biomarkers: z
     .object({
       cholesterol: z.number().min(0).max(500).optional(),
@@ -28,28 +32,24 @@ export const SurveySchema = z.object({
 
 export type SurveyInput = z.infer<typeof SurveySchema>;
 
-// NEW: Meal Planning Schemas
-
+// Meal Planning Schemas
 export const MealOptionSchema = z.object({
   id: z.string(),
   optionNumber: z.number().int().min(1).max(2),
   optionType: z.enum(['restaurant', 'home']),
   
-  // Restaurant fields
   restaurantName: z.string().optional(),
   dishName: z.string().optional(),
   estimatedPrice: z.number().int().optional(),
   orderingUrl: z.string().optional(),
   deliveryTime: z.string().optional(),
   
-  // Home cooking fields
   recipeName: z.string().optional(),
   ingredients: z.array(z.string()).default([]),
   cookingTime: z.number().int().optional(),
   instructions: z.string().optional(),
   difficulty: z.string().optional(),
   
-  // Nutrition (both types)
   calories: z.number().int(),
   protein: z.number(),
   carbs: z.number(),
@@ -57,7 +57,6 @@ export const MealOptionSchema = z.object({
   fiber: z.number().optional(),
   sodium: z.number().int().optional(),
   
-  // User interaction
   wasEaten: z.boolean().default(false),
   userRating: z.number().int().min(1).max(5).optional(),
 });
@@ -66,7 +65,7 @@ export const MealSchema = z.object({
   id: z.string(),
   day: z.enum(['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday']),
   mealType: z.enum(['breakfast', 'lunch', 'dinner']),
-  options: z.array(MealOptionSchema).length(2), // Always exactly 2 options
+  options: z.array(MealOptionSchema).length(2),
   selectedOptionId: z.string().optional(),
 });
 
@@ -95,7 +94,6 @@ export const MealSelectionSchema = z.object({
   selectedOptionId: z.string(),
 });
 
-// Types
 export type MealOption = z.infer<typeof MealOptionSchema>;
 export type Meal = z.infer<typeof MealSchema>;
 export type MealPlan = z.infer<typeof MealPlanSchema>;

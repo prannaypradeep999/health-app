@@ -18,8 +18,7 @@ export async function POST(req: Request) {
       );
     }
 
-    // Generate or get session ID for guest tracking
-    const cookieStore = await cookies();  // ✅ ADD AWAIT
+    const cookieStore = await cookies();
     let sessionId = cookieStore.get('guest_session')?.value;
     
     if (!sessionId) {
@@ -40,43 +39,44 @@ export async function POST(req: Request) {
       budgetTier,
       dietPrefs,
       mealsOutPerWeek,
+      preferredCuisines,
+      preferredFoods,
       biomarkers,
       source,
     } = parsed.data;
 
-    // Create guest survey response (not linked to user yet)
     const survey = await prisma.surveyResponse.create({
       data: {
-        email: email || '',  // ✅ Provide default
-        firstName: firstName || '',  // ✅ Provide default
-        lastName: lastName || '',  // ✅ Provide default
-        age: age || 0,  // ✅ Provide default
-        sex: sex || '',  // ✅ Provide default
-        height: height || '',  // ✅ Provide default
-        weight: weight || 0,  // ✅ Provide default
-        zipCode: zipCode || '',  // ✅ Provide default
+        email: email || '',
+        firstName: firstName || '',
+        lastName: lastName || '',
+        age: age || 0,
+        sex: sex || '',
+        height: height || '',
+        weight: weight || 0,
+        zipCode: zipCode || '',
         goal,
-        activityLevel: activityLevel || '',  // ✅ Provide default
-        budgetTier: budgetTier || '',  // ✅ Provide default
+        activityLevel: activityLevel || '',
+        budgetTier: budgetTier || '',
         dietPrefs: dietPrefs || [],
-        mealsOutPerWeek: mealsOutPerWeek || 0,  // ✅ Provide default
+        mealsOutPerWeek: mealsOutPerWeek || 0,
+        preferredCuisines: preferredCuisines || [],
+        preferredFoods: preferredFoods || [],
         biomarkerJson: biomarkers || undefined,
         source: source || 'web',
         isGuest: true,
         sessionId,
-        userId: null // Explicitly a guest survey
+        userId: null
       }
     });
 
-    // Set session cookie for 7 days
     cookieStore.set('guest_session', sessionId, {
       httpOnly: true,
       secure: process.env.NODE_ENV === 'production',
       sameSite: 'lax',
-      maxAge: 60 * 60 * 24 * 7 // 7 days
+      maxAge: 60 * 60 * 24 * 7
     });
 
-    // Also store survey ID for quick access
     cookieStore.set('survey_id', survey.id, {
       httpOnly: true,
       secure: process.env.NODE_ENV === 'production',
@@ -95,17 +95,15 @@ export async function POST(req: Request) {
   }
 }
 
-// GET method to fetch survey data
 export async function GET(req: Request) {
   try {
-    const cookieStore = await cookies();  // ✅ ADD AWAIT
+    const cookieStore = await cookies();
     const sessionId = cookieStore.get('guest_session')?.value;
     const surveyId = cookieStore.get('survey_id')?.value;
     const userId = cookieStore.get('user_id')?.value;
 
     let survey = null;
 
-    // First check if user is logged in
     if (userId) {
       const user = await prisma.user.findUnique({
         where: { id: userId },
@@ -113,13 +111,11 @@ export async function GET(req: Request) {
       });
       survey = user?.activeSurvey;
     } 
-    // Then check for guest survey
     else if (surveyId) {
       survey = await prisma.surveyResponse.findUnique({
         where: { id: surveyId }
       });
     } 
-    // Fallback to session ID
     else if (sessionId) {
       survey = await prisma.surveyResponse.findFirst({
         where: { 
