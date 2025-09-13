@@ -17,6 +17,7 @@ interface SurveyData {
   activityLevel: string;
   budgetTier: string;
   mealsOutPerWeek: number | '';
+  distancePreference: string;
   dietPrefs: string[];
   preferredCuisines: string[];
   preferredFoods: string[];
@@ -46,6 +47,7 @@ const SurveyPage: React.FC = () => {
     activityLevel: '',
     budgetTier: '',
     mealsOutPerWeek: 7,
+    distancePreference: 'medium',
     dietPrefs: [],
     preferredCuisines: [],
     preferredFoods: [],
@@ -81,6 +83,12 @@ const SurveyPage: React.FC = () => {
     { value: '600_plus', label: '$600+/mo', desc: '$20+/day' },
   ];
 
+  const distanceOptions = [
+    { value: 'close', label: 'Close by', desc: 'Within 5km', icon: '🚶' },
+    { value: 'medium', label: 'Moderate distance', desc: 'Within 10km', icon: '🚗' },
+    { value: 'far', label: 'Don\'t mind traveling', desc: 'Within 20km', icon: '🛣️' },
+  ];
+
   const dietOptions = [
     { value: 'vegetarian', label: 'Vegetarian', icon: '🥬' },
     { value: 'vegan', label: 'Vegan', icon: '🌱' },
@@ -90,161 +98,126 @@ const SurveyPage: React.FC = () => {
     { value: 'paleo', label: 'Paleo', icon: '🥩' },
   ];
 
-  // Cuisine data structure
+  // Cuisine data structure with realistic dishes for both restaurants and home cooking
   const cuisineData = {
     mediterranean: {
       label: 'Mediterranean',
       icon: '🫒',
-      foods: ['gyros', 'hummus', 'falafel', 'pita_wraps', 'greek_salad', 'grilled_fish', 'kebabs', 'tabouli']
+      foods: ['greek_salad', 'hummus', 'falafel', 'pita_wraps', 'gyros', 'kebabs', 'tabbouleh', 'grilled_fish']
     },
     italian: {
       label: 'Italian',
       icon: '🍝',
-      foods: ['pasta', 'pizza', 'lasagna', 'risotto', 'caprese', 'minestrone_soup', 'panini', 'antipasto']
+      foods: ['pasta', 'pizza', 'risotto', 'lasagna', 'caprese_salad', 'minestrone_soup', 'panini', 'gnocchi']
     },
     mexican: {
       label: 'Mexican',
       icon: '🌮',
-      foods: ['tacos', 'burritos', 'quesadillas', 'enchiladas', 'nachos', 'guacamole', 'fajitas', 'tortilla_soup']
+      foods: ['tacos', 'burritos', 'quesadillas', 'enchiladas', 'fajitas', 'guacamole', 'nachos', 'tortilla_soup']
+    },
+    asian: {
+      label: 'Asian',
+      icon: '🥢',
+      foods: ['stir_fry', 'fried_rice', 'noodles', 'spring_rolls', 'dumplings', 'curry', 'rice_bowls', 'miso_soup']
     },
     indian: {
       label: 'Indian',
       icon: '🍛',
-      foods: ['curry', 'biryani', 'tandoori', 'samosa', 'naan_bread', 'chutneys', 'dal_lentils', 'paneer_dishes']
-    },
-    japanese: {
-      label: 'Japanese',
-      icon: '🍣',
-      foods: ['sushi', 'ramen', 'tempura', 'teriyaki', 'donburi_rice_bowls', 'udon_soba_noodles', 'miso_soup', 'bento_boxes']
-    },
-    thai: {
-      label: 'Thai',
-      icon: '🌶️',
-      foods: ['pad_thai', 'green_curry', 'red_curry', 'tom_yum_soup', 'papaya_salad', 'spring_rolls', 'fried_rice', 'stir_fried_veggies']
+      foods: ['curry', 'biryani', 'tandoori', 'paneer_dishes', 'dal_lentils', 'naan_bread', 'samosas', 'tikka_masala']
     },
     middle_eastern: {
       label: 'Middle Eastern',
       icon: '🥙',
-      foods: ['shawarma', 'falafel', 'hummus', 'baba_ganoush', 'lentil_soup', 'kebabs', 'pita_wraps', 'couscous']
+      foods: ['shawarma', 'falafel', 'hummus', 'baba_ganoush', 'kebabs', 'pita_wraps', 'lentil_soup', 'couscous']
     },
     american: {
       label: 'American',
       icon: '🍔',
-      foods: ['burgers', 'sandwiches', 'bbq', 'fried_chicken', 'hot_dogs', 'salads', 'mac_and_cheese', 'pancakes']
+      foods: ['burgers', 'sandwiches', 'salads', 'bbq', 'mac_and_cheese', 'grilled_chicken', 'wings', 'wraps']
     },
-    chinese: {
-      label: 'Chinese',
-      icon: '🥢',
-      foods: ['fried_rice', 'lo_mein', 'dumplings', 'sweet_sour_chicken', 'kung_pao_chicken', 'hot_pot', 'spring_rolls', 'mapo_tofu']
-    },
-    korean: {
-      label: 'Korean',
-      icon: '🥘',
-      foods: ['bibimbap', 'korean_bbq', 'kimchi', 'bulgogi', 'japchae_glass_noodles', 'tteokbokki_rice_cakes', 'stews_kimchi_jjigae', 'kimbap']
-    },
-    french: {
-      label: 'French',
-      icon: '🥐',
-      foods: ['baguette', 'croissants', 'quiche', 'ratatouille', 'crepes', 'onion_soup', 'beef_bourguignon', 'nicoise_salad']
-    },
-    african: {
-      label: 'African',
-      icon: '🍲',
-      foods: ['tagine_moroccan', 'couscous', 'injera_with_stews_ethiopian', 'jollof_rice_west_african', 'grilled_meats', 'plantains', 'peanut_stew', 'lentil_dishes']
+    breakfast: {
+      label: 'Breakfast & Brunch',
+      icon: '🥞',
+      foods: ['pancakes', 'eggs_benedict', 'omelettes', 'avocado_toast', 'french_toast', 'breakfast_burritos', 'smoothie_bowls', 'bagels']
     }
   };
 
-  // Generate readable food labels
+  // Generate readable food labels for restaurant/cooking searches
   const foodLabels: { [key: string]: string } = {
-    gyros: 'Gyros',
+    // Mediterranean
+    greek_salad: 'Greek Salad',
     hummus: 'Hummus',
     falafel: 'Falafel',
-    pita_wraps: 'Pita & Wraps',
-    greek_salad: 'Greek Salad',
-    grilled_fish: 'Grilled Fish',
+    pita_wraps: 'Pita Wraps',
+    gyros: 'Gyros',
     kebabs: 'Kebabs',
-    tabouli: 'Tabouli',
+    tabbouleh: 'Tabbouleh',
+    grilled_fish: 'Grilled Fish',
+    
+    // Italian
     pasta: 'Pasta',
     pizza: 'Pizza',
-    lasagna: 'Lasagna',
     risotto: 'Risotto',
-    caprese: 'Caprese',
+    lasagna: 'Lasagna',
+    caprese_salad: 'Caprese Salad',
     minestrone_soup: 'Minestrone Soup',
     panini: 'Panini',
-    antipasto: 'Antipasto',
+    gnocchi: 'Gnocchi',
+    
+    // Mexican
     tacos: 'Tacos',
     burritos: 'Burritos',
     quesadillas: 'Quesadillas',
     enchiladas: 'Enchiladas',
-    nachos: 'Nachos',
-    guacamole: 'Guacamole',
     fajitas: 'Fajitas',
+    guacamole: 'Guacamole',
+    nachos: 'Nachos',
     tortilla_soup: 'Tortilla Soup',
+    
+    // Asian
+    stir_fry: 'Stir Fry',
+    fried_rice: 'Fried Rice',
+    noodles: 'Noodles',
+    spring_rolls: 'Spring Rolls',
+    dumplings: 'Dumplings',
     curry: 'Curry',
+    rice_bowls: 'Rice Bowls',
+    miso_soup: 'Miso Soup',
+    
+    // Indian
     biryani: 'Biryani',
     tandoori: 'Tandoori',
-    samosa: 'Samosa',
-    naan_bread: 'Naan Bread',
-    chutneys: 'Chutneys',
-    dal_lentils: 'Dal (lentils)',
     paneer_dishes: 'Paneer Dishes',
-    sushi: 'Sushi',
-    ramen: 'Ramen',
-    tempura: 'Tempura',
-    teriyaki: 'Teriyaki',
-    donburi_rice_bowls: 'Donburi (rice bowls)',
-    udon_soba_noodles: 'Udon/Soba Noodles',
-    miso_soup: 'Miso Soup',
-    bento_boxes: 'Bento Boxes',
-    pad_thai: 'Pad Thai',
-    green_curry: 'Green Curry',
-    red_curry: 'Red Curry',
-    tom_yum_soup: 'Tom Yum Soup',
-    papaya_salad: 'Papaya Salad',
-    spring_rolls: 'Spring Rolls',
-    fried_rice: 'Fried Rice',
-    stir_fried_veggies: 'Stir-Fried Veggies',
+    dal_lentils: 'Dal (Lentils)',
+    naan_bread: 'Naan Bread',
+    samosas: 'Samosas',
+    tikka_masala: 'Tikka Masala',
+    
+    // Middle Eastern
     shawarma: 'Shawarma',
     baba_ganoush: 'Baba Ganoush',
     lentil_soup: 'Lentil Soup',
     couscous: 'Couscous',
+    
+    // American
     burgers: 'Burgers',
     sandwiches: 'Sandwiches',
-    bbq: 'BBQ',
-    fried_chicken: 'Fried Chicken',
-    hot_dogs: 'Hot Dogs',
     salads: 'Salads',
+    bbq: 'BBQ',
     mac_and_cheese: 'Mac & Cheese',
+    grilled_chicken: 'Grilled Chicken',
+    wings: 'Wings',
+    wraps: 'Wraps',
+    
+    // Breakfast
     pancakes: 'Pancakes',
-    lo_mein: 'Lo Mein',
-    dumplings: 'Dumplings',
-    sweet_sour_chicken: 'Sweet & Sour Chicken',
-    kung_pao_chicken: 'Kung Pao Chicken',
-    hot_pot: 'Hot Pot',
-    mapo_tofu: 'Mapo Tofu',
-    bibimbap: 'Bibimbap',
-    korean_bbq: 'Korean BBQ',
-    kimchi: 'Kimchi',
-    bulgogi: 'Bulgogi',
-    japchae_glass_noodles: 'Japchae (glass noodles)',
-    tteokbokki_rice_cakes: 'Tteokbokki (rice cakes)',
-    stews_kimchi_jjigae: 'Stews (Kimchi Jjigae)',
-    kimbap: 'Kimbap',
-    baguette: 'Baguette',
-    croissants: 'Croissants',
-    quiche: 'Quiche',
-    ratatouille: 'Ratatouille',
-    crepes: 'Crepes',
-    onion_soup: 'Onion Soup',
-    beef_bourguignon: 'Beef Bourguignon',
-    nicoise_salad: 'Nicoise Salad',
-    tagine_moroccan: 'Tagine (Moroccan)',
-    injera_with_stews_ethiopian: 'Injera with Stews (Ethiopian)',
-    jollof_rice_west_african: 'Jollof Rice (West African)',
-    grilled_meats: 'Grilled Meats',
-    plantains: 'Plantains',
-    peanut_stew: 'Peanut Stew',
-    lentil_dishes: 'Lentil Dishes'
+    eggs_benedict: 'Eggs Benedict',
+    omelettes: 'Omelettes',
+    avocado_toast: 'Avocado Toast',
+    french_toast: 'French Toast',
+    breakfast_burritos: 'Breakfast Burritos',
+    smoothie_bowls: 'Smoothie Bowls',
+    bagels: 'Bagels'
   };
 
   // Get available foods based on selected cuisines
@@ -300,6 +273,7 @@ const SurveyPage: React.FC = () => {
           activityLevel: formData.activityLevel,
           budgetTier: formData.budgetTier,
           mealsOutPerWeek: Number(formData.mealsOutPerWeek),
+          distancePreference: formData.distancePreference,
           dietPrefs: formData.dietPrefs,
           preferredCuisines: formData.preferredCuisines,
           preferredFoods: formData.preferredFoods,
@@ -687,6 +661,39 @@ const SurveyPage: React.FC = () => {
                 </select>
                 <p className="text-xs text-[#52525B] mt-2">
                   We'll suggest dining options or delivery services based on your preferences
+                </p>
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-[#18181B] mb-3">How far are you willing to travel for restaurants?</label>
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                  {distanceOptions.map((option) => (
+                    <button
+                      key={option.value}
+                      onClick={() => setFormData({ ...formData, distancePreference: option.value })}
+                      className={`p-4 rounded-xl border-2 transition-all duration-200 hover:scale-[1.02] ${
+                        formData.distancePreference === option.value
+                          ? 'border-[#4338CA] bg-gradient-to-r from-[#4338CA]/5 to-[#DC2626]/5 shadow-md'
+                          : 'border-[#A1A1AA] hover:border-[#4338CA]/50 hover:shadow-sm'
+                      }`}
+                    >
+                      <div className="text-center">
+                        <div className="text-3xl mb-2">{option.icon}</div>
+                        <div className="font-semibold text-[#0A0A0B]">{option.label}</div>
+                        <div className="text-sm text-[#52525B] mt-1">{option.desc}</div>
+                      </div>
+                      {formData.distancePreference === option.value && (
+                        <div className="mt-2 flex justify-center">
+                          <div className="w-6 h-6 rounded-full bg-gradient-to-r from-[#4338CA] to-[#DC2626] flex items-center justify-center">
+                            <Check className="w-4 h-4 text-white" />
+                          </div>
+                        </div>
+                      )}
+                    </button>
+                  ))}
+                </div>
+                <p className="text-xs text-[#52525B] mt-2">
+                  This helps us find restaurants and delivery options within your preferred travel distance
                 </p>
               </div>
             </div>

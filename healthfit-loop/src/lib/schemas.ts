@@ -14,6 +14,7 @@ export const SurveySchema = z.object({
   budgetTier: z.string().min(1),
   dietPrefs: z.array(z.string()).default([]),
   mealsOutPerWeek: z.number().int().min(0).max(14).optional(),
+  distancePreference: z.enum(['close', 'medium', 'far']).default('medium'),
   
   // New cuisine and food preferences
   preferredCuisines: z.array(z.string()).default([]),

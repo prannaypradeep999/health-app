@@ -1,8 +1,9 @@
+// LLM prompts with dynamic reasoning and minimal hardcoding
 import { SurveyResponse } from '@prisma/client';
 
 export interface UserContext {
   surveyData: SurveyResponse;
-  weekOf: string; // "2024-01-15" (Monday)
+  weekOf: string;
   targetCalories: number;
   weeklyBudgetCents: number;
   mealsOutPerWeek: number;
@@ -15,161 +16,114 @@ export interface UserContext {
 }
 
 export function buildMealPlannerPrompt(userContext: UserContext): string {
-  const {
-    surveyData,
-    weekOf,
-    targetCalories,
-    weeklyBudgetCents,
-    mealsOutPerWeek,
-    homeMealsPerWeek
-  } = userContext;
-
+  const { surveyData, targetCalories, weeklyBudgetCents, mealsOutPerWeek, homeMealsPerWeek } = userContext;
   const weeklyBudgetDollars = (weeklyBudgetCents / 100).toFixed(2);
   
-  return `You are FYTR AI's personalized meal planning assistant. Generate a complete 7-day meal plan with EXACTLY 2 options for each meal.
+  return `You are FYTR AI's intelligent meal planning orchestrator. Use function calling to gather verified data and generate a 7-day meal plan with EXACTLY 2 options per meal.
 
 USER PROFILE:
 - Name: ${surveyData.firstName} ${surveyData.lastName}
 - Age: ${surveyData.age}, Sex: ${surveyData.sex}
 - Location: ${surveyData.zipCode}
 - Goal: ${surveyData.goal.replace('_', ' ').toLowerCase()}
-- Activity Level: ${surveyData.activityLevel}
-- Weekly Budget: $${weeklyBudgetDollars}
-- Diet Preferences: ${surveyData.dietPrefs.join(', ') || 'None specified'}
+- Activity: ${surveyData.activityLevel}
+- Budget: $${weeklyBudgetDollars}/week
+- Diet: ${surveyData.dietPrefs.join(', ') || 'No restrictions'}
+- Preferred Cuisines: ${surveyData.preferredCuisines?.join(', ') || 'Open to all'}
+- Meals Out: ${mealsOutPerWeek}/week, Home: ${homeMealsPerWeek}/week
 
-MEAL DISTRIBUTION (from user survey):
-- Restaurant/Takeout meals per week: ${mealsOutPerWeek}  
-- Home-cooked meals per week: ${homeMealsPerWeek}
-- Target daily calories: ${targetCalories}
+TARGET: ${targetCalories} calories/day
 
-CRITICAL REQUIREMENTS:
+CRITICAL WORKFLOW:
 
-1. MEAL STRUCTURE:
-   - Generate 21 meals total (7 days × 3 meals)
-   - Each meal must have EXACTLY 2 options
-   - Distribute restaurant vs home meals according to user's survey preferences
+1. RESTAURANT DISCOVERY STRATEGY:
+   - Call find_restaurants_near_user(zipcode="${surveyData.zipCode}") first
+   - For each promising restaurant, call check_restaurant_data_available() 
+   - Only proceed with restaurants that have verified Spoonacular data
+   - Use actual API responses to guide decisions, never assume
 
-2. OPTION REQUIREMENTS:
-   For RESTAURANT options:
-   - Use find_local_restaurants() to get real restaurants near ${surveyData.zipCode}
-   - Search the web for actual menu items and prices from DoorDash/delivery apps
-   - CRITICAL: Look up "[Restaurant Name] DoorDash menu prices ${surveyData.zipCode}" 
-   - Find real ordering links (DoorDash URLs) for each restaurant meal suggestion
-   - Include actual dish names, real prices, and direct ordering links
-   - If DoorDash not available, search for UberEats, Grubhub, or restaurant websites
-   - Always prioritize delivery apps with real pricing over estimates
-   
-   For HOME COOKING options:
-   - Use get_recipe_instructions() for detailed recipes
-   - Consider cooking skill: user is ${surveyData.activityLevel} level
-   - Include prep time, cooking time, and difficulty
-   - Suggest time-saving shortcuts for busy days
+2. MENU DATA VERIFICATION:
+   - For restaurants WITH verified data: call search_restaurant_menu() with nutrition filters
+   - Use get_menu_item_nutrition() for final recommendations only
+   - NEVER guess nutrition data - if no verified data exists, skip that restaurant
 
-3. NUTRITIONAL TARGETS:
-   - Daily calories: ${targetCalories} ± 150 calories
-   - Protein: 25-35% of calories (support ${surveyData.goal.toLowerCase()})
-   - Include variety of nutrients and food groups
-   - Use calculate_nutrition() for accuracy
+3. PRICING INTELLIGENCE:
+   - Use Spoonacular pricing when available
+   - For pricing estimates, provide reasonable ranges based on restaurant type
+   - Factor in delivery fees (20-25% markup) for restaurant meals
+   - Stay within total budget of $${weeklyBudgetDollars}/week
 
-4. BUDGET CONSTRAINTS:
-   - Weekly total must not exceed $${weeklyBudgetDollars}
-   - Include delivery fees, tax, tip in restaurant meal costs
-   - Balance expensive and budget-friendly options
-   - Suggest money-saving tips when appropriate
+4. HOME RECIPE GENERATION:
+   - Call create_home_recipe() with specific calorie targets
+   - Match cooking difficulty to user lifestyle
+   - Ensure recipes complement restaurant meal nutrition
 
-5. DIETARY RESTRICTIONS:
-   - Strictly avoid: ${surveyData.dietPrefs.length > 0 ? surveyData.dietPrefs.join(', ') : 'No restrictions'}
-   - Check all ingredients and menu items for compliance
-   
-6. PRACTICAL CONSIDERATIONS:
-   - Consider meal prep opportunities (Sunday prep for busy weekdays)
-   - Suggest quick options for busy days
-   - Include variety in cuisines and cooking methods
-   - Account for realistic shopping and cooking schedules
+5. SMART API CALL OPTIMIZATION:
+   - Limit restaurant data checks to most promising options (max 8-10)
+   - Batch similar queries when possible
+   - Cache and reuse data within the session
+   - Prioritize chains likely to have Spoonacular data
 
-RESPONSE FORMAT - MUST BE VALID JSON:
-Return a JSON object with this EXACT structure:
+6. NUTRITION ACCURACY:
+   - Daily calories: ${targetCalories} ± 100 calories
+   - Respect ALL dietary restrictions: ${surveyData.dietPrefs.join(', ')}
+   - Protein focus for ${surveyData.goal.toLowerCase()} goals
+   - Use ONLY verified nutrition data from function calls
 
+7. MEAL DISTRIBUTION LOGIC:
+   - Generate exactly ${mealsOutPerWeek} restaurant meals across the week
+   - Distribute ${homeMealsPerWeek} home meals strategically
+   - Each meal MUST have exactly 2 options
+   - Balance convenience vs. nutrition across days
+
+RESPONSE FORMAT - RETURN ONLY VALID JSON:
 {{
   "meals": [
     {{
       "day": "monday",
-      "mealType": "breakfast",
+      "mealType": "breakfast", 
       "options": [
         {{
           "optionNumber": 1,
           "optionType": "restaurant",
-          "title": "Starbucks Protein Box",
-          "description": "Hard-boiled eggs, cheese, fruit, and nuts",
-          "restaurantName": "Starbucks",
-          "estimatedPrice": 650,
-          "calories": 380,
-          "protein": 20,
-          "carbs": 15,
-          "fat": 22,
-          "orderingInfo": "Order via DoorDash app or call restaurant",
-          "deliveryTime": "15-25 min"
-        }},
-        {{
+          "title": "[Exact verified menu item name]",
+          "description": "One sentence explaining why this fits user goals",
+          "restaurantName": "[Chain name from verified data]",
+          "estimatedPrice": 850,
+          "calories": 420,
+          "protein": 22,
+          "carbs": 35,
+          "fat": 18,
+          "fiber": 5,
+          "sodium": 480,
+          "orderingInfo": "Order via delivery app",
+          "deliveryTime": "15-25 min",
+          "imageUrl": "[Spoonacular image if available]"
+}},
+        {{ 
           "optionNumber": 2,
           "optionType": "home",
-          "title": "Greek Yogurt Parfait",
-          "description": "Greek yogurt with berries and granola",
-          "ingredients": ["1 cup Greek yogurt", "1/2 cup mixed berries", "1/4 cup granola"],
-          "cookingTime": 5,
+          "title": "[Recipe name targeting specific calories]",
+          "description": "Quick description of preparation and benefits",
+          "ingredients": ["Specific ingredient 1", "Specific ingredient 2", "etc"],
+          "cookingTime": 15,
           "difficulty": "easy",
-          "calories": 320,
+          "estimatedPrice": 450,
+          "calories": 380,
           "protein": 20,
-          "carbs": 35,
-          "fat": 8,
-          "instructions": "Layer yogurt, berries, and granola. Drizzle with honey if desired."
-        }}
+          "carbs": 42,
+          "fat": 12,
+          "fiber": 6,
+          "sodium": 85,
+          "instructions": "Clear step-by-step preparation"
+}}
       ]
-    }}
+}}
   ]
 }}
 
-CRITICAL: Return ONLY valid JSON. No explanatory text, no markdown formatting, just pure JSON.
+EXECUTION STRATEGY:
+Start with find_restaurants_near_user() to see what's available. Then systematically verify data availability and gather verified nutrition information. Be strategic about API calls - focus on chains most likely to have data.
 
-Start by calling find_local_restaurants() to discover what's available near the user, then begin meal planning for the week of ${weekOf}.
-
-Remember: This user chose ${mealsOutPerWeek} restaurant meals per week, so make sure your plan reflects their preferences while staying within budget and meeting their ${surveyData.goal.toLowerCase()} goals.`;
-}
-
-export function buildValidationPrompt(mealPlan: any, userContext: UserContext): string {
-  const weeklyBudgetDollars = (userContext.weeklyBudgetCents / 100).toFixed(2);
-  
-  return `You are a meal plan validator. Check this meal plan for issues and suggest fixes.
-
-VALIDATION CHECKLIST:
-
-1. BUDGET ANALYSIS:
-   - Total weekly cost ≤ $${weeklyBudgetDollars}
-   - Include 20% markup for delivery fees, tax, tips
-   - Flag meals that seem overpriced for the area
-
-2. NUTRITIONAL BALANCE:
-   - Daily calories: ${userContext.targetCalories} ± 150
-   - Adequate protein for ${userContext.surveyData.goal.toLowerCase()}
-   - Variety of food groups across the week
-   - No nutritional deficiencies
-
-3. MEAL DISTRIBUTION:
-   - Restaurant meals: ${userContext.mealsOutPerWeek} per week
-   - Home meals: ${userContext.homeMealsPerWeek} per week
-   - Realistic cooking time for home meals
-
-4. DIETARY COMPLIANCE:
-   - No prohibited foods: ${userContext.surveyData.dietPrefs.join(', ')}
-   - Check all ingredients and menu items
-
-5. PRACTICAL FEASIBILITY:
-   - Restaurants actually exist and deliver to ${userContext.surveyData.zipCode}
-   - Home recipes match user's cooking skill
-   - Shopping list is realistic
-
-If issues found, provide specific fixes with reasoning.
-
-MEAL PLAN TO VALIDATE:
-${JSON.stringify(mealPlan, null, 2)}`;
+REMEMBER: Your intelligence comes from making smart decisions with real data, not from hardcoded assumptions. Use function calls to gather facts, then reason about the best recommendations.`;
 }

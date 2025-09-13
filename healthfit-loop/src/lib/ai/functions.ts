@@ -1,22 +1,22 @@
-// Function calling definitions for ChatGPT meal planning
+// LLM function calling definitions for meal planning orchestration
 export const MEAL_PLANNING_FUNCTIONS = [
   {
-    name: "find_local_restaurants",
-    description: "Find restaurants near user's location using Google Places API",
+    name: "find_restaurants_near_user",
+    description: "Discover restaurants near user location with optional cuisine and price filtering",
     parameters: {
       type: "object",
       properties: {
         zipcode: {
           type: "string",
-          description: "User's ZIP code"
+          description: "User's ZIP code for location search"
         },
         cuisineType: {
           type: "string", 
-          description: "Type of cuisine (italian, chinese, mexican, etc.)"
+          description: "Cuisine filter: italian, chinese, mexican, american, etc."
         },
         priceLevel: {
           type: "number",
-          description: "Price level 1-4 (1=$ to 4=$$)",
+          description: "Price filter 1-4 (1=$ to 4=$$$$)",
           minimum: 1,
           maximum: 4
         }
@@ -25,32 +25,89 @@ export const MEAL_PLANNING_FUNCTIONS = [
     }
   },
   {
-    name: "get_recipe_instructions",
-    description: "Get detailed cooking instructions for a home recipe",
+    name: "search_restaurant_menu",
+    description: "Search Spoonacular for verified menu items from a specific restaurant chain",
+    parameters: {
+      type: "object",
+      properties: {
+        restaurantChain: {
+          type: "string",
+          description: "Name of restaurant chain (e.g. 'Starbucks', 'Chipotle')"
+        },
+        maxCalories: {
+          type: "number",
+          description: "Maximum calories per item"
+        },
+        minProtein: {
+          type: "number", 
+          description: "Minimum protein grams per item"
+        },
+        maxCarbs: {
+          type: "number",
+          description: "Maximum carbs grams per item"
+        }
+      },
+      required: ["restaurantChain"]
+    }
+  },
+  {
+    name: "get_menu_item_nutrition",
+    description: "Get detailed verified nutrition facts for a specific Spoonacular menu item",
+    parameters: {
+      type: "object",
+      properties: {
+        itemId: {
+          type: "number",
+          description: "Spoonacular menu item ID"
+        }
+      },
+      required: ["itemId"]
+    }
+  },
+  {
+    name: "check_restaurant_data_available",
+    description: "Check if a restaurant has verified menu data in Spoonacular database",
+    parameters: {
+      type: "object",
+      properties: {
+        restaurantName: {
+          type: "string",
+          description: "Restaurant name to check for data availability"
+        }
+      },
+      required: ["restaurantName"]
+    }
+  },
+  {
+    name: "create_home_recipe",
+    description: "Generate detailed home cooking recipe with nutrition estimates",
     parameters: {
       type: "object",
       properties: {
         recipeName: {
           type: "string",
-          description: "Name of the recipe"
+          description: "Name of recipe to create"
         },
         dietaryRestrictions: {
           type: "array",
           items: { type: "string" },
-          description: "Any dietary restrictions to consider"
+          description: "Dietary restrictions to consider"
+        },
+        targetCalories: {
+          type: "number",
+          description: "Target calorie count for recipe"
         },
         cookingSkill: {
           type: "string",
-          description: "User's cooking skill level",
-          enum: ["beginner", "intermediate", "advanced"]
+          description: "Cooking difficulty level",
+          enum: ["easy", "medium", "hard"]
         }
       },
-      required: ["recipeName"]
+      required: ["recipeName", "targetCalories"]
     }
   }
 ];
 
-// JSON Schema for meal plan response structure
 export const MEAL_PLAN_JSON_SCHEMA = {
   type: "object",
   properties: {
@@ -76,72 +133,25 @@ export const MEAL_PLAN_JSON_SCHEMA = {
             items: {
               type: "object",
               properties: {
-                optionNumber: { 
-                  type: "number", 
-                  enum: [1, 2] 
-                },
-                optionType: { 
-                  type: "string", 
-                  enum: ["restaurant", "home"] 
-                },
-                title: { 
-                  type: "string",
-                  description: "Name of the meal/dish"
-                },
-                description: { 
-                  type: "string" 
-                },
-                restaurantName: { 
-                  type: "string",
-                  description: "Required for restaurant options"
-                },
-                estimatedPrice: { 
-                  type: "number",
-                  description: "Price in cents"
-                },
-                calories: { 
-                  type: "number" 
-                },
-                protein: { 
-                  type: "number" 
-                },
-                carbs: { 
-                  type: "number" 
-                },
-                fat: { 
-                  type: "number" 
-                },
-                fiber: { 
-                  type: "number" 
-                },
-                sodium: { 
-                  type: "number" 
-                },
-                orderingInfo: { 
-                  type: "string",
-                  description: "How to order (DoorDash link, phone, etc.)"
-                },
-                deliveryTime: { 
-                  type: "string",
-                  description: "Estimated delivery time"
-                },
-                ingredients: { 
-                  type: "array",
-                  items: { type: "string" },
-                  description: "Required for home cooking options"
-                },
-                cookingTime: { 
-                  type: "number",
-                  description: "Cooking time in minutes for home options"
-                },
-                difficulty: { 
-                  type: "string",
-                  enum: ["easy", "medium", "hard"]
-                },
-                instructions: { 
-                  type: "string",
-                  description: "Cooking instructions for home options"
-                }
+                optionNumber: { type: "number", enum: [1, 2] },
+                optionType: { type: "string", enum: ["restaurant", "home"] },
+                title: { type: "string" },
+                description: { type: "string" },
+                restaurantName: { type: "string" },
+                estimatedPrice: { type: "number" },
+                calories: { type: "number" },
+                protein: { type: "number" },
+                carbs: { type: "number" },
+                fat: { type: "number" },
+                fiber: { type: "number" },
+                sodium: { type: "number" },
+                orderingInfo: { type: "string" },
+                deliveryTime: { type: "string" },
+                ingredients: { type: "array", items: { type: "string" } },
+                cookingTime: { type: "number" },
+                difficulty: { type: "string" },
+                instructions: { type: "string" },
+                imageUrl: { type: "string" }
               },
               required: ["optionNumber", "optionType", "title", "estimatedPrice", "calories", "protein", "carbs", "fat"]
             }
@@ -154,7 +164,6 @@ export const MEAL_PLAN_JSON_SCHEMA = {
   required: ["meals"]
 };
 
-// Function implementations
 export type FunctionCall = {
   name: string;
   arguments: string;

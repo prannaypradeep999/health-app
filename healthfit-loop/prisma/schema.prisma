@@ -52,6 +52,7 @@ model SurveyResponse {
   budgetTier      String
   dietPrefs       String[]
   mealsOutPerWeek Int
+  distancePreference String @default("medium")
   
   // New cuisine and food preferences
   preferredCuisines String[] @default([])

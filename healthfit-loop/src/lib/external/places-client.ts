@@ -25,16 +25,18 @@ export class GooglePlacesClient {
   async findNearbyRestaurants(
     zipcode: string,
     cuisineType?: string,
-    priceLevel?: number
+    priceLevel?: number,
+    radiusKm?: number
   ): Promise<Restaurant[]> {
     try {
-      // Check cache first (7 day expiration)
-      const cacheKey = `${zipcode}-${cuisineType || 'all'}`;
+      // Check cache first (7 day expiration) - include radius in cache key
+      const radius = radiusKm ? radiusKm * 1000 : 8000; // Convert km to meters, default 8km
+      const cacheKey = `${zipcode}-${cuisineType || 'all'}-${radius}m`;
       const cached = await prisma.restaurantCache.findUnique({
         where: {
           zipcode_cuisineType: {
             zipcode,
-            cuisineType: cuisineType || 'all'
+            cuisineType: cacheKey
           }
         }
       });
@@ -61,7 +63,7 @@ export class GooglePlacesClient {
         query = `${cuisineType} restaurant`;
       }
 
-      const searchUrl = `${this.baseUrl}/textsearch/json?query=${query}&location=${lat},${lng}&radius=8000&key=${this.apiKey}`;
+      const searchUrl = `${this.baseUrl}/textsearch/json?query=${query}&location=${lat},${lng}&radius=${radius}&key=${this.apiKey}`;
       
       const searchResponse = await fetch(searchUrl);
       const searchData = await searchResponse.json();
@@ -104,7 +106,7 @@ export class GooglePlacesClient {
         where: {
           zipcode_cuisineType: {
             zipcode,
-            cuisineType: cuisineType || 'all'
+            cuisineType: cacheKey
           }
         },
         update: {
@@ -113,7 +115,7 @@ export class GooglePlacesClient {
         },
         create: {
           zipcode,
-          cuisineType: cuisineType || 'all',
+          cuisineType: cacheKey,
           restaurants: restaurants as any,
           expiresAt
         }
