@@ -3,9 +3,6 @@
 import React, { useState } from 'react';
 import { 
   User, 
-  Utensils, 
-  Dumbbell, 
-  Star, 
   Share2,
   LogOut,
   UserPlus
@@ -14,7 +11,13 @@ import MealPlanCard from './MealPlanCard';
 import WorkoutPlanCard from './WorkoutPlanCard';
 import UpgradeCard from './UpgradeCard';
 import MealPlanModal from './modals/MealPlanModal';
-import WorkoutPlanModal from './modals/WorkoutPlanModal';
+// import WorkoutPlanModal from './modals/WorkoutPlanModal';
+import dynamic from 'next/dynamic';
+
+const WorkoutPlanModal = dynamic(() => import('./modals/WorkoutPlanModal'), {
+  ssr: false,
+  loading: () => <div>Loading workout modal...</div>
+});
 import SignupModal from './modals/SignupModal';
 import ShareModal from './modals/ShareModal';
 import CreateAccountModal from './modals/CreateAccountModal';
@@ -64,44 +67,38 @@ export default function DashboardClient({ userData, surveyData, isGuest }: Dashb
   };
 
   return (
-    <div className="min-h-screen" style={{ backgroundColor: colors.offWhite }}>
-      {/* Header with User Info */}
-      <header className="shadow-lg border-b" style={{ backgroundColor: colors.white, borderColor: colors.paleGray }}>
-        <div className="max-w-7xl mx-auto px-4 py-6">
+    <div className="min-h-screen bg-gray-50">
+      {/* Header with User Info - Clean & Minimal */}
+      <header className="bg-white border-b border-gray-200">
+        <div className="max-w-7xl mx-auto px-4 py-4">
           <div className="flex justify-between items-center">
             <div className="flex items-center space-x-3">
-              {/* FYTR AI Logo */}
+              {/* FYTR AI Logo - Keep gradient for branding */}
               <div className="w-10 h-10 rounded-lg flex items-center justify-center" style={{ background: colors.gradient }}>
                 <svg width="24" height="24" viewBox="0 0 40 40" xmlns="http://www.w3.org/2000/svg">
                   <path d="M20 3 L34 11 L34 29 L20 37 L6 29 L6 11 Z" fill="white" opacity="0.9"/>
                   <circle cx="20" cy="20" r="2" fill={colors.deepBlue}/>
                 </svg>
               </div>
-              <h1 className="text-2xl font-bold" style={{ 
-                background: colors.gradient,
-                WebkitBackgroundClip: 'text',
-                WebkitTextFillColor: 'transparent',
-                backgroundClip: 'text'
-              }}>
+              <h1 className="text-xl font-semibold text-gray-900">
                 FYTR AI Dashboard
               </h1>
             </div>
-            
-            <div className="flex items-center space-x-4">
-              {/* User Status Badge */}
-              <div className="flex items-center space-x-2 px-3 py-1 rounded-full" 
-                   style={{ backgroundColor: isGuest ? '#FEF3C7' : '#D1FAE5' }}>
-                <User className="w-4 h-4" style={{ color: isGuest ? '#D97706' : '#059669' }} />
-                <span className="text-sm font-medium" style={{ color: isGuest ? '#D97706' : '#059669' }}>
-                  {isGuest ? 'Guest Mode' : `${displayName}`}
+
+            <div className="flex items-center space-x-3">
+              {/* User Status Badge - Minimal */}
+              <div className="flex items-center space-x-2 px-3 py-1 border rounded-full bg-white text-sm">
+                <User className="w-4 h-4 text-gray-500" />
+                <span className="text-gray-700 font-medium">
+                  {isGuest ? 'Guest Mode' : displayName}
                 </span>
               </div>
-              
-              {/* Action Buttons */}
+
+              {/* Action Buttons - Outline style */}
               {isGuest ? (
-                <button 
+                <button
                   onClick={handleCreateAccount}
-                  className="flex items-center space-x-2 px-4 py-2 text-white rounded-full hover:shadow-lg transition-all duration-200"
+                  className="flex items-center space-x-2 px-4 py-2 text-white rounded-lg hover:opacity-90 transition-all duration-200"
                   style={{ background: colors.gradient }}
                 >
                   <UserPlus className="w-4 h-4" />
@@ -109,18 +106,16 @@ export default function DashboardClient({ userData, surveyData, isGuest }: Dashb
                 </button>
               ) : (
                 <>
-                  <button 
+                  <button
                     onClick={() => setActiveModal('share')}
-                    className="flex items-center space-x-2 px-4 py-2 text-white rounded-full hover:shadow-lg transition-all duration-200"
-                    style={{ background: colors.gradient }}
+                    className="flex items-center space-x-2 px-4 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition-all duration-200"
                   >
                     <Share2 className="w-4 h-4" />
                     <span>Share</span>
                   </button>
-                  <button 
+                  <button
                     onClick={handleLogout}
-                    className="flex items-center space-x-2 px-4 py-2 border rounded-full hover:bg-gray-50 transition-all duration-200"
-                    style={{ borderColor: colors.lightGray }}
+                    className="flex items-center space-x-2 px-4 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition-all duration-200"
                   >
                     <LogOut className="w-4 h-4" />
                     <span>Logout</span>
@@ -129,56 +124,59 @@ export default function DashboardClient({ userData, surveyData, isGuest }: Dashb
               )}
             </div>
           </div>
-          
-          {/* Guest Warning Banner */}
+
+          {/* Guest Warning Banner - Cleaner */}
           {isGuest && (
-            <div className="mt-4 p-3 rounded-lg flex items-center justify-between" 
-                 style={{ backgroundColor: '#FEF3C7', border: '1px solid #FCD34D' }}>
-              <div className="flex items-center space-x-2">
-                <span className="text-yellow-800">⚠️</span>
-                <span className="text-sm text-yellow-800">
-                  Your data is only saved temporarily. Create an account to save your personalized plans permanently!
-                </span>
+            <div className="mt-4 p-4 border border-orange-200 bg-orange-50 rounded-lg">
+              <div className="flex items-center justify-between">
+                <div className="flex items-start space-x-3">
+                  <div className="w-5 h-5 text-orange-500 mt-0.5">⚠️</div>
+                  <div>
+                    <p className="text-sm text-orange-800 font-medium">Your data is temporary</p>
+                    <p className="text-sm text-orange-700">Create an account to save your personalized plans permanently</p>
+                  </div>
+                </div>
+                <button
+                  onClick={handleCreateAccount}
+                  className="text-sm font-medium text-orange-800 hover:text-orange-900 underline whitespace-nowrap"
+                >
+                  Save My Data
+                </button>
               </div>
-              <button 
-                onClick={handleCreateAccount}
-                className="text-sm font-medium text-yellow-800 hover:text-yellow-900 underline"
-              >
-                Save My Data
-              </button>
             </div>
           )}
         </div>
       </header>
 
-      {/* Progress Overview with User Data */}
+      {/* Progress Overview with User Data - Minimal Design */}
       <div className="max-w-7xl mx-auto px-4 py-8">
-        <div className="rounded-2xl shadow-xl p-8 text-white mb-8" style={{ background: colors.gradient }}>
-          <div className="flex justify-between items-center">
+        <div className="bg-white border border-gray-200 rounded-xl p-6 mb-8">
+          <div className="flex justify-between items-start mb-6">
             <div>
-              <h2 className="text-3xl font-bold mb-2">
+              <h2 className="text-2xl font-semibold text-gray-900 mb-1">
                 Welcome back, {displayName}!
               </h2>
-              <p className="text-white opacity-80 text-lg">
+              <p className="text-gray-600 text-lg">
                 Your personalized {surveyData?.goal?.replace('_', ' ').toLowerCase()} journey
               </p>
             </div>
             <div className="text-right">
-              <div className="text-4xl font-bold">0/7</div>
-              <p className="text-white opacity-80">Days Completed</p>
+              <div className="text-3xl font-bold text-gray-900">0/7</div>
+              <p className="text-gray-500 text-sm">Days Completed</p>
             </div>
           </div>
-          
-          <div className="mt-6 bg-white/20 rounded-full h-3">
-            <div className="bg-white rounded-full h-3 w-0 transition-all duration-300"></div>
+
+          <div className="bg-gray-100 rounded-full h-2">
+            <div className="bg-gradient-to-r from-blue-500 to-purple-600 rounded-full h-2 w-0 transition-all duration-300"></div>
           </div>
         </div>
 
         {/* Main Dashboard Grid */}
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
           <MealPlanCard 
             surveyData={surveyData}
-            onViewPlan={() => setActiveModal('mealPlan')} 
+            onViewPlan={() => setActiveModal('mealPlan')}
+            isGuest={isGuest}
           />
           <WorkoutPlanCard 
             surveyData={surveyData}

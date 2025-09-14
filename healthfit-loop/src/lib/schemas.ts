@@ -74,7 +74,7 @@ export const MealPlanSchema = z.object({
   id: z.string(),
   weekOf: z.date(),
   status: z.enum(['active', 'completed', 'archived']),
-  regenerationCount: z.number().int().min(0).max(2),
+  regenerationCount: z.number().int().min(0).max(100),
   meals: z.array(MealSchema),
   createdAt: z.date(),
   updatedAt: z.date(),

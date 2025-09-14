@@ -34,6 +34,9 @@ export default async function DashboardPage() {
       };
       surveyData = user.activeSurvey;
       isGuest = false;
+    } else {
+      // User doesn't exist, just redirect - let the frontend handle clearing cookies
+      redirect('/survey?clearStaleAuth=true');
     }
   } 
   

@@ -1,8 +1,9 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
-import { X, ArrowLeft, Download, Lock, ThumbsUp, ThumbsDown, ExternalLink, Loader2 } from 'lucide-react';
+import { X, ArrowLeft, Download, ChevronDown, ChevronRight, ThumbsUp, ThumbsDown, Loader2, AlertTriangle, CheckCircle, Info } from 'lucide-react';
 import { colors } from '../constants';
+import { DataSourceTracker, TrackedMealOption } from '@/lib/utils/data-source-tracker';
 
 interface MealPlanModalProps {
   surveyData: any;
@@ -16,8 +17,8 @@ interface MealOption {
   optionType: 'restaurant' | 'home';
   restaurantName?: string;
   dishName?: string;
+  description?: string;
   estimatedPrice?: number;
-  orderingUrl?: string;
   deliveryTime?: string;
   recipeName?: string;
   ingredients?: string[];
@@ -28,8 +29,14 @@ interface MealOption {
   protein: number;
   carbs: number;
   fat: number;
+  fiber?: number;
+  sodium?: number;
   wasEaten: boolean;
   userRating?: number;
+  dataSource?: string;
+  estimatedCost?: number;
+  prepTime?: number;
+  totalTime?: number;
 }
 
 interface Meal {
@@ -51,6 +58,8 @@ export default function MealPlanModal({ surveyData, isGuest, onClose }: MealPlan
   const [mealPlan, setMealPlan] = useState<MealPlan | null>(null);
   const [loading, setLoading] = useState(true);
   const [selectedOptions, setSelectedOptions] = useState<{[mealId: string]: string}>({});
+  const [eatenMeals, setEatenMeals] = useState<{[mealId: string]: boolean}>({});
+  const [expandedDays, setExpandedDays] = useState<{[day: string]: boolean}>({});
 
   useEffect(() => {
     loadMealPlan();
@@ -69,7 +78,6 @@ export default function MealPlanModal({ surveyData, isGuest, onClose }: MealPlan
           if (meal.selectedOptionId) {
             selections[meal.id] = meal.selectedOptionId;
           } else {
-            // Default to first option if none selected
             selections[meal.id] = meal.options[0]?.id;
           }
         });
@@ -88,17 +96,11 @@ export default function MealPlanModal({ surveyData, isGuest, onClose }: MealPlan
       [mealId]: optionId
     }));
 
-    // Save selection to backend
     try {
       await fetch('/api/ai/meals/select', {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          mealId,
-          selectedOptionId: optionId
-        })
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ mealId, selectedOptionId: optionId })
       });
     } catch (error) {
       console.error('Failed to save meal selection:', error);
@@ -109,51 +111,84 @@ export default function MealPlanModal({ surveyData, isGuest, onClose }: MealPlan
     try {
       await fetch('/api/ai/meals/feedback', {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          mealOptionId: optionId,
-          feedbackType
-        })
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ mealOptionId: optionId, feedbackType })
       });
     } catch (error) {
       console.error('Failed to save feedback:', error);
     }
   };
 
+  const markMealAsEaten = async (mealId: string, eaten: boolean) => {
+    setEatenMeals(prev => ({
+      ...prev,
+      [mealId]: eaten
+    }));
+
+    try {
+      await fetch('/api/ai/meals/eaten', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ mealId, eaten })
+      });
+    } catch (error) {
+      console.error('Failed to save meal status:', error);
+    }
+  };
+
+  const toggleDay = (day: string) => {
+    setExpandedDays(prev => ({
+      ...prev,
+      [day]: !prev[day]
+    }));
+  };
+
   const downloadGroceryList = () => {
     if (!mealPlan) return;
 
-    const ingredients = new Set<string>();
+    const groceryData: {[ingredient: string]: {meals: string[], count: number}} = {};
+    let totalEstimatedCost = 0;
+
     mealPlan.meals.forEach(meal => {
       const selectedOption = meal.options.find(opt => opt.id === selectedOptions[meal.id]);
       if (selectedOption?.optionType === 'home' && selectedOption.ingredients) {
-        selectedOption.ingredients.forEach(ingredient => ingredients.add(ingredient));
+        const mealLabel = `${formatDay(meal.day)} ${formatMealType(meal.mealType)}`;
+        
+        selectedOption.ingredients.forEach(ingredient => {
+          if (!groceryData[ingredient]) {
+            groceryData[ingredient] = { meals: [], count: 0 };
+          }
+          groceryData[ingredient].meals.push(mealLabel);
+          groceryData[ingredient].count++;
+        });
+
+        if (selectedOption.estimatedCost) {
+          totalEstimatedCost += selectedOption.estimatedCost;
+        }
       }
     });
 
-    const csvContent = "data:text/csv;charset=utf-8," + 
-      "Ingredient\n" +
-      Array.from(ingredients).join('\n');
-    
+    const csvHeader = "Ingredient,Needed For Meals,Times Used,Notes\n";
+    const csvRows = Object.entries(groceryData).map(([ingredient, data]) => {
+      const mealsStr = data.meals.join('; ');
+      const notesStr = data.count > 1 ? 'Buy in bulk' : 'Single use';
+      return `"${ingredient}","${mealsStr}",${data.count},"${notesStr}"`;
+    }).join('\n');
+
+    const csvFooter = `\n\nSummary:\nTotal Home Meals: ${Object.keys(groceryData).length > 0 ? groceryData[Object.keys(groceryData)[0]].meals.length : 0}\nEstimated Total Cost: $${(totalEstimatedCost/100).toFixed(2)}\nGenerated: ${new Date().toLocaleDateString()}`;
+
+    const csvContent = "data:text/csv;charset=utf-8," + csvHeader + csvRows + csvFooter;
     const encodedUri = encodeURI(csvContent);
     const link = document.createElement("a");
     link.setAttribute("href", encodedUri);
-    link.setAttribute("download", "grocery_list.csv");
+    link.setAttribute("download", `fytr_grocery_list_${new Date().toISOString().split('T')[0]}.csv`);
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
   };
 
-  const formatDay = (day: string) => {
-    return day.charAt(0).toUpperCase() + day.slice(1);
-  };
-
-  const formatMealType = (mealType: string) => {
-    return mealType.charAt(0).toUpperCase() + mealType.slice(1);
-  };
-
+  const formatDay = (day: string) => day.charAt(0).toUpperCase() + day.slice(1);
+  const formatMealType = (mealType: string) => mealType.charAt(0).toUpperCase() + mealType.slice(1);
   const formatPrice = (priceInCents?: number) => {
     if (!priceInCents) return 'Price varies';
     return `$${(priceInCents / 100).toFixed(2)}`;
@@ -200,232 +235,277 @@ export default function MealPlanModal({ surveyData, isGuest, onClose }: MealPlan
 
   return (
     <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-      <div className="rounded-2xl max-w-7xl w-full h-[90vh] flex flex-col" style={{ backgroundColor: colors.white }}>
-        {/* Header */}
-        <div className="flex-shrink-0 p-6 flex justify-between items-center" style={{ backgroundColor: colors.deepBlue }}>
-          <div className="flex items-center space-x-4">
-            <button onClick={onClose} className="text-white hover:bg-white/20 rounded-full p-2 flex items-center space-x-2">
-              <ArrowLeft className="w-5 h-5" />
-              <span className="text-sm">Back to Dashboard</span>
+      <div className="rounded-2xl max-w-6xl w-full h-[90vh] flex flex-col" style={{ backgroundColor: colors.white }}>
+        {/* Minimalist Header */}
+        <div className="flex-shrink-0 p-6 border-b" style={{ borderColor: colors.lightGray }}>
+          <div className="flex justify-between items-center">
+            <button onClick={onClose} className="flex items-center space-x-2 hover:bg-gray-50 rounded-lg p-2">
+              <ArrowLeft className="w-5 h-5" style={{ color: colors.mediumGray }} />
+              <span className="text-sm" style={{ color: colors.mediumGray }}>Back to Dashboard</span>
             </button>
-            <div>
-              <h2 className="text-2xl font-bold text-white">Weekly Meal Plan</h2>
-              <p className="text-white/80 text-sm">
+            <div className="text-center">
+              <h2 className="text-2xl font-bold" style={{ color: colors.nearBlack }}>Weekly Meal Plan</h2>
+              <p className="text-sm" style={{ color: colors.mediumGray }}>
                 Customized for {surveyData?.firstName} • Week of {new Date(mealPlan.weekOf).toLocaleDateString()}
               </p>
             </div>
-          </div>
-          <div className="flex items-center space-x-4">
-            <div className="text-right text-white/80 text-sm">
-              <div>Regenerations: {mealPlan.regenerationCount}/2</div>
-            </div>
-            <button onClick={onClose} className="text-white hover:bg-white/20 rounded-full p-2">
-              <X className="w-6 h-6" />
+            <button 
+              onClick={downloadGroceryList}
+              className="flex items-center space-x-2 px-4 py-2 rounded-lg hover:opacity-90"
+              style={{ backgroundColor: colors.deepBlue, color: 'white' }}
+            >
+              <Download className="w-4 h-4" />
+              <span className="text-sm">Grocery List</span>
             </button>
           </div>
         </div>
         
-        {/* Content */}
+        {/* Main Content - Minimalist Expandable Design */}
         <div className="flex-1 overflow-y-auto p-6">
-          <div className="grid grid-cols-1 xl:grid-cols-4 gap-8">
-            {/* Main meal plan */}
-            <div className="xl:col-span-3">
-              {dayOrder.map(day => {
-                const dayMeals = groupedMeals[day] || [];
-                if (dayMeals.length === 0) return null;
+          <div className="space-y-3">
+            {dayOrder.map(day => {
+              const dayMeals = groupedMeals[day] || [];
+              if (dayMeals.length === 0) return null;
 
-                return (
-                  <div key={day} className="mb-8">
-                    <h3 className="text-xl font-bold mb-4" style={{ color: colors.nearBlack }}>
-                      {formatDay(day)}
-                    </h3>
-                    
-                    <div className="grid gap-4">
+              const isExpanded = expandedDays[day];
+              
+              return (
+                <div key={day} className="border rounded-xl overflow-hidden" style={{ borderColor: colors.lightGray }}>
+                  {/* Day Header - Minimalist */}
+                  <button
+                    onClick={() => toggleDay(day)}
+                    className="w-full p-4 flex justify-between items-center hover:bg-gray-50 transition-colors"
+                  >
+                    <div className="flex items-center space-x-3">
+                      {isExpanded ? <ChevronDown className="w-5 h-5" style={{ color: colors.mediumGray }} /> : <ChevronRight className="w-5 h-5" style={{ color: colors.mediumGray }} />}
+                      <h3 className="text-lg font-semibold" style={{ color: colors.nearBlack }}>
+                        {formatDay(day)}
+                      </h3>
+                      <span className="text-sm px-3 py-1 rounded-full" style={{ backgroundColor: colors.paleGray, color: colors.deepBlue }}>
+                        {dayMeals.length} meals
+                      </span>
+                    </div>
+                    <div className="flex items-center space-x-4">
+                      <div className="text-sm" style={{ color: colors.mediumGray }}>
+                        {dayMeals.reduce((total, meal) => {
+                          const selected = meal.options.find(opt => opt.id === selectedOptions[meal.id]);
+                          return total + (selected?.calories || 0);
+                        }, 0)} cal total
+                      </div>
+                    </div>
+                  </button>
+
+                  {/* Expanded Content */}
+                  {isExpanded && (
+                    <div className="border-t" style={{ borderColor: colors.lightGray }}>
                       {dayMeals.map(meal => {
                         const selectedOptionId = selectedOptions[meal.id];
                         const selectedOption = meal.options.find(opt => opt.id === selectedOptionId);
                         
                         return (
-                          <div key={meal.id} className="border rounded-lg p-4" style={{ borderColor: colors.lightGray }}>
-                            <div className="flex justify-between items-start mb-3">
-                              <h4 className="font-semibold text-lg" style={{ color: colors.nearBlack }}>
-                                {formatMealType(meal.mealType)}
-                              </h4>
+                          <div key={meal.id} className="p-6 border-b last:border-b-0" style={{ borderColor: colors.paleGray }}>
+                            {/* Meal Header */}
+                            <div className="flex justify-between items-center mb-4">
+                              <div className="flex items-center space-x-3">
+                                <h4 className="font-semibold text-lg" style={{ color: colors.nearBlack }}>
+                                  {formatMealType(meal.mealType)}
+                                </h4>
+                                <button
+                                  onClick={() => markMealAsEaten(meal.id, !eatenMeals[meal.id])}
+                                  className={`px-3 py-1 rounded-full text-xs font-medium transition-all ${
+                                    eatenMeals[meal.id] 
+                                      ? 'bg-green-100 text-green-800 hover:bg-green-200' 
+                                      : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                                  }`}
+                                >
+                                  {eatenMeals[meal.id] ? '✓ Eaten' : 'Mark as Eaten'}
+                                </button>
+                              </div>
                               {selectedOption && (
-                                <span className="text-sm font-medium px-2 py-1 rounded" 
-                                      style={{ 
-                                        backgroundColor: colors.paleGray, 
-                                        color: colors.deepBlue 
-                                      }}>
-                                  {selectedOption.calories} cal
-                                </span>
+                                <div className="text-right">
+                                  <span className="text-sm font-medium px-3 py-1 rounded-full" 
+                                        style={{ backgroundColor: colors.paleGray, color: colors.deepBlue }}>
+                                    {selectedOption.calories} cal
+                                  </span>
+                                </div>
                               )}
                             </div>
 
-                            {/* Option Selector */}
-                            <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mb-4">
+                            {/* Option Cards - With Data Source Indicators */}
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                               {meal.options.map(option => {
                                 const isSelected = selectedOptionId === option.id;
-                                
+
+                                // Enhance option with data source tracking
+                                const trackedOption: TrackedMealOption = DataSourceTracker.enhanceMealOption(
+                                  option,
+                                  option.rawSpoonacularData,
+                                  option.aiProcessingInfo
+                                );
+
+                                const indicators = DataSourceTracker.getDataSourceIndicators(trackedOption.dataSource);
+                                const needsAttention = DataSourceTracker.needsAttention(trackedOption);
+                                const attentionMessage = DataSourceTracker.getAttentionMessage(trackedOption);
+
                                 return (
-                                  <button
-                                    key={option.id}
-                                    onClick={() => selectMealOption(meal.id, option.id)}
-                                    className={`p-4 rounded-lg border-2 text-left transition-all ${
-                                      isSelected ? 'border-blue-500 bg-blue-50' : 'border-gray-200 hover:border-gray-300'
-                                    }`}
-                                  >
-                                    <div className="flex justify-between items-start mb-2">
-                                      <div>
-                                        <span className="font-medium" style={{ color: colors.nearBlack }}>
-                                          Option {option.optionNumber}
-                                        </span>
-                                        <span className={`ml-2 text-xs px-2 py-1 rounded ${
-                                          option.optionType === 'restaurant' 
-                                            ? 'bg-orange-100 text-orange-800' 
-                                            : 'bg-green-100 text-green-800'
-                                        }`}>
-                                          {option.optionType === 'restaurant' ? '🏪 Restaurant' : '🏠 Home'}
-                                        </span>
-                                      </div>
-                                    </div>
-                                    
-                                    <h5 className="font-semibold mb-2" style={{ color: colors.nearBlack }}>
-                                      {option.optionType === 'restaurant' 
-                                        ? `${option.dishName} - ${option.restaurantName}` 
-                                        : option.recipeName}
-                                    </h5>
-                                    
-                                    {option.optionType === 'restaurant' ? (
-                                      <div className="space-y-1 text-sm">
-                                        <div style={{ color: colors.mediumGray }}>
-                                          {formatPrice(option.estimatedPrice)} • {option.deliveryTime}
-                                        </div>
-                                        {option.orderingUrl && (
-                                          <div className="flex items-center space-x-1 text-blue-600">
-                                            <ExternalLink className="w-3 h-3" />
-                                            <span>Order on DoorDash</span>
-                                          </div>
-                                        )}
-                                      </div>
-                                    ) : (
-                                      <div className="space-y-1 text-sm">
-                                        <div style={{ color: colors.mediumGray }}>
-                                          {option.cookingTime} min • {option.difficulty}
-                                        </div>
-                                        <div style={{ color: colors.mediumGray }}>
-                                          {option.ingredients?.slice(0, 3).join(', ')}
-                                          {(option.ingredients?.length || 0) > 3 && '...'}
+                                  <div key={option.id} className="relative">
+                                    {/* Data Quality Alert */}
+                                    {needsAttention && (
+                                      <div className="absolute -top-2 -right-2 z-10">
+                                        <div className="bg-red-500 text-white rounded-full p-1">
+                                          <AlertTriangle className="w-4 h-4" />
                                         </div>
                                       </div>
                                     )}
+
+                                    <button
+                                      onClick={() => selectMealOption(meal.id, option.id)}
+                                      className={`w-full p-4 rounded-lg border-2 text-left transition-all ${
+                                        isSelected ? 'border-blue-500 bg-blue-50' : `${indicators.borderColor} hover:border-gray-400`
+                                      }`}
+                                      title={DataSourceTracker.getDataSourceTooltip(trackedOption.dataSource)}
+                                    >
+                                      {/* Option Header with Data Source Badge */}
+                                      <div className="flex justify-between items-start mb-3">
+                                        <div className="flex items-center space-x-2 flex-wrap">
+                                          <span className="font-medium text-gray-900">
+                                            Option {option.optionNumber}
+                                          </span>
+                                          <span className={`text-xs px-2 py-1 rounded ${
+                                            option.optionType === 'restaurant'
+                                              ? 'bg-orange-100 text-orange-800'
+                                              : 'bg-green-100 text-green-800'
+                                          }`}>
+                                            {option.optionType === 'restaurant' ? '🏪 Restaurant' : '🏠 Home'}
+                                          </span>
+
+                                          {/* Data Source Badge */}
+                                          <span className={`text-xs px-2 py-1 rounded ${indicators.badgeColor}`}>
+                                            {indicators.badgeText}
+                                          </span>
+                                        </div>
+
+                                        {/* Confidence Indicator */}
+                                        <div className={`text-xs ${indicators.confidenceColor} flex items-center space-x-1`}>
+                                          {trackedOption.dataSource.confidence >= 80 ? (
+                                            <CheckCircle className="w-3 h-3" />
+                                          ) : trackedOption.dataSource.confidence >= 60 ? (
+                                            <Info className="w-3 h-3" />
+                                          ) : (
+                                            <AlertTriangle className="w-3 h-3" />
+                                          )}
+                                          <span>{trackedOption.dataSource.confidence}%</span>
+                                        </div>
+                                      </div>
+
+                                      {/* Attention Message */}
+                                      {attentionMessage && (
+                                        <div className="mb-3 p-2 bg-yellow-50 border border-yellow-200 rounded text-xs text-yellow-800">
+                                          <AlertTriangle className="w-3 h-3 inline mr-1" />
+                                          {attentionMessage}
+                                        </div>
+                                      )}
+
+                                      {/* Validation Flags */}
+                                      {trackedOption.validationFlags && trackedOption.validationFlags.length > 0 && (
+                                        <div className="mb-3 space-y-1">
+                                          {trackedOption.validationFlags.map((flag, idx) => (
+                                            <div key={idx} className={`text-xs px-2 py-1 rounded ${
+                                              flag.includes('Data Error') ? 'bg-red-100 text-red-800' :
+                                              flag.includes('High Price') ? 'bg-orange-100 text-orange-800' :
+                                              'bg-yellow-100 text-yellow-800'
+                                            }`}>
+                                              {flag}
+                                            </div>
+                                          ))}
+                                        </div>
+                                      )}
                                     
-                                    <div className="mt-2 text-xs" style={{ color: colors.darkGray }}>
-                                      {option.protein}g protein • {option.carbs}g carbs • {option.fat}g fat
-                                    </div>
-                                  </button>
+                                      {/* Title */}
+                                      <h5 className="font-semibold mb-2 text-gray-900">
+                                        {option.optionType === 'restaurant'
+                                          ? `${option.dishName} - ${option.restaurantName}`
+                                          : option.recipeName}
+                                      </h5>
+
+                                      {/* Goal Justification - Clean Style */}
+                                      {option.description && (
+                                        <div className="mb-3 p-3 bg-blue-50 border-l-4 border-blue-400 rounded">
+                                          <p className="text-sm font-medium text-blue-800 leading-relaxed">
+                                            ✨ {option.description}
+                                          </p>
+                                        </div>
+                                      )}
+
+                                      {/* Details */}
+                                      {option.optionType === 'restaurant' ? (
+                                        <div className="space-y-2 text-sm">
+                                          <div className="flex justify-between items-center">
+                                            <span className="text-gray-600">
+                                              {formatPrice(option.estimatedPrice)} • {option.deliveryTime}
+                                            </span>
+                                          </div>
+                                        </div>
+                                      ) : (
+                                        <div className="space-y-2 text-sm">
+                                          <div className="flex justify-between items-center">
+                                            <span className="text-gray-600">
+                                              {option.prepTime ? `${option.prepTime} min prep` : ''}
+                                              {option.cookingTime ? ` • ${option.cookingTime} min cook` : ''}
+                                              {option.difficulty ? ` • ${option.difficulty}` : ''}
+                                            </span>
+                                            <span className="text-blue-600">
+                                              ~{formatPrice(option.estimatedCost)} ingredients
+                                            </span>
+                                          </div>
+                                          <div className="text-gray-600">
+                                            <strong>Key ingredients:</strong> {option.ingredients?.slice(0, 3).join(', ')}
+                                            {(option.ingredients?.length || 0) > 3 && '...'}
+                                          </div>
+                                        </div>
+                                      )}
+
+                                      {/* Nutrition */}
+                                      <div className="mt-3 pt-3 border-t border-gray-200 flex justify-between items-center text-xs">
+                                        <div className="text-gray-700">
+                                          <strong>{option.calories} cal</strong> • {option.protein}g protein • {option.carbs}g carbs • {option.fat}g fat
+                                        </div>
+                                      </div>
+                                    </button>
+                                  </div>
                                 );
                               })}
                             </div>
 
-                            {/* Feedback and Actions */}
+                            {/* Feedback Buttons */}
                             {selectedOption && (
-                              <div className="flex justify-between items-center">
-                                <div className="flex space-x-2">
-                                  <button
-                                    onClick={() => giveFeedback(selectedOption.id, 'loved')}
-                                    className="flex items-center space-x-1 px-3 py-1 rounded-full hover:bg-green-50"
-                                    style={{ color: colors.mediumGray }}
-                                  >
-                                    <ThumbsUp className="w-4 h-4" />
-                                    <span className="text-sm">Love it</span>
-                                  </button>
-                                  <button
-                                    onClick={() => giveFeedback(selectedOption.id, 'disliked')}
-                                    className="flex items-center space-x-1 px-3 py-1 rounded-full hover:bg-red-50"
-                                    style={{ color: colors.mediumGray }}
-                                  >
-                                    <ThumbsDown className="w-4 h-4" />
-                                    <span className="text-sm">Not for me</span>
-                                  </button>
-                                </div>
-                                
-                                {selectedOption.optionType === 'restaurant' && selectedOption.orderingUrl && !isGuest && (
-                                  <a
-                                    href={selectedOption.orderingUrl}
-                                    target="_blank"
-                                    rel="noopener noreferrer"
-                                    className="px-4 py-2 rounded-lg text-white text-sm font-medium hover:opacity-90"
-                                    style={{ backgroundColor: colors.deepBlue }}
-                                  >
-                                    Order Now
-                                  </a>
-                                )}
+                              <div className="flex justify-center space-x-2 mt-4">
+                                <button
+                                  onClick={() => giveFeedback(selectedOption.id, 'loved')}
+                                  className="flex items-center space-x-1 px-3 py-1 rounded-full hover:bg-green-50 transition-colors"
+                                  style={{ color: colors.mediumGray }}
+                                >
+                                  <ThumbsUp className="w-4 h-4" />
+                                  <span className="text-sm">Love it</span>
+                                </button>
+                                <button
+                                  onClick={() => giveFeedback(selectedOption.id, 'disliked')}
+                                  className="flex items-center space-x-1 px-3 py-1 rounded-full hover:bg-red-50 transition-colors"
+                                  style={{ color: colors.mediumGray }}
+                                >
+                                  <ThumbsDown className="w-4 h-4" />
+                                  <span className="text-sm">Not for me</span>
+                                </button>
                               </div>
                             )}
                           </div>
                         );
                       })}
                     </div>
-                  </div>
-                );
-              })}
-            </div>
-            
-            {/* Sidebar */}
-            <div className="xl:col-span-1">
-              <h3 className="text-xl font-semibold mb-4" style={{ color: colors.nearBlack }}>Quick Actions</h3>
-              
-              <button 
-                onClick={downloadGroceryList}
-                className="w-full text-white py-3 rounded-lg hover:opacity-90 flex items-center justify-center space-x-2 mb-4"
-                style={{ backgroundColor: colors.deepBlue }}
-              >
-                <Download className="w-4 h-4" />
-                <span>Download Grocery List</span>
-              </button>
-              
-              {isGuest && (
-                <div className="border rounded-lg p-4" style={{ backgroundColor: colors.offWhite, borderColor: colors.lightGray }}>
-                  <div className="flex items-center space-x-2 mb-2">
-                    <Lock className="w-4 h-4" style={{ color: colors.mediumGray }} />
-                    <span className="font-medium" style={{ color: colors.nearBlack }}>Guest Limitations</span>
-                  </div>
-                  <p className="text-sm mb-3" style={{ color: colors.mediumGray }}>
-                    Create an account to unlock direct ordering links and save your preferences!
-                  </p>
+                  )}
                 </div>
-              )}
-
-              {/* Week Summary */}
-              <div className="mt-6 border rounded-lg p-4" style={{ borderColor: colors.lightGray }}>
-                <h4 className="font-semibold mb-3" style={{ color: colors.nearBlack }}>Week Summary</h4>
-                <div className="space-y-2 text-sm">
-                  <div className="flex justify-between">
-                    <span style={{ color: colors.darkGray }}>Total Meals</span>
-                    <span style={{ color: colors.nearBlack }}>{mealPlan.meals.length}</span>
-                  </div>
-                  <div className="flex justify-between">
-                    <span style={{ color: colors.darkGray }}>Restaurant Meals</span>
-                    <span style={{ color: colors.nearBlack }}>
-                      {mealPlan.meals.filter(m => {
-                        const selected = m.options.find(opt => opt.id === selectedOptions[m.id]);
-                        return selected?.optionType === 'restaurant';
-                      }).length}
-                    </span>
-                  </div>
-                  <div className="flex justify-between">
-                    <span style={{ color: colors.darkGray }}>Home Meals</span>
-                    <span style={{ color: colors.nearBlack }}>
-                      {mealPlan.meals.filter(m => {
-                        const selected = m.options.find(opt => opt.id === selectedOptions[m.id]);
-                        return selected?.optionType === 'home';
-                      }).length}
-                    </span>
-                  </div>
-                </div>
-              </div>
-            </div>
+              );
+            })}
           </div>
         </div>
       </div>

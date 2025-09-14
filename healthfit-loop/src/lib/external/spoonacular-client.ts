@@ -1,5 +1,6 @@
-// Spoonacular API client with exact restaurant matching
+// Spoonacular API client with exact restaurant matching and comprehensive auditing
 import { prisma } from '@/lib/db';
+import { spoonacularAuditor } from '@/lib/utils/spoonacular-audit';
 
 export interface SpoonacularMenuItem {
   id: number;
@@ -40,6 +41,26 @@ export class SpoonacularClient {
     }
   }
 
+  async checkQuota(): Promise<{ remainingRequests: number; isValid: boolean }> {
+    try {
+      // Simple API call to check quota status
+      const response = await fetch(`${this.baseUrl}/food/menuItems/search?query=test&number=1&apiKey=${this.apiKey}`);
+      
+      const remainingRequests = parseInt(response.headers.get('X-API-Quota-Left') || '0');
+      const isValid = response.status === 200;
+      
+      console.log(`[Spoonacular] API Status: ${response.status}, Remaining: ${remainingRequests}`);
+      
+      return {
+        remainingRequests,
+        isValid
+      };
+    } catch (error) {
+      console.error('[Spoonacular] Quota check failed:', error);
+      return { remainingRequests: 0, isValid: false };
+    }
+  }
+
   async searchMenuItems(
     restaurantChain: string,
     maxCalories?: number,
@@ -67,10 +88,13 @@ export class SpoonacularClient {
         return this.filterCachedItems(exactMatches, maxCalories, minProtein, maxCarbs);
       }
 
+      // OPTIMIZATION: Limit results based on filtering to reduce API usage
+      const targetNumber = maxCalories || minProtein || maxCarbs ? '25' : '15'; // Fewer items when filtering
+      
       const params = new URLSearchParams({
         apiKey: this.apiKey,
         query: restaurantChain,
-        number: '50',
+        number: targetNumber,
       });
 
       if (maxCalories) params.append('maxCalories', maxCalories.toString());
@@ -79,14 +103,31 @@ export class SpoonacularClient {
 
       const url = `${this.baseUrl}/food/menuItems/search?${params}`;
       const response = await fetch(url);
-      
+
       if (!response.ok) {
         console.error(`[DEBUG-Spoonacular] API error: ${response.status}`);
+        // Audit failed API calls
+        spoonacularAuditor.auditApiResponse(
+          'menuItems/search',
+          { restaurantChain, maxCalories, minProtein, maxCarbs, number: targetNumber },
+          { error: `API error ${response.status}`, status: response.status },
+          null,
+          null
+        );
         return [];
       }
 
       const data = await response.json();
-      
+
+      // AUDIT: Log raw Spoonacular API response
+      spoonacularAuditor.auditApiResponse(
+        'menuItems/search',
+        { restaurantChain, maxCalories, minProtein, maxCarbs, number: targetNumber },
+        data,
+        null, // No processing yet
+        null  // No display data yet
+      );
+
       // Filter to exact restaurant matches only
       const exactMatches = this.filterExactRestaurantMatches(data.menuItems || [], restaurantChain);
       console.log(`[DEBUG-Spoonacular] Found ${exactMatches.length} exact matches for ${restaurantChain} (${data.menuItems?.length || 0} total results)`);
@@ -127,29 +168,73 @@ export class SpoonacularClient {
     try {
       const url = `${this.baseUrl}/food/menuItems/${itemId}?apiKey=${this.apiKey}`;
       const response = await fetch(url);
-      
+
       if (!response.ok) {
         console.error(`[DEBUG-Spoonacular] Details API error: ${response.status}`);
+        // Audit failed API calls
+        spoonacularAuditor.auditApiResponse(
+          'menuItems/details',
+          { itemId },
+          { error: `API error ${response.status}`, status: response.status },
+          null,
+          null
+        );
         return null;
       }
 
       const data = await response.json();
       console.log(`[DEBUG-Spoonacular] Got details for ${data.title} from ${data.restaurantChain}`);
 
-      return {
+      // Parse nutrition data from the nutrients array format
+      const parseNutritionFromArray = (nutrients: any[]) => {
+        const nutrition = { calories: 0, protein: 0, carbs: 0, fat: 0, fiber: 0, sodium: 0 };
+
+        if (!nutrients || !Array.isArray(nutrients)) return nutrition;
+
+        for (const nutrient of nutrients) {
+          switch (nutrient.name) {
+            case 'Calories':
+              nutrition.calories = nutrient.amount || 0;
+              break;
+            case 'Protein':
+              nutrition.protein = nutrient.amount || 0;
+              break;
+            case 'Carbohydrates':
+              nutrition.carbs = nutrient.amount || 0;
+              break;
+            case 'Fat':
+              nutrition.fat = nutrient.amount || 0;
+              break;
+            case 'Fiber':
+              nutrition.fiber = nutrient.amount || 0;
+              break;
+            case 'Sodium':
+              nutrition.sodium = nutrient.amount || 0;
+              break;
+          }
+        }
+
+        return nutrition;
+      };
+
+      const processedDetails = {
         id: data.id,
         title: data.title,
         restaurantChain: data.restaurantChain || 'Unknown',
-        nutrition: {
-          calories: data.nutrition?.calories || 0,
-          protein: parseFloat(data.nutrition?.protein?.replace('g', '') || '0'),
-          carbs: parseFloat(data.nutrition?.carbs?.replace('g', '') || '0'),
-          fat: parseFloat(data.nutrition?.fat?.replace('g', '') || '0'),
-          fiber: parseFloat(data.nutrition?.fiber?.replace('g', '') || '0'),
-          sodium: parseFloat(data.nutrition?.sodium?.replace('mg', '') || '0'),
-        },
+        nutrition: parseNutritionFromArray(data.nutrition?.nutrients),
         image: data.image
       };
+
+      // AUDIT: Log raw response and processed data
+      spoonacularAuditor.auditApiResponse(
+        'menuItems/details',
+        { itemId },
+        data,
+        processedDetails,
+        null // No display data yet
+      );
+
+      return processedDetails;
 
     } catch (error) {
       console.error(`[DEBUG-Spoonacular] Details error for ${itemId}:`, error);

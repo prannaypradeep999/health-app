@@ -1,8 +1,8 @@
 // LLM function calling definitions for meal planning orchestration
 export const MEAL_PLANNING_FUNCTIONS = [
   {
-    name: "find_restaurants_near_user",
-    description: "Discover restaurants near user location with optional cuisine and price filtering",
+    name: "find_verified_healthy_chains",
+    description: "Find verified healthy restaurant chains near user with confirmed Spoonacular menu data",
     parameters: {
       type: "object",
       properties: {
@@ -10,41 +10,45 @@ export const MEAL_PLANNING_FUNCTIONS = [
           type: "string",
           description: "User's ZIP code for location search"
         },
-        cuisineType: {
-          type: "string", 
-          description: "Cuisine filter: italian, chinese, mexican, american, etc."
-        },
-        priceLevel: {
+        radiusKm: {
           type: "number",
-          description: "Price filter 1-4 (1=$ to 4=$$$$)",
-          minimum: 1,
-          maximum: 4
+          description: "Search radius in kilometers (5, 10, or 20 based on user preference)"
+        },
+        preferHealthier: {
+          type: "boolean",
+          description: "Whether to prioritize healthier chains over moderate ones",
+          default: true
         }
       },
       required: ["zipcode"]
     }
   },
   {
-    name: "search_restaurant_menu",
-    description: "Search Spoonacular for verified menu items from a specific restaurant chain",
+    name: "search_chain_menu_filtered",
+    description: "Search Spoonacular for menu items from a specific verified chain with nutrition filtering",
     parameters: {
       type: "object",
       properties: {
         restaurantChain: {
           type: "string",
-          description: "Name of restaurant chain (e.g. 'Starbucks', 'Chipotle')"
+          description: "Exact name of verified restaurant chain (e.g. 'Sweetgreen', 'Panera Bread')"
         },
         maxCalories: {
           type: "number",
-          description: "Maximum calories per item"
+          description: "Maximum calories per item based on user's daily target"
         },
         minProtein: {
           type: "number", 
-          description: "Minimum protein grams per item"
+          description: "Minimum protein grams per item based on user's goals"
         },
         maxCarbs: {
           type: "number",
-          description: "Maximum carbs grams per item"
+          description: "Maximum carbs grams per item for user's diet preferences"
+        },
+        dietaryRestrictions: {
+          type: "array",
+          items: { type: "string" },
+          description: "User's dietary restrictions to filter menu items"
         }
       },
       required: ["restaurantChain"]
@@ -65,17 +69,25 @@ export const MEAL_PLANNING_FUNCTIONS = [
     }
   },
   {
-    name: "check_restaurant_data_available",
-    description: "Check if a restaurant has verified menu data in Spoonacular database",
+    name: "find_general_restaurants_fallback",
+    description: "Fallback: Find general restaurants near user when no verified chains available",
     parameters: {
       type: "object",
       properties: {
-        restaurantName: {
+        zipcode: {
           type: "string",
-          description: "Restaurant name to check for data availability"
+          description: "User's ZIP code for location search"
+        },
+        cuisineType: {
+          type: "string", 
+          description: "Preferred cuisine type from user's survey data"
+        },
+        radiusKm: {
+          type: "number",
+          description: "Search radius based on user's distance preference"
         }
       },
-      required: ["restaurantName"]
+      required: ["zipcode"]
     }
   },
   {
@@ -101,6 +113,11 @@ export const MEAL_PLANNING_FUNCTIONS = [
           type: "string",
           description: "Cooking difficulty level",
           enum: ["easy", "medium", "hard"]
+        },
+        preferredIngredients: {
+          type: "array",
+          items: { type: "string" },
+          description: "User's preferred food ingredients from survey"
         }
       },
       required: ["recipeName", "targetCalories"]

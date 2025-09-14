@@ -79,9 +79,12 @@ model MealPlan {
   surveyId          String
   
   weekOf            DateTime
+  weekNumber        Int      @default(1)
   status            String   @default("active")
   
   generatedAt       DateTime @default(now())
+  generationStarted DateTime @default(now())
+  generationEnded   DateTime?
   regenerationCount Int      @default(0)
   
   userContext       Json
@@ -125,6 +128,7 @@ model MealOption {
   
   restaurantName String?
   dishName       String?
+  description    String?
   estimatedPrice Int?
   orderingUrl    String?
   deliveryTime   String?

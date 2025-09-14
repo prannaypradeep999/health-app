@@ -9,6 +9,7 @@
     "lint": "next lint"
   },
   "dependencies": {
+    "@anthropic-ai/claude-code": "^1.0.113",
     "@prisma/client": "^6.13.0",
     "bcryptjs": "^3.0.2",
     "jose": "^6.0.13",

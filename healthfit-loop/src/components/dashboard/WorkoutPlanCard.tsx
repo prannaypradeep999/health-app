@@ -2,7 +2,6 @@
 
 import React from 'react';
 import { Dumbbell, ChevronRight } from 'lucide-react';
-import { colors } from './constants';
 
 interface WorkoutPlanCardProps {
   surveyData: any;
@@ -26,42 +25,43 @@ export default function WorkoutPlanCard({ surveyData, onViewPlan }: WorkoutPlanC
   };
 
   return (
-    <div className="rounded-xl shadow-lg hover:shadow-xl transition-shadow duration-300 overflow-hidden" 
-         style={{ backgroundColor: colors.white }}>
-      <div className="p-6" style={{ backgroundColor: colors.accentRed }}>
+    <div className="bg-white border border-gray-200 rounded-xl hover:border-gray-300 transition-all duration-200">
+      <div className="p-6 border-b border-gray-100">
         <div className="flex items-center space-x-3">
-          <Dumbbell className="w-8 h-8 text-white" />
-          <h3 className="text-xl font-bold text-white">Workout Plan</h3>
+          <Dumbbell className="w-6 h-6 text-gray-600" />
+          <h3 className="text-lg font-semibold text-gray-900">Workout Plan</h3>
         </div>
       </div>
+
       <div className="p-6">
-        <p className="mb-4" style={{ color: colors.mediumGray }}>
+        <p className="text-gray-600 mb-6">
           Custom fitness routine for {surveyData?.goal?.replace('_', ' ').toLowerCase()}
         </p>
-        <div className="space-y-3 mb-6">
-          <div className="flex justify-between">
-            <span style={{ color: colors.darkGray }}>Today's Focus</span>
-            <span className="font-semibold" style={{ color: colors.nearBlack }}>
+
+        <div className="space-y-4 mb-6">
+          <div className="flex justify-between items-center">
+            <span className="text-gray-600">Today's Focus</span>
+            <span className="font-medium text-gray-900">
               {getWorkoutFocus()}
             </span>
           </div>
-          <div className="flex justify-between">
-            <span style={{ color: colors.darkGray }}>Duration</span>
-            <span className="font-semibold" style={{ color: colors.nearBlack }}>
+          <div className="flex justify-between items-center">
+            <span className="text-gray-600">Duration</span>
+            <span className="font-medium text-gray-900">
               45 min
             </span>
           </div>
-          <div className="flex justify-between">
-            <span style={{ color: colors.darkGray }}>Difficulty</span>
-            <span className="font-semibold" style={{ color: colors.nearBlack }}>
+          <div className="flex justify-between items-center">
+            <span className="text-gray-600">Difficulty</span>
+            <span className="font-medium text-gray-900">
               {getWorkoutIntensity()}
             </span>
           </div>
         </div>
-        <button 
+
+        <button
           onClick={onViewPlan}
-          className="w-full text-white py-3 rounded-lg hover:shadow-lg transition-all duration-200 flex items-center justify-center space-x-2"
-          style={{ backgroundColor: colors.accentRed }}
+          className="w-full bg-gray-900 text-white py-3 rounded-lg hover:bg-gray-800 transition-all duration-200 flex items-center justify-center space-x-2"
         >
           <span>View Full Plan</span>
           <ChevronRight className="w-4 h-4" />

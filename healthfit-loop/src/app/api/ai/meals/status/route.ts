@@ -38,7 +38,7 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({
       exists: !!existingPlan,
       regenerationCount: existingPlan?.regenerationCount || 0,
-      remainingRegenerations: existingPlan ? Math.max(0, 2 - existingPlan.regenerationCount) : 2,
+      remainingRegenerations: existingPlan ? Math.max(0, 100 - existingPlan.regenerationCount) : 100,
       weekOf: startOfWeek.toISOString().split('T')[0]
     });
 

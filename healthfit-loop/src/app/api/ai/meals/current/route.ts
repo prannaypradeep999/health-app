@@ -1,4 +1,4 @@
-import { NextRequest, NextResponse } from 'next/server';
+import { NextResponse } from 'next/server';
 import { cookies } from 'next/headers';
 import { prisma } from '@/lib/db';
 
@@ -12,7 +12,7 @@ function getStartOfWeek(date: Date): Date {
   return d;
 }
 
-export async function GET(req: NextRequest) {
+export async function GET() {
   try {
     const cookieStore = await cookies();
     const userId = cookieStore.get('user_id')?.value;
@@ -93,8 +93,9 @@ export async function GET(req: NextRequest) {
           optionType: option.optionType,
           restaurantName: option.restaurantName,
           dishName: option.dishName,
+          description: option.description,
           estimatedPrice: option.estimatedPrice,
-          orderingUrl: option.orderingUrl,
+          orderingUrl: null,
           deliveryTime: option.deliveryTime,
           recipeName: option.recipeName,
           ingredients: option.ingredients,

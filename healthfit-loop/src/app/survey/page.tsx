@@ -1,7 +1,8 @@
 'use client';
 
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import Image from 'next/image';
+import { useSearchParams } from 'next/navigation';
 import { ChevronRight, ChevronLeft, Check } from 'lucide-react';
 
 interface SurveyData {
@@ -30,9 +31,20 @@ interface SurveyData {
 }
 
 const SurveyPage: React.FC = () => {
+  const searchParams = useSearchParams();
   const [currentStep, setCurrentStep] = useState(0);
   const [submitting, setSubmitting] = useState(false);
   const [message, setMessage] = useState<{ ok?: boolean; error?: string } | null>(null);
+
+  // Clear stale auth cookies if redirected here due to invalid user
+  useEffect(() => {
+    const clearStaleAuth = searchParams.get('clearStaleAuth');
+    if (clearStaleAuth === 'true') {
+      fetch('/api/auth/clear-stale', { method: 'POST' })
+        .then(() => console.log('Cleared stale auth cookies'))
+        .catch(err => console.warn('Failed to clear stale cookies:', err));
+    }
+  }, [searchParams]);
   
   const [formData, setFormData] = useState<SurveyData>({
     email: '',

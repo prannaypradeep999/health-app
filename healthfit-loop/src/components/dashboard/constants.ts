@@ -12,32 +12,6 @@ export const colors = {
     gradient: 'linear-gradient(135deg, #4338CA 0%, #DC2626 100%)'
   };
   
-  // Sample data for now - will be replaced with AI-generated content
-  export const sampleMealPlan = [
-    {
-      day: 'Monday',
-      meals: [
-        { 
-          name: 'Greek Yogurt Bowl', 
-          type: 'Breakfast', 
-          calories: 320, 
-          nutrients: 'High in protein and probiotics'
-        },
-        { 
-          name: 'Quinoa Salad', 
-          type: 'Lunch', 
-          calories: 450, 
-          nutrients: 'Rich in fiber and complete proteins'
-        },
-        { 
-          name: 'Grilled Salmon', 
-          type: 'Dinner', 
-          calories: 380, 
-          nutrients: 'Omega-3 fatty acids'
-        }
-      ]
-    }
-  ];
   
   export const sampleWorkoutPlan = [
     { 

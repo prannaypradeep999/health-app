@@ -1,4 +1,5 @@
 import { prisma } from '@/lib/db';
+import { getMatchingChain, HEALTHIER_CHAINS, MODERATE_CHAINS } from '@/lib/config/meal-planning';
 
 export interface Restaurant {
   name: string;
@@ -9,6 +10,9 @@ export interface Restaurant {
   phoneNumber?: string;
   isOpen?: boolean;
   placeId: string;
+  // New fields for chain filtering
+  chainCategory?: 'healthier' | 'moderate';
+  spoonacularVerified?: boolean;
 }
 
 export class GooglePlacesClient {
@@ -146,6 +150,167 @@ export class GooglePlacesClient {
       console.error('[GooglePlaces] Error getting restaurant details:', error);
       throw error;
     }
+  }
+
+  // New method: Find verified healthy chains near user
+  async findVerifiedHealthyChains(
+    zipcode: string,
+    radiusKm?: number,
+    preferHealthier: boolean = true
+  ): Promise<Restaurant[]> {
+    try {
+      console.log(`[GooglePlaces] Finding verified healthy chains near ${zipcode}, radius: ${radiusKm}km`);
+      
+      const radius = radiusKm ? radiusKm * 1000 : 8000;
+      const cacheKey = `${zipcode}-healthy-chains-${radius}m`;
+      
+      // Check cache first
+      const cached = await prisma.restaurantCache.findUnique({
+        where: {
+          zipcode_cuisineType: {
+            zipcode,
+            cuisineType: cacheKey
+          }
+        }
+      });
+
+      if (cached && cached.expiresAt > new Date()) {
+        console.log(`[GooglePlaces] Using cached healthy chains for ${zipcode}`);
+        return cached.restaurants as unknown as Restaurant[];
+      }
+
+      // Get location coordinates
+      const { lat, lng } = await this.geocodeZipcode(zipcode);
+      
+      // Search for each verified chain specifically
+      const chainPromises = [...HEALTHIER_CHAINS, ...MODERATE_CHAINS].map(async (chainName) => {
+        return this.searchSpecificChain(lat, lng, radius, chainName);
+      });
+
+      const chainResults = await Promise.all(chainPromises);
+      const allHealthyRestaurants = chainResults.flat();
+
+      // Sort by priority: healthier chains first, then by rating
+      const sortedRestaurants = allHealthyRestaurants.sort((a, b) => {
+        if (a.chainCategory !== b.chainCategory) {
+          if (a.chainCategory === 'healthier') return -1;
+          if (b.chainCategory === 'healthier') return 1;
+        }
+        return (b.rating || 0) - (a.rating || 0);
+      });
+
+      // Filter based on preference
+      const filteredRestaurants = preferHealthier 
+        ? sortedRestaurants.filter(r => r.chainCategory === 'healthier').slice(0, 15)
+          .concat(sortedRestaurants.filter(r => r.chainCategory === 'moderate').slice(0, 5))
+        : sortedRestaurants.slice(0, 20);
+
+      // Cache results for 24 hours (shorter than regular cache for freshness)
+      const expiresAt = new Date();
+      expiresAt.setHours(expiresAt.getHours() + 24);
+
+      await prisma.restaurantCache.upsert({
+        where: {
+          zipcode_cuisineType: {
+            zipcode,
+            cuisineType: cacheKey
+          }
+        },
+        update: {
+          restaurants: filteredRestaurants as any,
+          expiresAt
+        },
+        create: {
+          zipcode,
+          cuisineType: cacheKey,
+          restaurants: filteredRestaurants as any,
+          expiresAt
+        }
+      });
+
+      console.log(`[GooglePlaces] Found ${filteredRestaurants.length} verified healthy chains near ${zipcode}`);
+      return filteredRestaurants;
+
+    } catch (error) {
+      console.error('[GooglePlaces] Error finding verified healthy chains:', error);
+      throw error;
+    }
+  }
+
+  // Search for a specific chain near coordinates
+  private async searchSpecificChain(lat: number, lng: number, radius: number, chainName: string): Promise<Restaurant[]> {
+    try {
+      const query = `${chainName} restaurant`;
+      const searchUrl = `${this.baseUrl}/textsearch/json?query=${query}&location=${lat},${lng}&radius=${radius}&key=${this.apiKey}`;
+      
+      const response = await fetch(searchUrl);
+      const data = await response.json();
+
+      if (data.status !== 'OK') {
+        console.log(`[GooglePlaces] No results for ${chainName}: ${data.status}`);
+        return [];
+      }
+
+      const restaurants: Restaurant[] = data.results
+        .filter((place: any) => {
+          // STRICT chain matching - only exact matches to verified chains
+          const placeName = place.name.toLowerCase().trim();
+          const targetChain = chainName.toLowerCase().trim();
+          
+          // Exact match or very close match (accounting for variations like "Panera Bread" vs "Panera")
+          const isExactMatch = placeName === targetChain;
+          const isCloseMatch = placeName.startsWith(targetChain) || targetChain.startsWith(placeName);
+          const hasMinimumLength = Math.min(placeName.length, targetChain.length) >= 4; // Avoid false positives
+          
+          const isValidChainMatch = isExactMatch || (isCloseMatch && hasMinimumLength);
+          
+          // Double-check against our verified chain list
+          const verifiedMatch = getMatchingChain(place.name);
+          
+          console.log(`[Chain-Filter] "${place.name}" vs "${chainName}": valid=${isValidChainMatch}, verified=${!!verifiedMatch}`);
+          
+          return isValidChainMatch && verifiedMatch;
+        })
+        .slice(0, 3) // Limit per chain to avoid spam
+        .map((place: any) => {
+          const matchResult = getMatchingChain(place.name);
+          return {
+            name: place.name,
+            address: place.formatted_address || 'Address not available',
+            rating: place.rating || 0,
+            priceLevel: place.price_level || 2,
+            cuisine: this.extractCuisine(place.name, place.types),
+            phoneNumber: place.formatted_phone_number,
+            isOpen: place.opening_hours?.open_now,
+            placeId: place.place_id,
+            chainCategory: matchResult?.category,
+            spoonacularVerified: true
+          };
+        });
+
+      if (restaurants.length > 0) {
+        console.log(`[GooglePlaces] Found ${restaurants.length} ${chainName} locations`);
+      }
+
+      return restaurants;
+
+    } catch (error) {
+      console.error(`[GooglePlaces] Error searching for ${chainName}:`, error);
+      return [];
+    }
+  }
+
+  // Helper method to geocode zipcode
+  private async geocodeZipcode(zipcode: string): Promise<{ lat: number; lng: number }> {
+    const geocodeUrl = `${this.baseUrl}/textsearch/json?query=${zipcode}&key=${this.apiKey}`;
+    const geocodeResponse = await fetch(geocodeUrl);
+    const geocodeData = await geocodeResponse.json();
+
+    if (!geocodeData.results?.[0]?.geometry?.location) {
+      throw new Error(`Could not geocode zipcode: ${zipcode}`);
+    }
+
+    return geocodeData.results[0].geometry.location;
   }
 
   private extractCuisine(name: string, types: string[]): string {

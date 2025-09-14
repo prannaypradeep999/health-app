@@ -2,7 +2,6 @@
 
 import React from 'react';
 import { Star, Check } from 'lucide-react';
-import { colors } from './constants';
 
 interface UpgradeCardProps {
   isGuest: boolean;
@@ -11,58 +10,61 @@ interface UpgradeCardProps {
 
 export default function UpgradeCard({ isGuest, onSignup }: UpgradeCardProps) {
   return (
-    <div className="rounded-xl shadow-lg hover:shadow-xl transition-shadow duration-300 text-white overflow-hidden" 
-         style={{ background: colors.gradient }}>
-      <div className="p-6">
-        <div className="flex items-center space-x-3 mb-4">
-          <Star className="w-8 h-8" />
-          <h3 className="text-xl font-bold">
+    <div className="bg-white border border-gray-200 rounded-xl hover:border-gray-300 transition-all duration-200">
+      <div className="p-6 border-b border-gray-100">
+        <div className="flex items-center space-x-3">
+          <Star className="w-6 h-6 text-gray-600" />
+          <h3 className="text-lg font-semibold text-gray-900">
             {isGuest ? 'Save Your Progress' : 'Unlock More Features'}
           </h3>
         </div>
-        <p className="mb-6 text-white opacity-80">
-          {isGuest 
+      </div>
+
+      <div className="p-6">
+        <p className="text-gray-600 mb-6">
+          {isGuest
             ? 'Create an account to save your personalized plans permanently'
             : 'Get access to advanced tracking and restaurant recommendations'
           }
         </p>
-        <ul className="space-y-2 mb-6 text-sm">
+
+        <ul className="space-y-3 mb-6">
           {isGuest ? (
             <>
-              <li className="flex items-center space-x-2">
-                <Check className="w-4 h-4" />
-                <span>Save all your personalized plans</span>
+              <li className="flex items-center space-x-3">
+                <Check className="w-4 h-4 text-green-600" />
+                <span className="text-gray-700">Save all your personalized plans</span>
               </li>
-              <li className="flex items-center space-x-2">
-                <Check className="w-4 h-4" />
-                <span>Access from any device</span>
+              <li className="flex items-center space-x-3">
+                <Check className="w-4 h-4 text-green-600" />
+                <span className="text-gray-700">Access from any device</span>
               </li>
-              <li className="flex items-center space-x-2">
-                <Check className="w-4 h-4" />
-                <span>Track long-term progress</span>
+              <li className="flex items-center space-x-3">
+                <Check className="w-4 h-4 text-green-600" />
+                <span className="text-gray-700">Track long-term progress</span>
               </li>
             </>
           ) : (
             <>
-              <li className="flex items-center space-x-2">
-                <Check className="w-4 h-4" />
-                <span>Restaurant recommendations</span>
+              <li className="flex items-center space-x-3">
+                <Check className="w-4 h-4 text-green-600" />
+                <span className="text-gray-700">Restaurant recommendations</span>
               </li>
-              <li className="flex items-center space-x-2">
-                <Check className="w-4 h-4" />
-                <span>Delivery app integration</span>
+              <li className="flex items-center space-x-3">
+                <Check className="w-4 h-4 text-green-600" />
+                <span className="text-gray-700">Delivery app integration</span>
               </li>
-              <li className="flex items-center space-x-2">
-                <Check className="w-4 h-4" />
-                <span>Local gym finder</span>
+              <li className="flex items-center space-x-3">
+                <Check className="w-4 h-4 text-green-600" />
+                <span className="text-gray-700">Local gym finder</span>
               </li>
             </>
           )}
         </ul>
-        <button 
+
+        <button
           onClick={onSignup}
-          className="w-full py-3 rounded-lg font-semibold hover:opacity-90 transition-all duration-200"
-          style={{ backgroundColor: colors.white, color: colors.deepBlue }}
+          className="w-full bg-gray-900 text-white py-3 rounded-lg hover:bg-gray-800 transition-all duration-200 font-medium"
         >
           {isGuest ? 'Create Free Account' : 'Upgrade Now'}
         </button>
