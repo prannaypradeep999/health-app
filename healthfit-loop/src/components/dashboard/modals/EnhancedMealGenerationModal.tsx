@@ -1,6 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { X, ChevronDown, Clock, MapPin, Utensils, CheckCircle, Loader2, ChefHat, Sparkles } from 'lucide-react';
 import { colors } from '../constants';
+import { useGenerationProgress, GENERATION_STAGES } from '@/hooks/useGenerationProgress';
+import SmartLoadingStates from '@/components/ui/SmartLoadingStates';
 
 interface MealOption {
   id: string;
@@ -39,17 +41,24 @@ type GenerationStep = 'discovering' | 'analyzing' | 'creating' | 'complete';
 
 export default function EnhancedMealGenerationModal({ surveyData, isGuest, onClose, onComplete }: EnhancedMealGenerationModalProps) {
   const [currentStep, setCurrentStep] = useState<GenerationStep>('discovering');
-  const [progress, setProgress] = useState(0);
+  const [oldProgress, setOldProgress] = useState(0); // Keep for backward compatibility
   const [generatedMeals, setGeneratedMeals] = useState<GeneratedMeal[]>([]);
   const [expandedMeals, setExpandedMeals] = useState<Set<string>>(new Set());
   const [selectedDay, setSelectedDay] = useState<string | null>(null);
   const [viewMode, setViewMode] = useState<'week' | 'day'>('week');
 
+  // Initialize smart progress tracking
+  const { progress, actions } = useGenerationProgress({
+    stages: GENERATION_STAGES.PARALLEL_COMPLETE,
+    enableRealTimeUpdates: true,
+    updateInterval: 1000
+  });
+
   const steps = [
     { key: 'discovering', label: 'Discovering Restaurants', description: 'Finding the best healthy options near you' },
     { key: 'analyzing', label: 'Analyzing Menus', description: 'Checking nutrition data and healthy choices' },
-    { key: 'creating', label: 'Creating Your Plan', description: 'Personalizing meals for your goals' },
-    { key: 'complete', label: 'Complete', description: 'Your personalized meal plan is ready!' }
+    { key: 'creating', label: 'Creating Complete Plan', description: 'Generating meals & workouts in parallel ⚡' },
+    { key: 'complete', label: 'Complete', description: 'Your personalized meal & workout plan is ready!' }
   ];
 
   // Day colors for the week view
@@ -315,13 +324,25 @@ export default function EnhancedMealGenerationModal({ surveyData, isGuest, onClo
 
   const simulateMealCreation = async () => {
     setCurrentStep('creating');
-    setProgress(80);
+
+    // Start smart progress tracking
+    actions.start();
 
     try {
-      console.log('[DEBUG-Frontend] Starting API call to /api/ai/meals/generate');
-      
-      // Call the real API instead of using mock data
-      const response = await fetch('/api/ai/meals/generate', {
+      console.log('[DEBUG-Frontend] Starting API call to /api/ai/generate-complete (parallel generation)');
+
+      // Update progress to restaurant discovery stage
+      actions.updateStageProgress('restaurant_discovery', 100);
+      await new Promise(resolve => setTimeout(resolve, 1000));
+      actions.nextStage();
+
+      // Update progress to data prefetch stage
+      actions.updateStageProgress('data_prefetch', 100);
+      await new Promise(resolve => setTimeout(resolve, 800));
+      actions.nextStage();
+
+      // Call the new parallel generation API for both meal and workout plans
+      const response = await fetch('/api/ai/generate-complete', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -332,39 +353,59 @@ export default function EnhancedMealGenerationModal({ surveyData, isGuest, onClo
         })
       });
 
-      console.log('[DEBUG-Frontend] API response status:', response.status);
+      console.log('[DEBUG-Frontend] Parallel API response status:', response.status);
 
       if (!response.ok) {
-        throw new Error(`API failed with status ${response.status}`);
+        actions.setError(`API failed with status ${response.status}`);
+        throw new Error(`Parallel API failed with status ${response.status}`);
       }
 
+      // Update parallel generation progress
+      actions.updateStageProgress('parallel_generation', 50);
+      await new Promise(resolve => setTimeout(resolve, 500));
+
       const data = await response.json();
-      console.log('[DEBUG-Frontend] API response data:', data);
+      console.log('[DEBUG-Frontend] Parallel API response data:', data);
+
+      // Update parallel generation progress
+      actions.updateStageProgress('parallel_generation', 100);
+      await new Promise(resolve => setTimeout(resolve, 500));
+      actions.nextStage();
       
       if (data.success && data.mealPlan?.meals) {
         console.log('[DEBUG-Frontend] Converting meals to frontend format, count:', data.mealPlan.meals.length);
-        
+
+        // Update optimization stage
+        actions.updateStageProgress('optimization', 30);
+
         // Convert API data to frontend format WITHOUT images first (super fast)
-        setProgress(85);
         const convertedMeals = convertApiMealsToFrontendFormatSync(data.mealPlan.meals);
-        
+
         console.log('[DEBUG-Frontend] Converted meals:', convertedMeals.length, 'meals');
         console.log('[DEBUG-Frontend] Days covered:', convertedMeals.map(m => m.day));
-        
+
         // Show meals immediately without waiting for images
         setGeneratedMeals(convertedMeals);
-        setProgress(100);
+
+        // Complete optimization stage
+        actions.updateStageProgress('optimization', 100);
+        await new Promise(resolve => setTimeout(resolve, 500));
+
+        // Complete the entire process
+        actions.complete();
         setCurrentStep('complete');
-        
+
         // Skip AI image generation entirely - use curated images only
         console.log('[DEBUG-Frontend] Skipping AI image generation for faster loading');
         return;
       } else {
         console.log('[DEBUG-Frontend] API response missing expected data structure');
+        actions.setError('Invalid API response structure');
         throw new Error('Invalid API response structure');
       }
     } catch (error) {
       console.error('[DEBUG-Frontend] Error generating meals:', error);
+      actions.setError(error instanceof Error ? error.message : 'Generation failed');
       // Fall back to mock data if API fails
     }
 
@@ -439,27 +480,41 @@ export default function EnhancedMealGenerationModal({ surveyData, isGuest, onClo
     });
   };
 
-  // Group meals by day for easier rendering
+  // Group meals by day for easier rendering with proper meal type ordering
   const mealsByDay = generatedMeals.reduce((acc, meal) => {
     if (!acc[meal.day]) acc[meal.day] = [];
     acc[meal.day].push(meal);
     return acc;
   }, {} as { [key: string]: GeneratedMeal[] });
 
+  // Sort meals within each day to ensure proper order: breakfast, lunch, dinner
+  Object.keys(mealsByDay).forEach(day => {
+    mealsByDay[day].sort((a, b) => {
+      const mealOrder = { 'breakfast': 0, 'lunch': 1, 'dinner': 2 };
+      const aMealType = a.mealType.toLowerCase() as keyof typeof mealOrder;
+      const bMealType = b.mealType.toLowerCase() as keyof typeof mealOrder;
+      return mealOrder[aMealType] - mealOrder[bMealType];
+    });
+  });
+
   useEffect(() => {
     const timer = setTimeout(() => {
       if (currentStep === 'discovering') {
-        setProgress(30);
+        // Start the smart progress tracking
+        actions.start();
+        actions.updateStageProgress('restaurant_discovery', 100);
         setCurrentStep('analyzing');
+
         setTimeout(() => {
-          setProgress(60);
+          actions.nextStage();
+          actions.updateStageProgress('data_prefetch', 100);
           simulateMealCreation();
         }, 2000);
       }
     }, 2000);
 
     return () => clearTimeout(timer);
-  }, [currentStep]);
+  }, [currentStep, actions]);
 
   const currentStepIndex = steps.findIndex(step => step.key === currentStep);
 
@@ -564,10 +619,14 @@ export default function EnhancedMealGenerationModal({ surveyData, isGuest, onClo
           </div>
         </div>
 
-        {/* Loading Animation - Show during generation */}
+        {/* Smart Loading States - Show during generation */}
         {currentStep !== 'complete' && (
           <div className="flex-1 overflow-y-auto">
-            <LoadingAnimation />
+            <SmartLoadingStates
+              progress={progress}
+              showEstimatedTime={true}
+              showDetailedProgress={true}
+            />
           </div>
         )}
 

@@ -4,6 +4,7 @@ import { SurveyResponse } from '@prisma/client';
 export interface UserContext {
   surveyData: SurveyResponse;
   weekOf: string;
+  weekNumber?: number;
   targetCalories: number;
   weeklyBudgetCents: number;
   mealsOutPerWeek: number;
@@ -16,11 +17,17 @@ export interface UserContext {
 }
 
 export function buildMealPlannerPrompt(userContext: UserContext): string {
-  const { surveyData, targetCalories, weeklyBudgetCents, mealsOutPerWeek, homeMealsPerWeek } = userContext;
+  const { surveyData, weekOf, weekNumber, targetCalories, weeklyBudgetCents, mealsOutPerWeek, homeMealsPerWeek } = userContext;
   const weeklyBudgetDollars = (weeklyBudgetCents / 100).toFixed(2);
   const distancePreference = (surveyData as any).distancePreference || 'medium';
   const distanceMap = { 'close': 5, 'medium': 10, 'far': 20 };
   const radiusKm = distanceMap[distancePreference as keyof typeof distanceMap] || 10;
+  const currentDate = new Date().toLocaleDateString('en-US', {
+    weekday: 'long',
+    year: 'numeric',
+    month: 'long',
+    day: 'numeric'
+  });
   
   return `You are FYTR AI's advanced meal planning orchestrator. You MUST respond with ONLY valid JSON - no explanations, no markdown, no extra text.
 
@@ -34,6 +41,11 @@ CRITICAL JSON REQUIREMENTS:
 - Arrays must use proper JSON array syntax
 
 Generate a COMPLETE 7-day meal plan with EXACTLY 21 meals total (7 days × 3 meals per day: breakfast, lunch, dinner) and EXACTLY 2 options per meal using verified data only. NEVER HALLUCINATE menu items, nutrition data, or restaurant details.
+
+CURRENT CONTEXT:
+- Today's Date: ${currentDate}
+- Planning Week: ${weekOf} (Week ${weekNumber || 'Current'} of the year)
+- This meal plan starts from the current week beginning Monday
 
 USER PROFILE:
 - Name: ${surveyData.firstName} ${surveyData.lastName}
@@ -129,7 +141,7 @@ CRITICAL: Your response must be PURE JSON starting with {{ and ending with }}. N
           "orderingInfo": "Available on delivery apps",
           "deliveryTime": "15-25 min",
           "healthRating": "healthier" or "moderate",
-          "imageUrl": "https://spoonacular.com/recipeImages/[id]-312x231.jpg OR high-quality food image URL",
+          "imageUrl": "High-quality food image URL if available",
           "orderUrl": "https://order.[restaurant].com OR delivery app link"
         },
         { 

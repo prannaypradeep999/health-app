@@ -1,0 +1,1067 @@
+# SPOONACULAR API MANUAL TESTING COMMANDS
+# Generated: 2025-10-28T03:23:42.772Z
+# Replace YOUR_API_KEY with your actual Spoonacular API key
+# Install jq for pretty JSON formatting: brew install jq
+
+# Willy's Mexicana Grill - Chipotle BBQ Pork Salad Ingredient (ID: 369638)
+curl "https://api.spoonacular.com/food/menuItems/369638?apiKey=YOUR_API_KEY" | jq .
+
+
+# Willy's Mexicana Grill - Chipotle BBQ Pork Quesadilla (ID: 369614)
+curl "https://api.spoonacular.com/food/menuItems/369614?apiKey=YOUR_API_KEY" | jq .
+
+
+# Willy's Mexicana Grill - Chipotle BBQ Pork Taco (ID: 369590)
+curl "https://api.spoonacular.com/food/menuItems/369590?apiKey=YOUR_API_KEY" | jq .
+
+
+# Willy's Mexicana Grill - Chipotle BBQ Pork Super Nachos (ID: 369766)
+curl "https://api.spoonacular.com/food/menuItems/369766?apiKey=YOUR_API_KEY" | jq .
+
+
+# Willy's Mexicana Grill - Chipotle Salsa (cup) (ID: 369665)
+curl "https://api.spoonacular.com/food/menuItems/369665?apiKey=YOUR_API_KEY" | jq .
+
+
+# Willy's Mexicana Grill - Chipotle Salsa (ID: 369667)
+curl "https://api.spoonacular.com/food/menuItems/369667?apiKey=YOUR_API_KEY" | jq .
+
+
+# Willy's Mexicana Grill - Chipotle BBQ Pork Salad (ID: 369636)
+curl "https://api.spoonacular.com/food/menuItems/369636?apiKey=YOUR_API_KEY" | jq .
+
+
+# Willy's Mexicana Grill - Chipotle BBQ Pork Burrito Ingredient (ID: 369720)
+curl "https://api.spoonacular.com/food/menuItems/369720?apiKey=YOUR_API_KEY" | jq .
+
+
+# Sharky's Woodfired Mexican Grill - Chipotle BBQ Chicken Pizza (ID: 394422)
+curl "https://api.spoonacular.com/food/menuItems/394422?apiKey=YOUR_API_KEY" | jq .
+
+
+# Willy's Mexicana Grill - Chipotle Ranch (ID: 369639)
+curl "https://api.spoonacular.com/food/menuItems/369639?apiKey=YOUR_API_KEY" | jq .
+
+
+# Willy's Mexicana Grill - Chipotle BBQ Pork Kid Burrito Ingredient (ID: 369786)
+curl "https://api.spoonacular.com/food/menuItems/369786?apiKey=YOUR_API_KEY" | jq .
+
+
+# Willy's Mexicana Grill - Chipotle BBQ Pork Quesadilla Ingredient (ID: 369615)
+curl "https://api.spoonacular.com/food/menuItems/369615?apiKey=YOUR_API_KEY" | jq .
+
+
+# La Salsa Fresh Mexican Grill - Chipotle Shrimp Salad (ID: 308215)
+curl "https://api.spoonacular.com/food/menuItems/308215?apiKey=YOUR_API_KEY" | jq .
+
+
+# Willy's Mexicana Grill - Chipotle Salsa (bowl) (ID: 369666)
+curl "https://api.spoonacular.com/food/menuItems/369666?apiKey=YOUR_API_KEY" | jq .
+
+
+# Willy's Mexicana Grill - Chipotle BBQ Pork Kid's Taco Ingredient (ID: 369696)
+curl "https://api.spoonacular.com/food/menuItems/369696?apiKey=YOUR_API_KEY" | jq .
+
+# Panera Bread - Steak & White Cheddar Panini on Hoagie Roll (ID: 417561)
+curl "https://api.spoonacular.com/food/menuItems/417561?apiKey=YOUR_API_KEY" | jq .
+
+
+# Panera Bread - Caramel Latte (ID: 417462)
+curl "https://api.spoonacular.com/food/menuItems/417462?apiKey=YOUR_API_KEY" | jq .
+
+
+# Panera Bread - Lipton Brisk Raspberry Tea (ID: 417528)
+curl "https://api.spoonacular.com/food/menuItems/417528?apiKey=YOUR_API_KEY" | jq .
+
+
+# Panera Bread - Caramel Apple Thumbprint Scone (ID: 417429)
+curl "https://api.spoonacular.com/food/menuItems/417429?apiKey=YOUR_API_KEY" | jq .
+
+
+# Panera Bread - Green Goddess Dressing (ID: 417594)
+curl "https://api.spoonacular.com/food/menuItems/417594?apiKey=YOUR_API_KEY" | jq .
+
+
+# Panera Bread - Wild Blueberry Scone (ID: 251143)
+curl "https://api.spoonacular.com/food/menuItems/251143?apiKey=YOUR_API_KEY" | jq .
+
+
+# Panera Bread - French Toast Bagel (ID: 251110)
+curl "https://api.spoonacular.com/food/menuItems/251110?apiKey=YOUR_API_KEY" | jq .
+
+
+# Panera Bread - Tuna Salad Sandwich on Black Pepper Focaccia (ID: 417562)
+curl "https://api.spoonacular.com/food/menuItems/417562?apiKey=YOUR_API_KEY" | jq .
+
+
+# Panera Bread - Lipton Brisk Raspberry Tea (ID: 417527)
+curl "https://api.spoonacular.com/food/menuItems/417527?apiKey=YOUR_API_KEY" | jq .
+
+
+# Panera Bread - Orange Mini Scone (ID: 320006)
+curl "https://api.spoonacular.com/food/menuItems/320006?apiKey=YOUR_API_KEY" | jq .
+
+
+# Panera Bread - Mini Scones Variety Pack (ID: 417430)
+curl "https://api.spoonacular.com/food/menuItems/417430?apiKey=YOUR_API_KEY" | jq .
+
+
+# Panera Bread - Cobblestone Sweet Roll (ID: 417428)
+curl "https://api.spoonacular.com/food/menuItems/417428?apiKey=YOUR_API_KEY" | jq .
+
+
+# Panera Bread - Steak & White Cheddar Panini on Hoagie Roll (ID: 417560)
+curl "https://api.spoonacular.com/food/menuItems/417560?apiKey=YOUR_API_KEY" | jq .
+
+
+# Panera Bread - Chile Lime Rojo Ranch Dressing (ID: 417593)
+curl "https://api.spoonacular.com/food/menuItems/417593?apiKey=YOUR_API_KEY" | jq .
+
+
+# Panera Bread - Green Goddess Dressing (ID: 417595)
+curl "https://api.spoonacular.com/food/menuItems/417595?apiKey=YOUR_API_KEY" | jq .
+
+# Freshii - Southwestern Soup (ID: 330444)
+curl "https://api.spoonacular.com/food/menuItems/330444?apiKey=YOUR_API_KEY" | jq .
+
+
+# Freshii - Baja Burrito (ID: 330440)
+curl "https://api.spoonacular.com/food/menuItems/330440?apiKey=YOUR_API_KEY" | jq .
+
+
+# Freshii - Muesli (ID: 330461)
+curl "https://api.spoonacular.com/food/menuItems/330461?apiKey=YOUR_API_KEY" | jq .
+
+
+# Freshii - Powerhouse Smoothie (ID: 330452)
+curl "https://api.spoonacular.com/food/menuItems/330452?apiKey=YOUR_API_KEY" | jq .
+
+
+# Freshii - Superbiotic Salad (ID: 330423)
+curl "https://api.spoonacular.com/food/menuItems/330423?apiKey=YOUR_API_KEY" | jq .
+
+
+# Freshii - Falafel (Bowl) (ID: 330432)
+curl "https://api.spoonacular.com/food/menuItems/330432?apiKey=YOUR_API_KEY" | jq .
+
+
+# Freshii - Blueberry Crumble Breakfast Oatmeal (ID: 330460)
+curl "https://api.spoonacular.com/food/menuItems/330460?apiKey=YOUR_API_KEY" | jq .
+
+
+# Freshii - Apple Cinnamon Breakfast Oatmeal (ID: 330457)
+curl "https://api.spoonacular.com/food/menuItems/330457?apiKey=YOUR_API_KEY" | jq .
+
+
+# Freshii - Steak, Egg & Cheese Breakfast Grilled Burrito (ID: 330456)
+curl "https://api.spoonacular.com/food/menuItems/330456?apiKey=YOUR_API_KEY" | jq .
+
+
+# Freshii - Cobb Salad (ID: 330419)
+curl "https://api.spoonacular.com/food/menuItems/330419?apiKey=YOUR_API_KEY" | jq .
+
+
+# Freshii - Pangoa (Bowl) (ID: 330435)
+curl "https://api.spoonacular.com/food/menuItems/330435?apiKey=YOUR_API_KEY" | jq .
+
+
+# Freshii - Warrior (Bowl) (ID: 330436)
+curl "https://api.spoonacular.com/food/menuItems/330436?apiKey=YOUR_API_KEY" | jq .
+
+
+# Freshii - Falafel Burrito (ID: 330439)
+curl "https://api.spoonacular.com/food/menuItems/330439?apiKey=YOUR_API_KEY" | jq .
+
+
+# Freshii - Spicy Lemongrass Soup (ID: 330445)
+curl "https://api.spoonacular.com/food/menuItems/330445?apiKey=YOUR_API_KEY" | jq .
+
+
+# Freshii - Green Energy Juice (ID: 330447)
+curl "https://api.spoonacular.com/food/menuItems/330447?apiKey=YOUR_API_KEY" | jq .
+
+# Sweetgreen - Red Grapes (ID: 364018)
+curl "https://api.spoonacular.com/food/menuItems/364018?apiKey=YOUR_API_KEY" | jq .
+
+
+# Sweetgreen - Cucumber Basil Yogurt (ID: 364042)
+curl "https://api.spoonacular.com/food/menuItems/364042?apiKey=YOUR_API_KEY" | jq .
+
+
+# Sweetgreen - Organic Baby Spinach (ID: 364002)
+curl "https://api.spoonacular.com/food/menuItems/364002?apiKey=YOUR_API_KEY" | jq .
+
+
+# Sweetgreen - Extra Virgin Olive Oil (ID: 364043)
+curl "https://api.spoonacular.com/food/menuItems/364043?apiKey=YOUR_API_KEY" | jq .
+
+
+# Sweetgreen - Citrus Shrimp (ID: 364027)
+curl "https://api.spoonacular.com/food/menuItems/364027?apiKey=YOUR_API_KEY" | jq .
+
+
+# Sweetgreen - Earth (Bowl) (ID: 363992)
+curl "https://api.spoonacular.com/food/menuItems/363992?apiKey=YOUR_API_KEY" | jq .
+
+
+# Sweetgreen - Toasted Parmesan Crisp (ID: 364034)
+curl "https://api.spoonacular.com/food/menuItems/364034?apiKey=YOUR_API_KEY" | jq .
+
+
+# Sweetgreen - Organic White Cheddar (ID: 364033)
+curl "https://api.spoonacular.com/food/menuItems/364033?apiKey=YOUR_API_KEY" | jq .
+
+
+# Sweetgreen - Local Hard Boiled Egg (ID: 364028)
+curl "https://api.spoonacular.com/food/menuItems/364028?apiKey=YOUR_API_KEY" | jq .
+
+
+# Sweetgreen - Guacamole Greens (ID: 363995)
+curl "https://api.spoonacular.com/food/menuItems/363995?apiKey=YOUR_API_KEY" | jq .
+
+
+# Sweetgreen - Baked Falafel (ID: 364024)
+curl "https://api.spoonacular.com/food/menuItems/364024?apiKey=YOUR_API_KEY" | jq .
+
+
+# Sweetgreen - Pita Chips (ID: 364016)
+curl "https://api.spoonacular.com/food/menuItems/364016?apiKey=YOUR_API_KEY" | jq .
+
+
+# Sweetgreen - Grape Tomatoes (ID: 364007)
+curl "https://api.spoonacular.com/food/menuItems/364007?apiKey=YOUR_API_KEY" | jq .
+
+
+# Sweetgreen - Roasted Sweet Potatoes (ID: 364020)
+curl "https://api.spoonacular.com/food/menuItems/364020?apiKey=YOUR_API_KEY" | jq .
+
+
+# Sweetgreen - Tortilla Chips (ID: 364023)
+curl "https://api.spoonacular.com/food/menuItems/364023?apiKey=YOUR_API_KEY" | jq .
+
+# Sweetgreen - Red Grapes (ID: 364018)
+curl "https://api.spoonacular.com/food/menuItems/364018?apiKey=YOUR_API_KEY" | jq .
+
+
+# Sweetgreen - Cucumber Basil Yogurt (ID: 364042)
+curl "https://api.spoonacular.com/food/menuItems/364042?apiKey=YOUR_API_KEY" | jq .
+
+
+# Sweetgreen - Organic Baby Spinach (ID: 364002)
+curl "https://api.spoonacular.com/food/menuItems/364002?apiKey=YOUR_API_KEY" | jq .
+
+
+# Sweetgreen - Extra Virgin Olive Oil (ID: 364043)
+curl "https://api.spoonacular.com/food/menuItems/364043?apiKey=YOUR_API_KEY" | jq .
+
+
+# Sweetgreen - Citrus Shrimp (ID: 364027)
+curl "https://api.spoonacular.com/food/menuItems/364027?apiKey=YOUR_API_KEY" | jq .
+
+
+# Sweetgreen - Earth (Bowl) (ID: 363992)
+curl "https://api.spoonacular.com/food/menuItems/363992?apiKey=YOUR_API_KEY" | jq .
+
+
+# Sweetgreen - Toasted Parmesan Crisp (ID: 364034)
+curl "https://api.spoonacular.com/food/menuItems/364034?apiKey=YOUR_API_KEY" | jq .
+
+
+# Sweetgreen - Organic White Cheddar (ID: 364033)
+curl "https://api.spoonacular.com/food/menuItems/364033?apiKey=YOUR_API_KEY" | jq .
+
+
+# Sweetgreen - Local Hard Boiled Egg (ID: 364028)
+curl "https://api.spoonacular.com/food/menuItems/364028?apiKey=YOUR_API_KEY" | jq .
+
+
+# Sweetgreen - Guacamole Greens (ID: 363995)
+curl "https://api.spoonacular.com/food/menuItems/363995?apiKey=YOUR_API_KEY" | jq .
+
+
+# Sweetgreen - Baked Falafel (ID: 364024)
+curl "https://api.spoonacular.com/food/menuItems/364024?apiKey=YOUR_API_KEY" | jq .
+
+
+# Sweetgreen - Pita Chips (ID: 364016)
+curl "https://api.spoonacular.com/food/menuItems/364016?apiKey=YOUR_API_KEY" | jq .
+
+
+# Sweetgreen - Grape Tomatoes (ID: 364007)
+curl "https://api.spoonacular.com/food/menuItems/364007?apiKey=YOUR_API_KEY" | jq .
+
+
+# Sweetgreen - Roasted Sweet Potatoes (ID: 364020)
+curl "https://api.spoonacular.com/food/menuItems/364020?apiKey=YOUR_API_KEY" | jq .
+
+
+# Sweetgreen - Tortilla Chips (ID: 364023)
+curl "https://api.spoonacular.com/food/menuItems/364023?apiKey=YOUR_API_KEY" | jq .
+
+# Five Guys - Fries (ID: 240631)
+curl "https://api.spoonacular.com/food/menuItems/240631?apiKey=YOUR_API_KEY" | jq .
+
+
+# Five Guys - Ketchup (ID: 240656)
+curl "https://api.spoonacular.com/food/menuItems/240656?apiKey=YOUR_API_KEY" | jq .
+
+
+# Five Guys - Large Fries (ID: 336274)
+curl "https://api.spoonacular.com/food/menuItems/336274?apiKey=YOUR_API_KEY" | jq .
+
+
+# Five Guys - Little Bacon Burger w/ Bun (ID: 240622)
+curl "https://api.spoonacular.com/food/menuItems/240622?apiKey=YOUR_API_KEY" | jq .
+
+
+# Five Guys - Veggie Sandwich (ID: 336273)
+curl "https://api.spoonacular.com/food/menuItems/336273?apiKey=YOUR_API_KEY" | jq .
+
+
+# Five Guys - Relish (ID: 240663)
+curl "https://api.spoonacular.com/food/menuItems/240663?apiKey=YOUR_API_KEY" | jq .
+
+
+# Five Guys - Bunless Little Bacon Cheeseburger (ID: 336283)
+curl "https://api.spoonacular.com/food/menuItems/336283?apiKey=YOUR_API_KEY" | jq .
+
+
+# Five Guys - Bunless Little Cheeseburger (ID: 336282)
+curl "https://api.spoonacular.com/food/menuItems/336282?apiKey=YOUR_API_KEY" | jq .
+
+
+# Five Guys - Bunless Little Bacon Burger (ID: 336281)
+curl "https://api.spoonacular.com/food/menuItems/336281?apiKey=YOUR_API_KEY" | jq .
+
+
+# Five Guys - Bunless Hamburger (ID: 336280)
+curl "https://api.spoonacular.com/food/menuItems/336280?apiKey=YOUR_API_KEY" | jq .
+
+
+# Five Guys - BBQ Sauce (ID: 240648)
+curl "https://api.spoonacular.com/food/menuItems/240648?apiKey=YOUR_API_KEY" | jq .
+
+
+# Five Guys - Bun (ID: 240649)
+curl "https://api.spoonacular.com/food/menuItems/240649?apiKey=YOUR_API_KEY" | jq .
+
+
+# Five Guys - Bacon Burger w/ Bun (ID: 240614)
+curl "https://api.spoonacular.com/food/menuItems/240614?apiKey=YOUR_API_KEY" | jq .
+
+
+# Five Guys - Hot Sauce (ID: 240654)
+curl "https://api.spoonacular.com/food/menuItems/240654?apiKey=YOUR_API_KEY" | jq .
+
+
+# Five Guys - Mayonnaise (ID: 240658)
+curl "https://api.spoonacular.com/food/menuItems/240658?apiKey=YOUR_API_KEY" | jq .
+
+# Subway - Veggie Delite - Kids Meal Sandwiches (ID: 314960)
+curl "https://api.spoonacular.com/food/menuItems/314960?apiKey=YOUR_API_KEY" | jq .
+
+
+# Subway - Sunrise Subway Melt on 6" Flatbread - Egg White (ID: 315026)
+curl "https://api.spoonacular.com/food/menuItems/315026?apiKey=YOUR_API_KEY" | jq .
+
+
+# Subway - Fuze Brewed Tea, Unsweetened (ID: 263774)
+curl "https://api.spoonacular.com/food/menuItems/263774?apiKey=YOUR_API_KEY" | jq .
+
+
+# Subway - Juice Box (ID: 263775)
+curl "https://api.spoonacular.com/food/menuItems/263775?apiKey=YOUR_API_KEY" | jq .
+
+
+# Subway - Turkey Breast - Kids Meal Sandwiches (ID: 314961)
+curl "https://api.spoonacular.com/food/menuItems/314961?apiKey=YOUR_API_KEY" | jq .
+
+
+# Subway - Milk, Chocolate Flavored, Reduced Fat (ID: 263776)
+curl "https://api.spoonacular.com/food/menuItems/263776?apiKey=YOUR_API_KEY" | jq .
+
+
+# Subway - Roast Beef - Kids Meal Sandwiches (ID: 314959)
+curl "https://api.spoonacular.com/food/menuItems/314959?apiKey=YOUR_API_KEY" | jq .
+
+
+# Subway - Loaded Baked Potato (ID: 263906)
+curl "https://api.spoonacular.com/food/menuItems/263906?apiKey=YOUR_API_KEY" | jq .
+
+
+# Subway - Minestrone (ID: 263907)
+curl "https://api.spoonacular.com/food/menuItems/263907?apiKey=YOUR_API_KEY" | jq .
+
+
+# Subway - Black Forest Ham - Kids Meal Sandwiches (ID: 314958)
+curl "https://api.spoonacular.com/food/menuItems/314958?apiKey=YOUR_API_KEY" | jq .
+
+
+# Subway - Poblano Corn Chowder (ID: 263908)
+curl "https://api.spoonacular.com/food/menuItems/263908?apiKey=YOUR_API_KEY" | jq .
+
+
+# Subway - Milk, Low Fat (ID: 263777)
+curl "https://api.spoonacular.com/food/menuItems/263777?apiKey=YOUR_API_KEY" | jq .
+
+
+# Subway - 6" Chicken Pizziola Melt (ID: 314962)
+curl "https://api.spoonacular.com/food/menuItems/314962?apiKey=YOUR_API_KEY" | jq .
+
+
+# Subway - Chicken & Bacon Ranch on Flatbread (ID: 263839)
+curl "https://api.spoonacular.com/food/menuItems/263839?apiKey=YOUR_API_KEY" | jq .
+
+
+# Subway - Fuze Brewed Sweet Tea (ID: 263773)
+curl "https://api.spoonacular.com/food/menuItems/263773?apiKey=YOUR_API_KEY" | jq .
+
+# Just Fresh - Tuna Salad Mini Sandwich (ID: 376081)
+curl "https://api.spoonacular.com/food/menuItems/376081?apiKey=YOUR_API_KEY" | jq .
+
+
+# Just Fresh - Chicken Salad (ID: 375995)
+curl "https://api.spoonacular.com/food/menuItems/375995?apiKey=YOUR_API_KEY" | jq .
+
+
+# Just Fresh - Tuna Salad Sandwich (ID: 376012)
+curl "https://api.spoonacular.com/food/menuItems/376012?apiKey=YOUR_API_KEY" | jq .
+
+
+# Just Fresh - Garden Salad (ID: 375983)
+curl "https://api.spoonacular.com/food/menuItems/375983?apiKey=YOUR_API_KEY" | jq .
+
+
+# Groucho's Deli - Just Cheese Salad (ID: 374300)
+curl "https://api.spoonacular.com/food/menuItems/374300?apiKey=YOUR_API_KEY" | jq .
+
+
+# Groucho's Deli - Just Bacon Salad (ID: 374296)
+curl "https://api.spoonacular.com/food/menuItems/374296?apiKey=YOUR_API_KEY" | jq .
+
+
+# Just Fresh - Green Pea Salad (ID: 376057)
+curl "https://api.spoonacular.com/food/menuItems/376057?apiKey=YOUR_API_KEY" | jq .
+
+
+# Groucho's Deli - Just Bean Salad (ID: 374297)
+curl "https://api.spoonacular.com/food/menuItems/374297?apiKey=YOUR_API_KEY" | jq .
+
+
+# Just Fresh - Mini Chicken Salad (ID: 376100)
+curl "https://api.spoonacular.com/food/menuItems/376100?apiKey=YOUR_API_KEY" | jq .
+
+
+# Just Fresh - Mini Tuna Salad (ID: 376101)
+curl "https://api.spoonacular.com/food/menuItems/376101?apiKey=YOUR_API_KEY" | jq .
+
+
+# Just Fresh - Chicken Salad Plate (ID: 375981)
+curl "https://api.spoonacular.com/food/menuItems/375981?apiKey=YOUR_API_KEY" | jq .
+
+
+# Just Fresh - Tuna Salad Plate (ID: 375989)
+curl "https://api.spoonacular.com/food/menuItems/375989?apiKey=YOUR_API_KEY" | jq .
+
+
+# Just Fresh - Resolution Salad (ID: 375985)
+curl "https://api.spoonacular.com/food/menuItems/375985?apiKey=YOUR_API_KEY" | jq .
+
+
+# Uno Chicago Grill - Chopped Power Salad-Lunch (ID: 357768)
+curl "https://api.spoonacular.com/food/menuItems/357768?apiKey=YOUR_API_KEY" | jq .
+
+
+# Papa Murphy's - Club Salad (ID: 252232)
+curl "https://api.spoonacular.com/food/menuItems/252232?apiKey=YOUR_API_KEY" | jq .
+
+# Just Fresh - Tuna Salad Mini Sandwich (ID: 376081)
+curl "https://api.spoonacular.com/food/menuItems/376081?apiKey=YOUR_API_KEY" | jq .
+
+
+# Just Fresh - Chicken Salad (ID: 375995)
+curl "https://api.spoonacular.com/food/menuItems/375995?apiKey=YOUR_API_KEY" | jq .
+
+
+# Just Fresh - Tuna Salad Sandwich (ID: 376012)
+curl "https://api.spoonacular.com/food/menuItems/376012?apiKey=YOUR_API_KEY" | jq .
+
+
+# Just Fresh - Garden Salad (ID: 375983)
+curl "https://api.spoonacular.com/food/menuItems/375983?apiKey=YOUR_API_KEY" | jq .
+
+
+# Groucho's Deli - Just Cheese Salad (ID: 374300)
+curl "https://api.spoonacular.com/food/menuItems/374300?apiKey=YOUR_API_KEY" | jq .
+
+
+# Groucho's Deli - Just Bacon Salad (ID: 374296)
+curl "https://api.spoonacular.com/food/menuItems/374296?apiKey=YOUR_API_KEY" | jq .
+
+
+# Just Fresh - Green Pea Salad (ID: 376057)
+curl "https://api.spoonacular.com/food/menuItems/376057?apiKey=YOUR_API_KEY" | jq .
+
+
+# Groucho's Deli - Just Bean Salad (ID: 374297)
+curl "https://api.spoonacular.com/food/menuItems/374297?apiKey=YOUR_API_KEY" | jq .
+
+
+# Just Fresh - Mini Chicken Salad (ID: 376100)
+curl "https://api.spoonacular.com/food/menuItems/376100?apiKey=YOUR_API_KEY" | jq .
+
+
+# Just Fresh - Mini Tuna Salad (ID: 376101)
+curl "https://api.spoonacular.com/food/menuItems/376101?apiKey=YOUR_API_KEY" | jq .
+
+
+# Just Fresh - Chicken Salad Plate (ID: 375981)
+curl "https://api.spoonacular.com/food/menuItems/375981?apiKey=YOUR_API_KEY" | jq .
+
+
+# Just Fresh - Tuna Salad Plate (ID: 375989)
+curl "https://api.spoonacular.com/food/menuItems/375989?apiKey=YOUR_API_KEY" | jq .
+
+
+# Just Fresh - Resolution Salad (ID: 375985)
+curl "https://api.spoonacular.com/food/menuItems/375985?apiKey=YOUR_API_KEY" | jq .
+
+
+# Uno Chicago Grill - Chopped Power Salad-Lunch (ID: 357768)
+curl "https://api.spoonacular.com/food/menuItems/357768?apiKey=YOUR_API_KEY" | jq .
+
+
+# Papa Murphy's - Club Salad (ID: 252232)
+curl "https://api.spoonacular.com/food/menuItems/252232?apiKey=YOUR_API_KEY" | jq .
+
+# Freshii - Southwestern Soup (ID: 330444)
+curl "https://api.spoonacular.com/food/menuItems/330444?apiKey=YOUR_API_KEY" | jq .
+
+
+# Freshii - Baja Burrito (ID: 330440)
+curl "https://api.spoonacular.com/food/menuItems/330440?apiKey=YOUR_API_KEY" | jq .
+
+
+# Freshii - Muesli (ID: 330461)
+curl "https://api.spoonacular.com/food/menuItems/330461?apiKey=YOUR_API_KEY" | jq .
+
+
+# Freshii - Powerhouse Smoothie (ID: 330452)
+curl "https://api.spoonacular.com/food/menuItems/330452?apiKey=YOUR_API_KEY" | jq .
+
+
+# Freshii - Superbiotic Salad (ID: 330423)
+curl "https://api.spoonacular.com/food/menuItems/330423?apiKey=YOUR_API_KEY" | jq .
+
+
+# Freshii - Falafel (Bowl) (ID: 330432)
+curl "https://api.spoonacular.com/food/menuItems/330432?apiKey=YOUR_API_KEY" | jq .
+
+
+# Freshii - Blueberry Crumble Breakfast Oatmeal (ID: 330460)
+curl "https://api.spoonacular.com/food/menuItems/330460?apiKey=YOUR_API_KEY" | jq .
+
+
+# Freshii - Apple Cinnamon Breakfast Oatmeal (ID: 330457)
+curl "https://api.spoonacular.com/food/menuItems/330457?apiKey=YOUR_API_KEY" | jq .
+
+
+# Freshii - Steak, Egg & Cheese Breakfast Grilled Burrito (ID: 330456)
+curl "https://api.spoonacular.com/food/menuItems/330456?apiKey=YOUR_API_KEY" | jq .
+
+
+# Freshii - Cobb Salad (ID: 330419)
+curl "https://api.spoonacular.com/food/menuItems/330419?apiKey=YOUR_API_KEY" | jq .
+
+
+# Freshii - Pangoa (Bowl) (ID: 330435)
+curl "https://api.spoonacular.com/food/menuItems/330435?apiKey=YOUR_API_KEY" | jq .
+
+
+# Freshii - Warrior (Bowl) (ID: 330436)
+curl "https://api.spoonacular.com/food/menuItems/330436?apiKey=YOUR_API_KEY" | jq .
+
+
+# Freshii - Falafel Burrito (ID: 330439)
+curl "https://api.spoonacular.com/food/menuItems/330439?apiKey=YOUR_API_KEY" | jq .
+
+
+# Freshii - Spicy Lemongrass Soup (ID: 330445)
+curl "https://api.spoonacular.com/food/menuItems/330445?apiKey=YOUR_API_KEY" | jq .
+
+
+# Freshii - Green Energy Juice (ID: 330447)
+curl "https://api.spoonacular.com/food/menuItems/330447?apiKey=YOUR_API_KEY" | jq .
+
+# Pret A Manger - Grapefruit Juice (ID: 335671)
+curl "https://api.spoonacular.com/food/menuItems/335671?apiKey=YOUR_API_KEY" | jq .
+
+
+# Pret A Manger - Chicken and Avocado Salad (ID: 335638)
+curl "https://api.spoonacular.com/food/menuItems/335638?apiKey=YOUR_API_KEY" | jq .
+
+
+# Pret A Manger - Slim Super Greens (ID: 335605)
+curl "https://api.spoonacular.com/food/menuItems/335605?apiKey=YOUR_API_KEY" | jq .
+
+
+# Pret A Manger - Harvest Cookie (ID: 335704)
+curl "https://api.spoonacular.com/food/menuItems/335704?apiKey=YOUR_API_KEY" | jq .
+
+
+# Pret A Manger - Classic Carrot Cake (ID: 335705)
+curl "https://api.spoonacular.com/food/menuItems/335705?apiKey=YOUR_API_KEY" | jq .
+
+
+# Pret A Manger - Orange Juice (ID: 286695)
+curl "https://api.spoonacular.com/food/menuItems/286695?apiKey=YOUR_API_KEY" | jq .
+
+
+# Pret A Manger - Chocolate Trail Mix (ID: 335703)
+curl "https://api.spoonacular.com/food/menuItems/335703?apiKey=YOUR_API_KEY" | jq .
+
+
+# Pret A Manger - Large Fruit Salad (ID: 300053)
+curl "https://api.spoonacular.com/food/menuItems/300053?apiKey=YOUR_API_KEY" | jq .
+
+
+# Pret A Manger - Apple Juice (ID: 286663)
+curl "https://api.spoonacular.com/food/menuItems/286663?apiKey=YOUR_API_KEY" | jq .
+
+
+# Pret A Manger - Dark Chocolate w/ Sea Salt (ID: 335702)
+curl "https://api.spoonacular.com/food/menuItems/335702?apiKey=YOUR_API_KEY" | jq .
+
+
+# Pret A Manger - NEW! Falafel Mezze Salad (ID: 335641)
+curl "https://api.spoonacular.com/food/menuItems/335641?apiKey=YOUR_API_KEY" | jq .
+
+
+# Pret A Manger - Milk Chocolate w/ Cardamom (ID: 335706)
+curl "https://api.spoonacular.com/food/menuItems/335706?apiKey=YOUR_API_KEY" | jq .
+
+
+# Pret A Manger - Spanish Meatball (Regular) (ID: 335667)
+curl "https://api.spoonacular.com/food/menuItems/335667?apiKey=YOUR_API_KEY" | jq .
+
+
+# Pret A Manger - Pecan Bar (ID: 335709)
+curl "https://api.spoonacular.com/food/menuItems/335709?apiKey=YOUR_API_KEY" | jq .
+
+
+# Pret A Manger - Slim Balsamic Chicken and Avocado (ID: 335602)
+curl "https://api.spoonacular.com/food/menuItems/335602?apiKey=YOUR_API_KEY" | jq .
+
+# Pret A Manger - Grapefruit Juice (ID: 335671)
+curl "https://api.spoonacular.com/food/menuItems/335671?apiKey=YOUR_API_KEY" | jq .
+
+
+# Pret A Manger - Chicken and Avocado Salad (ID: 335638)
+curl "https://api.spoonacular.com/food/menuItems/335638?apiKey=YOUR_API_KEY" | jq .
+
+
+# Pret A Manger - Slim Super Greens (ID: 335605)
+curl "https://api.spoonacular.com/food/menuItems/335605?apiKey=YOUR_API_KEY" | jq .
+
+
+# Pret A Manger - Harvest Cookie (ID: 335704)
+curl "https://api.spoonacular.com/food/menuItems/335704?apiKey=YOUR_API_KEY" | jq .
+
+
+# Pret A Manger - Classic Carrot Cake (ID: 335705)
+curl "https://api.spoonacular.com/food/menuItems/335705?apiKey=YOUR_API_KEY" | jq .
+
+
+# Pret A Manger - Orange Juice (ID: 286695)
+curl "https://api.spoonacular.com/food/menuItems/286695?apiKey=YOUR_API_KEY" | jq .
+
+
+# Pret A Manger - Chocolate Trail Mix (ID: 335703)
+curl "https://api.spoonacular.com/food/menuItems/335703?apiKey=YOUR_API_KEY" | jq .
+
+
+# Pret A Manger - Large Fruit Salad (ID: 300053)
+curl "https://api.spoonacular.com/food/menuItems/300053?apiKey=YOUR_API_KEY" | jq .
+
+
+# Pret A Manger - Apple Juice (ID: 286663)
+curl "https://api.spoonacular.com/food/menuItems/286663?apiKey=YOUR_API_KEY" | jq .
+
+
+# Pret A Manger - Dark Chocolate w/ Sea Salt (ID: 335702)
+curl "https://api.spoonacular.com/food/menuItems/335702?apiKey=YOUR_API_KEY" | jq .
+
+
+# Pret A Manger - NEW! Falafel Mezze Salad (ID: 335641)
+curl "https://api.spoonacular.com/food/menuItems/335641?apiKey=YOUR_API_KEY" | jq .
+
+
+# Pret A Manger - Milk Chocolate w/ Cardamom (ID: 335706)
+curl "https://api.spoonacular.com/food/menuItems/335706?apiKey=YOUR_API_KEY" | jq .
+
+
+# Pret A Manger - Spanish Meatball (Regular) (ID: 335667)
+curl "https://api.spoonacular.com/food/menuItems/335667?apiKey=YOUR_API_KEY" | jq .
+
+
+# Pret A Manger - Pecan Bar (ID: 335709)
+curl "https://api.spoonacular.com/food/menuItems/335709?apiKey=YOUR_API_KEY" | jq .
+
+
+# Pret A Manger - Slim Balsamic Chicken and Avocado (ID: 335602)
+curl "https://api.spoonacular.com/food/menuItems/335602?apiKey=YOUR_API_KEY" | jq .
+
+# In N Out Burger - In-N-Out Iced Tea (ID: 419315)
+curl "https://api.spoonacular.com/food/menuItems/419315?apiKey=YOUR_API_KEY" | jq .
+
+
+# In N Out Burger - In-N-Out Milk (ID: 419317)
+curl "https://api.spoonacular.com/food/menuItems/419317?apiKey=YOUR_API_KEY" | jq .
+
+
+# In N Out Burger - In-N-Out Lemonade (ID: 419313)
+curl "https://api.spoonacular.com/food/menuItems/419313?apiKey=YOUR_API_KEY" | jq .
+
+
+# In N Out Burger - In-N-Out Strawberry Shake (ID: 419307)
+curl "https://api.spoonacular.com/food/menuItems/419307?apiKey=YOUR_API_KEY" | jq .
+
+
+# In N Out Burger - In-N-Out Chocolate Shake (ID: 419305)
+curl "https://api.spoonacular.com/food/menuItems/419305?apiKey=YOUR_API_KEY" | jq .
+
+
+# In N Out Burger - In-N-Out French Fries (ID: 243811)
+curl "https://api.spoonacular.com/food/menuItems/243811?apiKey=YOUR_API_KEY" | jq .
+
+
+# In N Out Burger - In-N-Out Hamburger w/Onion (ID: 243808)
+curl "https://api.spoonacular.com/food/menuItems/243808?apiKey=YOUR_API_KEY" | jq .
+
+
+# In N Out Burger - In-N-Out Dr Pepper (ID: 419311)
+curl "https://api.spoonacular.com/food/menuItems/419311?apiKey=YOUR_API_KEY" | jq .
+
+
+# In N Out Burger - In-N-Out Diet Coke (ID: 419309)
+curl "https://api.spoonacular.com/food/menuItems/419309?apiKey=YOUR_API_KEY" | jq .
+
+
+# In N Out Burger - In-N-Out Minute Maid Light Lemonade (ID: 419314)
+curl "https://api.spoonacular.com/food/menuItems/419314?apiKey=YOUR_API_KEY" | jq .
+
+
+# In N Out Burger - In-N-Out Root Beer (ID: 419312)
+curl "https://api.spoonacular.com/food/menuItems/419312?apiKey=YOUR_API_KEY" | jq .
+
+
+# In N Out Burger - In-N-Out Coffee (ID: 419316)
+curl "https://api.spoonacular.com/food/menuItems/419316?apiKey=YOUR_API_KEY" | jq .
+
+
+# In N Out Burger - In-N-Out Coca-Cola (ID: 419308)
+curl "https://api.spoonacular.com/food/menuItems/419308?apiKey=YOUR_API_KEY" | jq .
+
+
+# In N Out Burger - In-N-Out Vanilla Shake (ID: 419306)
+curl "https://api.spoonacular.com/food/menuItems/419306?apiKey=YOUR_API_KEY" | jq .
+
+
+# In N Out Burger - In-N-Out Protein Style Double (Double) (ID: 419304)
+curl "https://api.spoonacular.com/food/menuItems/419304?apiKey=YOUR_API_KEY" | jq .
+
+# Qdoba - Habanero BBQ Brisket Quesadilla (ID: 424283)
+curl "https://api.spoonacular.com/food/menuItems/424283?apiKey=YOUR_API_KEY" | jq .
+
+
+# Qdoba - Habanero BBQ Brisket Taco Salad (ID: 424281)
+curl "https://api.spoonacular.com/food/menuItems/424281?apiKey=YOUR_API_KEY" | jq .
+
+
+# Qdoba - Habanero BBQ Brisket Taco (ID: 424282)
+curl "https://api.spoonacular.com/food/menuItems/424282?apiKey=YOUR_API_KEY" | jq .
+
+
+# Qdoba - Cookie, Chocolate Chunk (ID: 424286)
+curl "https://api.spoonacular.com/food/menuItems/424286?apiKey=YOUR_API_KEY" | jq .
+
+
+# Qdoba - Apple Sauce (ID: 424284)
+curl "https://api.spoonacular.com/food/menuItems/424284?apiKey=YOUR_API_KEY" | jq .
+
+
+# Qdoba - Brownies (ID: 424285)
+curl "https://api.spoonacular.com/food/menuItems/424285?apiKey=YOUR_API_KEY" | jq .
+
+
+# Qdoba - Habanero BBQ Brisket 3-Cheese Nachos (ID: 424280)
+curl "https://api.spoonacular.com/food/menuItems/424280?apiKey=YOUR_API_KEY" | jq .
+
+
+# Qdoba - Habanero BBQ Brisket Loaded Totilla Soup (ID: 424279)
+curl "https://api.spoonacular.com/food/menuItems/424279?apiKey=YOUR_API_KEY" | jq .
+
+
+# Qdoba - Habanero BBQ Brisket Burrito (ID: 424278)
+curl "https://api.spoonacular.com/food/menuItems/424278?apiKey=YOUR_API_KEY" | jq .
+
+
+# Qdoba - The Gladiator Knockout Tacos (ID: 424276)
+curl "https://api.spoonacular.com/food/menuItems/424276?apiKey=YOUR_API_KEY" | jq .
+
+
+# Qdoba - Bohemian Veg Knockout Tacos (ID: 424277)
+curl "https://api.spoonacular.com/food/menuItems/424277?apiKey=YOUR_API_KEY" | jq .
+
+
+# Qdoba - Drunken Yardbird Knockout Tacos (ID: 424272)
+curl "https://api.spoonacular.com/food/menuItems/424272?apiKey=YOUR_API_KEY" | jq .
+
+
+# Qdoba - Triple Threat Knockout Tacos (ID: 424275)
+curl "https://api.spoonacular.com/food/menuItems/424275?apiKey=YOUR_API_KEY" | jq .
+
+
+# Qdoba - Mad Rancher Knockout Tacos (ID: 424273)
+curl "https://api.spoonacular.com/food/menuItems/424273?apiKey=YOUR_API_KEY" | jq .
+
+
+# Qdoba - Two Timer Knockout Tacos (ID: 424274)
+curl "https://api.spoonacular.com/food/menuItems/424274?apiKey=YOUR_API_KEY" | jq .
+
+# Blaze Pizza - Antipasto (entrée) (ID: 402629)
+curl "https://api.spoonacular.com/food/menuItems/402629?apiKey=YOUR_API_KEY" | jq .
+
+
+# Blaze Pizza - Beet & Goat Cheese (ID: 402630)
+curl "https://api.spoonacular.com/food/menuItems/402630?apiKey=YOUR_API_KEY" | jq .
+
+
+# Blaze Pizza - Simple Pie (ID: 402628)
+curl "https://api.spoonacular.com/food/menuItems/402628?apiKey=YOUR_API_KEY" | jq .
+
+
+# Blaze Pizza - Tomato Basil Ovaline (ID: 402635)
+curl "https://api.spoonacular.com/food/menuItems/402635?apiKey=YOUR_API_KEY" | jq .
+
+
+# Pizza Ranch - Trail Blazer - Large Original Crust (ID: 349591)
+curl "https://api.spoonacular.com/food/menuItems/349591?apiKey=YOUR_API_KEY" | jq .
+
+
+# Pizza Ranch - Trail Blazer - Thin Crust Large Pizza (ID: 349593)
+curl "https://api.spoonacular.com/food/menuItems/349593?apiKey=YOUR_API_KEY" | jq .
+
+
+# Pizza Ranch - Trail Blazer - Skillet Crust Medium Pizza, Buffet (ID: 349509)
+curl "https://api.spoonacular.com/food/menuItems/349509?apiKey=YOUR_API_KEY" | jq .
+
+
+# Pizza Ranch - Trail Blazer - Thin Crust Medium Pizza, Carry-out (ID: 349512)
+curl "https://api.spoonacular.com/food/menuItems/349512?apiKey=YOUR_API_KEY" | jq .
+
+
+# Pizza Ranch - Trail Blazer - Skillet Crust Medium Pizza, Carry-out (ID: 349510)
+curl "https://api.spoonacular.com/food/menuItems/349510?apiKey=YOUR_API_KEY" | jq .
+
+
+# Pizza Ranch - Trail Blazer - Skillet Crust Large Pizza (ID: 349592)
+curl "https://api.spoonacular.com/food/menuItems/349592?apiKey=YOUR_API_KEY" | jq .
+
+
+# Pizza Ranch - Trail Blazer - Thin Crust Medium Pizza, Buffet (ID: 349511)
+curl "https://api.spoonacular.com/food/menuItems/349511?apiKey=YOUR_API_KEY" | jq .
+
+
+# Pizza Ranch - Trail Blazer - Glutten-Free Crust (ID: 349616)
+curl "https://api.spoonacular.com/food/menuItems/349616?apiKey=YOUR_API_KEY" | jq .
+
+
+# Pizza Ranch - Trail Blazer - Thin Crust Small Pizza (ID: 349357)
+curl "https://api.spoonacular.com/food/menuItems/349357?apiKey=YOUR_API_KEY" | jq .
+
+
+# Pizza Ranch - Trail Blazer - Skillet Crust Small Pizza (ID: 349356)
+curl "https://api.spoonacular.com/food/menuItems/349356?apiKey=YOUR_API_KEY" | jq .
+
+
+# Pizza Ranch - Trail Blazer - Original Crust Small Pizza (ID: 349355)
+curl "https://api.spoonacular.com/food/menuItems/349355?apiKey=YOUR_API_KEY" | jq .
+
+# Panera Bread - Steak & White Cheddar Panini on Hoagie Roll (ID: 417561)
+curl "https://api.spoonacular.com/food/menuItems/417561?apiKey=YOUR_API_KEY" | jq .
+
+
+# Panera Bread - Caramel Latte (ID: 417462)
+curl "https://api.spoonacular.com/food/menuItems/417462?apiKey=YOUR_API_KEY" | jq .
+
+
+# Panera Bread - Lipton Brisk Raspberry Tea (ID: 417528)
+curl "https://api.spoonacular.com/food/menuItems/417528?apiKey=YOUR_API_KEY" | jq .
+
+
+# Panera Bread - Caramel Apple Thumbprint Scone (ID: 417429)
+curl "https://api.spoonacular.com/food/menuItems/417429?apiKey=YOUR_API_KEY" | jq .
+
+
+# Panera Bread - Green Goddess Dressing (ID: 417594)
+curl "https://api.spoonacular.com/food/menuItems/417594?apiKey=YOUR_API_KEY" | jq .
+
+
+# Panera Bread - Wild Blueberry Scone (ID: 251143)
+curl "https://api.spoonacular.com/food/menuItems/251143?apiKey=YOUR_API_KEY" | jq .
+
+
+# Panera Bread - French Toast Bagel (ID: 251110)
+curl "https://api.spoonacular.com/food/menuItems/251110?apiKey=YOUR_API_KEY" | jq .
+
+
+# Panera Bread - Tuna Salad Sandwich on Black Pepper Focaccia (ID: 417562)
+curl "https://api.spoonacular.com/food/menuItems/417562?apiKey=YOUR_API_KEY" | jq .
+
+
+# Panera Bread - Lipton Brisk Raspberry Tea (ID: 417527)
+curl "https://api.spoonacular.com/food/menuItems/417527?apiKey=YOUR_API_KEY" | jq .
+
+
+# Panera Bread - Orange Mini Scone (ID: 320006)
+curl "https://api.spoonacular.com/food/menuItems/320006?apiKey=YOUR_API_KEY" | jq .
+
+
+# Panera Bread - Mini Scones Variety Pack (ID: 417430)
+curl "https://api.spoonacular.com/food/menuItems/417430?apiKey=YOUR_API_KEY" | jq .
+
+
+# Panera Bread - Cobblestone Sweet Roll (ID: 417428)
+curl "https://api.spoonacular.com/food/menuItems/417428?apiKey=YOUR_API_KEY" | jq .
+
+
+# Panera Bread - Steak & White Cheddar Panini on Hoagie Roll (ID: 417560)
+curl "https://api.spoonacular.com/food/menuItems/417560?apiKey=YOUR_API_KEY" | jq .
+
+
+# Panera Bread - Chile Lime Rojo Ranch Dressing (ID: 417593)
+curl "https://api.spoonacular.com/food/menuItems/417593?apiKey=YOUR_API_KEY" | jq .
+
+
+# Panera Bread - Green Goddess Dressing (ID: 417595)
+curl "https://api.spoonacular.com/food/menuItems/417595?apiKey=YOUR_API_KEY" | jq .
+
+# Subway - Veggie Delite - Kids Meal Sandwiches (ID: 314960)
+curl "https://api.spoonacular.com/food/menuItems/314960?apiKey=YOUR_API_KEY" | jq .
+
+
+# Subway - Sunrise Subway Melt on 6" Flatbread - Egg White (ID: 315026)
+curl "https://api.spoonacular.com/food/menuItems/315026?apiKey=YOUR_API_KEY" | jq .
+
+
+# Subway - Fuze Brewed Tea, Unsweetened (ID: 263774)
+curl "https://api.spoonacular.com/food/menuItems/263774?apiKey=YOUR_API_KEY" | jq .
+
+
+# Subway - Juice Box (ID: 263775)
+curl "https://api.spoonacular.com/food/menuItems/263775?apiKey=YOUR_API_KEY" | jq .
+
+
+# Subway - Turkey Breast - Kids Meal Sandwiches (ID: 314961)
+curl "https://api.spoonacular.com/food/menuItems/314961?apiKey=YOUR_API_KEY" | jq .
+
+
+# Subway - Milk, Chocolate Flavored, Reduced Fat (ID: 263776)
+curl "https://api.spoonacular.com/food/menuItems/263776?apiKey=YOUR_API_KEY" | jq .
+
+
+# Subway - Roast Beef - Kids Meal Sandwiches (ID: 314959)
+curl "https://api.spoonacular.com/food/menuItems/314959?apiKey=YOUR_API_KEY" | jq .
+
+
+# Subway - Loaded Baked Potato (ID: 263906)
+curl "https://api.spoonacular.com/food/menuItems/263906?apiKey=YOUR_API_KEY" | jq .
+
+
+# Subway - Minestrone (ID: 263907)
+curl "https://api.spoonacular.com/food/menuItems/263907?apiKey=YOUR_API_KEY" | jq .
+
+
+# Subway - Black Forest Ham - Kids Meal Sandwiches (ID: 314958)
+curl "https://api.spoonacular.com/food/menuItems/314958?apiKey=YOUR_API_KEY" | jq .
+
+
+# Subway - Poblano Corn Chowder (ID: 263908)
+curl "https://api.spoonacular.com/food/menuItems/263908?apiKey=YOUR_API_KEY" | jq .
+
+
+# Subway - Milk, Low Fat (ID: 263777)
+curl "https://api.spoonacular.com/food/menuItems/263777?apiKey=YOUR_API_KEY" | jq .
+
+
+# Subway - 6" Chicken Pizziola Melt (ID: 314962)
+curl "https://api.spoonacular.com/food/menuItems/314962?apiKey=YOUR_API_KEY" | jq .
+
+
+# Subway - Chicken & Bacon Ranch on Flatbread (ID: 263839)
+curl "https://api.spoonacular.com/food/menuItems/263839?apiKey=YOUR_API_KEY" | jq .
+
+
+# Subway - Fuze Brewed Sweet Tea (ID: 263773)
+curl "https://api.spoonacular.com/food/menuItems/263773?apiKey=YOUR_API_KEY" | jq .
+
+# Blaze Pizza - Antipasto (entrée) (ID: 402629)
+curl "https://api.spoonacular.com/food/menuItems/402629?apiKey=YOUR_API_KEY" | jq .
+
+
+# Blaze Pizza - Beet & Goat Cheese (ID: 402630)
+curl "https://api.spoonacular.com/food/menuItems/402630?apiKey=YOUR_API_KEY" | jq .
+
+
+# Blaze Pizza - Simple Pie (ID: 402628)
+curl "https://api.spoonacular.com/food/menuItems/402628?apiKey=YOUR_API_KEY" | jq .
+
+
+# Blaze Pizza - Tomato Basil Ovaline (ID: 402635)
+curl "https://api.spoonacular.com/food/menuItems/402635?apiKey=YOUR_API_KEY" | jq .
+
+
+# Pizza Ranch - Trail Blazer - Large Original Crust (ID: 349591)
+curl "https://api.spoonacular.com/food/menuItems/349591?apiKey=YOUR_API_KEY" | jq .
+
+
+# Pizza Ranch - Trail Blazer - Thin Crust Large Pizza (ID: 349593)
+curl "https://api.spoonacular.com/food/menuItems/349593?apiKey=YOUR_API_KEY" | jq .
+
+
+# Pizza Ranch - Trail Blazer - Skillet Crust Medium Pizza, Buffet (ID: 349509)
+curl "https://api.spoonacular.com/food/menuItems/349509?apiKey=YOUR_API_KEY" | jq .
+
+
+# Pizza Ranch - Trail Blazer - Thin Crust Medium Pizza, Carry-out (ID: 349512)
+curl "https://api.spoonacular.com/food/menuItems/349512?apiKey=YOUR_API_KEY" | jq .
+
+
+# Pizza Ranch - Trail Blazer - Skillet Crust Medium Pizza, Carry-out (ID: 349510)
+curl "https://api.spoonacular.com/food/menuItems/349510?apiKey=YOUR_API_KEY" | jq .
+
+
+# Pizza Ranch - Trail Blazer - Skillet Crust Large Pizza (ID: 349592)
+curl "https://api.spoonacular.com/food/menuItems/349592?apiKey=YOUR_API_KEY" | jq .
+
+
+# Pizza Ranch - Trail Blazer - Thin Crust Medium Pizza, Buffet (ID: 349511)
+curl "https://api.spoonacular.com/food/menuItems/349511?apiKey=YOUR_API_KEY" | jq .
+
+
+# Pizza Ranch - Trail Blazer - Glutten-Free Crust (ID: 349616)
+curl "https://api.spoonacular.com/food/menuItems/349616?apiKey=YOUR_API_KEY" | jq .
+
+
+# Pizza Ranch - Trail Blazer - Thin Crust Small Pizza (ID: 349357)
+curl "https://api.spoonacular.com/food/menuItems/349357?apiKey=YOUR_API_KEY" | jq .
+
+
+# Pizza Ranch - Trail Blazer - Skillet Crust Small Pizza (ID: 349356)
+curl "https://api.spoonacular.com/food/menuItems/349356?apiKey=YOUR_API_KEY" | jq .
+
+
+# Pizza Ranch - Trail Blazer - Original Crust Small Pizza (ID: 349355)
+curl "https://api.spoonacular.com/food/menuItems/349355?apiKey=YOUR_API_KEY" | jq .
+

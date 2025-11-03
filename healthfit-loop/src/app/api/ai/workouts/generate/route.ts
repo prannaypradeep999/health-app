@@ -1,12 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { cookies } from 'next/headers';
 import { prisma } from '@/lib/db';
-import { buildWorkoutPlannerPrompt, type WorkoutUserContext } from '@/lib/ai/prompts-workout';
 
-const OPENAI_API_KEY = process.env.GPT_KEY;
-if (!OPENAI_API_KEY) {
-  throw new Error('GPT_KEY environment variable is required');
-}
+export const runtime = 'nodejs';
 
 interface WorkoutDay {
   day: string;
@@ -14,215 +10,324 @@ interface WorkoutDay {
   focus: string;
   estimatedTime: string;
   targetMuscles: string[];
-  warmup: Array<{
-    exercise: string;
-    duration: string;
-    purpose: string;
-  }>;
-  mainWorkout: Array<{
-    exercise: string;
-    sets?: number;
-    reps?: string;
-    duration?: string;
-    restBetweenSets?: string;
+  description: string;
+  exercises: Array<{
+    name: string;
+    sets: number;
+    reps: string;
+    restTime: string;
+    description: string;
     instructions: string;
-    formCues: string[];
+    formTips: string[];
     modifications: {
       beginner: string;
       intermediate: string;
       advanced: string;
     };
-    safetyNotes: string;
-  }>;
-  cooldown: Array<{
-    exercise: string;
-    duration: string;
-    instructions: string;
+    muscleTargets: string[];
   }>;
 }
 
 interface WorkoutPlan {
   weeklyPlan: WorkoutDay[];
-  weeklyNotes: string;
+  overview: {
+    splitType: string;
+    description: string;
+    whyThisSplit: string;
+    expectedResults: string[];
+  };
   progressionTips: string[];
   safetyReminders: string[];
   equipmentNeeded: string[];
-  estimatedCaloriesBurn: number;
-}
-
-function getStartOfWeek(date: Date): Date {
-  const d = new Date(date);
-  const day = d.getDay();
-  const diff = d.getDate() - day + (day === 0 ? -6 : 1); // Monday
-  d.setDate(diff);
-  d.setUTCHours(0, 0, 0, 0);
-  return d;
 }
 
 export async function POST(req: NextRequest) {
+  const startTime = Date.now();
+  console.log(`[WORKOUT-GENERATION] 🚀 Starting workout generation at ${new Date().toISOString()}`);
+
   try {
-    console.log('[DEBUG-Workout] Starting workout plan generation');
-    
-    const { forceRegenerate } = await req.json();
+    let requestData = {};
+    try {
+      requestData = await req.json();
+    } catch (error) {
+      console.log(`[WORKOUT-GENERATION] 📄 Empty request body, using defaults`);
+    }
+    const { backgroundGeneration, testSurveyData } = requestData;
     const cookieStore = await cookies();
     const userId = cookieStore.get('user_id')?.value;
     const sessionId = cookieStore.get('guest_session')?.value;
     const surveyId = cookieStore.get('survey_id')?.value;
-    
-    console.log('[DEBUG-Workout] Cookie values:', { userId, sessionId, surveyId });
 
+    console.log('[WORKOUT-GENERATION] 📊 Cookie data:', { userId, sessionId, surveyId });
+
+    // Get survey data
     let surveyData = null;
     if (userId) {
       const user = await prisma.user.findUnique({
         where: { id: userId },
         include: { activeSurvey: true }
       });
-      
-      if (user) {
-        surveyData = user?.activeSurvey;
-        console.log('[DEBUG-Workout] User lookup:', { userFound: !!user, hasSurvey: !!user?.activeSurvey });
-      } else {
-        console.log('[DEBUG-Workout] Stale userId cookie found');
-        const response = NextResponse.json({ 
-          error: 'Authentication expired. Please refresh the page and try again.' 
-        }, { status: 401 });
-        response.cookies.delete('user_id');
-        return response;
-      }
-    }
-    
-    // If no survey found via user, try direct surveyId lookup
-    if (!surveyData && surveyId) {
-      console.log('[DEBUG-Workout] Falling back to direct survey lookup');
+      surveyData = user?.activeSurvey;
+    } else if (surveyId) {
       surveyData = await prisma.surveyResponse.findUnique({
         where: { id: surveyId }
       });
+    } else if (sessionId) {
+      // Check for guest session survey
+      surveyData = await prisma.surveyResponse.findFirst({
+        where: { sessionId: sessionId }
+      });
+    }
+
+    // Allow test data for development
+    if (!surveyData && testSurveyData) {
+      console.log('[WORKOUT-GENERATION] 🧪 Using test survey data for development');
+      surveyData = testSurveyData;
     }
 
     if (!surveyData) {
-      console.log('[DEBUG-Workout] No survey data found');
+      console.log('[WORKOUT-GENERATION] ❌ No survey data found');
       return NextResponse.json({ error: 'Survey data required' }, { status: 400 });
     }
 
-    console.log(`[DEBUG-Workout] User: ${surveyData.firstName}, Goal: ${surveyData.goal}, Activity: ${surveyData.activityLevel}`);
+    console.log('[WORKOUT-GENERATION] ✅ Survey data found:', {
+      goal: surveyData.goal,
+      activityLevel: surveyData.activityLevel,
+      age: surveyData.age,
+      workoutPrefs: !!surveyData.workoutPreferencesJson
+    });
 
-    // Calculate workout parameters based on user profile
-    const activityMap = {
-      'SEDENTARY': { fitnessLevel: 'beginner' as const, days: 3, duration: 20 },
-      'LIGHTLY_ACTIVE': { fitnessLevel: 'beginner' as const, days: 4, duration: 25 },
-      'MODERATELY_ACTIVE': { fitnessLevel: 'intermediate' as const, days: 5, duration: 35 },
-      'VERY_ACTIVE': { fitnessLevel: 'advanced' as const, days: 6, duration: 45 },
-      'ATHLETE': { fitnessLevel: 'advanced' as const, days: 6, duration: 60 }
-    };
+    // Generate comprehensive workout plan with GPT
+    console.log('[WORKOUT-GENERATION] 🎯 Generating comprehensive workout plan with GPT...');
+    const generationStartTime = Date.now();
+    const workoutPlan = await generateWorkoutPlan(surveyData);
+    const generationTime = Date.now() - generationStartTime;
+    console.log(`[WORKOUT-GENERATION] ✅ Generation completed in ${generationTime}ms`);
 
-    const userActivity = activityMap[surveyData.activityLevel as keyof typeof activityMap] || activityMap.MODERATELY_ACTIVE;
-    
-    const startOfWeek = getStartOfWeek(new Date());
-    const userContext: WorkoutUserContext = {
-      surveyData,
-      weekOf: startOfWeek.toISOString().split('T')[0],
-      fitnessLevel: userActivity.fitnessLevel,
-      availableDays: userActivity.days,
-      preferredDuration: userActivity.duration
-    };
+    const totalTime = Date.now() - startTime;
+    console.log(`[WORKOUT-GENERATION] 🏁 Total generation time: ${totalTime}ms (${(totalTime/1000).toFixed(2)}s)`);
 
-    console.log(`[DEBUG-Workout] Context: ${userActivity.fitnessLevel} level, ${userActivity.days} days, ${userActivity.duration}min sessions`);
+    // Save to database
+    try {
+      console.log(`[DATABASE] 💾 Saving workout plan to database for survey: ${surveyData.id}`);
+      const weekOfDate = new Date();
+      weekOfDate.setHours(0, 0, 0, 0);
 
-    // Generate workout plan with LLM
-    const workoutPlan = await generateWorkoutPlanWithLLM(userContext);
+      await prisma.workoutPlan.create({
+        data: {
+          surveyId: surveyData.id,
+          userId: userId || null,
+          weekOf: weekOfDate,
+          planData: workoutPlan,
+          status: 'active'
+        }
+      });
+      console.log(`[DATABASE] ✅ Workout plan saved successfully`);
+    } catch (dbError) {
+      console.error(`[DATABASE] ❌ Failed to save workout plan:`, dbError);
+      // Continue anyway since we have the data
+    }
 
-    // Store in database (simplified - you may want a separate WorkoutPlan model)
-    const newPlan = {
-      id: `workout-${surveyData.id}-${Date.now()}`,
-      userId: userId || null,
-      surveyId: surveyData.id,
-      weekOf: startOfWeek,
-      plan: workoutPlan,
-      createdAt: new Date()
-    };
-
-    console.log(`[DEBUG-Workout] Successfully generated ${workoutPlan.weeklyPlan.length}-day workout plan`);
-    
     return NextResponse.json({
       success: true,
-      workoutPlan: newPlan,
+      workoutPlan: workoutPlan,
+      timings: {
+        generationTime: `${generationTime}ms`,
+        totalTime: `${totalTime}ms`
+      },
       generatedAt: new Date().toISOString()
     });
 
   } catch (error) {
-    console.error('[DEBUG-Workout] Error:', error);
+    const totalTime = Date.now() - startTime;
+    console.error(`[WORKOUT-GENERATION] ❌ Error after ${totalTime}ms:`, error);
     return NextResponse.json(
-      { error: 'Failed to generate workout plan' },
+      { error: 'Failed to generate workout plan', details: error.message },
       { status: 500 }
     );
   }
 }
 
-async function generateWorkoutPlanWithLLM(userContext: WorkoutUserContext): Promise<WorkoutPlan> {
-  const prompt = buildWorkoutPlannerPrompt(userContext);
-  
-  console.log('[DEBUG-Workout-LLM] Starting GPT-4o-mini for workout generation');
-  
-  const messages = [
-    {
-      role: 'system',
-      content: prompt
-    },
-    {
-      role: 'user', 
-      content: `Generate my complete 7-day workout plan for ${userContext.surveyData.goal} goal at ${userContext.fitnessLevel} fitness level. 
+async function generateWorkoutPlan(surveyData: any): Promise<WorkoutPlan> {
+  // Parse workout preferences if available
+  const workoutPrefs = surveyData.workoutPreferencesJson || {};
 
-CRITICAL: Return ONLY pure JSON starting with { and ending with } - no explanations, no markdown blocks, no extra text whatsoever.`
+  const systemPrompt = `You are an expert fitness trainer with decades of experience in exercise science, biomechanics, and program design. You create science-based workout programs following established methodologies from top fitness professionals and research institutions.
+
+CORE EXPERTISE AREAS:
+- Exercise science and biomechanics (NASM, ACSM guidelines)
+- Progressive overload principles (Schoenfeld, 2010-2023 research)
+- Training splits: PPL (Helms et al.), Upper/Lower (Candow & Burke), Full Body (Gentil et al.)
+- Periodization (Bompa & Haff methodologies)
+- Injury prevention (Gray Cook movement patterns)
+- Age-specific adaptations (HIIT protocols, senior training)
+
+ESTABLISHED TRAINING METHODOLOGIES:
+1. Push/Pull/Legs (PPL) - Brad Schoenfeld, Eric Helms protocols
+2. Upper/Lower Split - Mike Israetel, Renaissance Periodization
+3. Full Body - Chad Waterbury, Dan John methodologies
+4. Athletic Performance - NSCA, Functional Movement Screen protocols
+
+SCIENTIFIC PRINCIPLES YOU FOLLOW:
+- Progressive overload (2.5-10% weekly increases)
+- Specificity principle (SAID - Specific Adaptation to Imposed Demands)
+- Recovery protocols (48-72hr muscle protein synthesis cycles)
+- Volume landmarks (Dr. Mike Israetel's training volumes)
+- Intensity zones based on goal-specific adaptations
+
+You MUST return ONLY valid JSON. No markdown, no explanations, no additional text. Start with { and end with }. Ensure all strings are properly escaped and terminated.`;
+
+  const userPrompt = `You are an expert fitness trainer with decades of experience. Create a comprehensive 7-day workout plan based on established fitness science and expert methodologies.
+
+CORE EXPERTISE AREAS:
+- Exercise science and biomechanics (NASM, ACSM guidelines)
+- Progressive overload principles (Schoenfeld, 2010-2023 research)
+- Training splits: PPL (Helms et al.), Upper/Lower (Candow & Burke), Full Body (Gentil et al.)
+- Periodization (Bompa & Haff methodologies)
+- Injury prevention (Gray Cook movement patterns)
+
+ESTABLISHED TRAINING METHODOLOGIES:
+1. Push/Pull/Legs (PPL) - Brad Schoenfeld, Eric Helms protocols
+2. Upper/Lower Split - Mike Israetel, Renaissance Periodization
+3. Full Body - Chad Waterbury, Dan John methodologies
+4. Athletic Performance - NSCA, Functional Movement Screen protocols
+
+USER PROFILE:
+- Age: ${surveyData.age}, Sex: ${surveyData.sex}
+- Primary Goal: ${surveyData.goal}
+- Activity Level: ${surveyData.activityLevel}
+- Workout Experience: ${workoutPrefs.fitnessExperience || 'intermediate'}
+- Available Equipment: ${workoutPrefs.equipmentAccess?.join(', ') || 'bodyweight, basic equipment'}
+- Preferred Workout Types: ${workoutPrefs.workoutTypes?.join(', ') || 'varied'}
+- Available Days: ${workoutPrefs.availableDays?.length || 5} days per week
+- Session Duration: ${workoutPrefs.preferredDuration || 45} minutes
+- Injury Considerations: ${workoutPrefs.injuryConsiderations?.join(', ') || 'none'}
+
+EXPERT METHODOLOGY SELECTION:
+Based on research and established protocols, select the BEST training split for this user:
+
+FOR MUSCLE_GAIN: Push/Pull/Legs (PPL) split - Maximizes hypertrophy through optimal volume distribution and recovery (Schoenfeld et al.)
+FOR WEIGHT_LOSS: Full Body + HIIT protocols - Maximizes caloric expenditure and metabolic benefits (Boutcher, 2011)
+FOR ENDURANCE: Polarized training model - 80/20 rule from elite endurance research (Seiler, 2010)
+FOR STRENGTH: Upper/Lower with compound focus - Powerlifting methodology (Israetel et al.)
+
+EXERCISE SELECTION PRINCIPLES:
+1. Compound movements (70%): Squat, deadlift, bench, row patterns
+2. Isolation work (20%): Target specific muscle groups
+3. Stability/mobility (10%): Core, balance, flexibility work
+
+REP RANGES (Evidence-based):
+- Strength: 3-6 reps @ 85-95% 1RM
+- Hypertrophy: 6-12 reps @ 65-85% 1RM
+- Endurance: 12-20+ reps @ 50-65% 1RM
+- Power: 3-5 reps @ 30-60% 1RM (explosive)
+
+REST PERIODS (Research-backed):
+- Strength: 3-5 minutes (Ratamess et al.)
+- Hypertrophy: 1-3 minutes (Schoenfeld et al.)
+- Endurance: 30-90 seconds (circuit style)
+
+RETURN EXACTLY THIS JSON STRUCTURE:
+
+{
+  "weeklyPlan": [
+    {
+      "day": "monday",
+      "restDay": false,
+      "focus": "Upper Body Push (Chest, Shoulders, Triceps)",
+      "estimatedTime": "45 minutes",
+      "targetMuscles": ["chest", "shoulders", "triceps"],
+      "description": "Welcome to your Push day! Today we're targeting your chest, shoulders, and triceps using proven push movement patterns. This workout follows the Push/Pull/Legs methodology used by top bodybuilders and strength coaches. The exercises are sequenced to maximize muscle activation while preventing fatigue overlap. Perfect for your ${surveyData.goal} goal because pushing movements build upper body strength and size while burning significant calories. You'll feel accomplished and stronger after this session!",
+      "exercises": [
+        {
+          "name": "Push-ups (or Bench Press if available)",
+          "sets": 3,
+          "reps": "8-12",
+          "restTime": "90 seconds",
+          "description": "The king of upper body pushing exercises - builds chest, shoulders, and triceps simultaneously",
+          "instructions": "Start in plank position, hands slightly wider than shoulders. Lower chest to floor with control, then push back up explosively. Keep core tight throughout.",
+          "formTips": ["Keep body in straight line", "Lower chest to floor", "Drive through palms", "Breathe out on push up"],
+          "modifications": {
+            "beginner": "Knee push-ups or wall push-ups, focus on form over reps",
+            "intermediate": "Standard push-ups, aim for full range of motion",
+            "advanced": "Diamond push-ups, decline push-ups, or add weight/resistance"
+          },
+          "muscleTargets": ["chest", "shoulders", "triceps", "core"]
+        }
+      ]
     }
-  ];
+  ],
+  "overview": {
+    "splitType": "Push/Pull/Legs (PPL)",
+    "description": "This evidence-based Push/Pull/Legs split is designed specifically for your ${surveyData.goal} goal. It's the gold standard used by elite bodybuilders and strength athletes because it maximizes muscle protein synthesis while allowing optimal recovery between sessions.",
+    "whyThisSplit": "PPL split allows you to train each muscle group with high volume while providing 48-72 hours recovery (optimal for muscle protein synthesis). Research by Schoenfeld et al. shows this frequency maximizes hypertrophy and strength gains. Perfect for your ${workoutPrefs.fitnessExperience || 'intermediate'} experience level.",
+    "expectedResults": ["Increased muscle mass and strength", "Improved body composition", "Better movement patterns", "Enhanced metabolic rate"]
+  },
+  "progressionTips": [
+    "Week 1-2: Master form and establish movement patterns - focus on quality over quantity",
+    "Week 3-4: Increase reps by 1-2 per set when you can complete all sets with perfect form",
+    "Week 5-6: Add resistance (weight, bands) or progress to harder exercise variations",
+    "Week 7: Deload week - reduce volume by 40% to allow supercompensation",
+    "Always prioritize form over ego - perfect reps build perfect results"
+  ],
+  "safetyReminders": [
+    "Dynamic warm-up is mandatory - prepares nervous system and reduces injury risk by 50%",
+    "Stop immediately if you feel sharp pain (different from muscle fatigue)",
+    "Maintain proper hydration - dehydration reduces performance by 10-15%",
+    "Cool-down and stretching aid recovery and reduce next-day soreness",
+    "Listen to your body - extra rest days are better than training through injury",
+    "Progressive overload should be gradual - 2.5-10% increases per week maximum"
+  ],
+  "equipmentNeeded": ["Based on user preferences and exercise selection"]
+}
+
+CRITICAL REQUIREMENTS:
+1. Create ALL 7 days (monday through sunday) - 5 training days + 2 rest days
+2. Rest days: restDay: true, empty exercises array
+3. Each training day: 3-4 exercises maximum (to fit token limit)
+4. Keep descriptions concise but motivating
+5. Include beginner/intermediate/advanced modifications
+6. Focus on established exercises and proper form
+
+Generate the complete 7-day plan now with expert-level detail and motivating descriptions:
+
+CRITICAL: Return PURE JSON only. No markdown, no text before/after. Must start with { and end with }.`;
 
   const response = await fetch('https://api.openai.com/v1/chat/completions', {
     method: 'POST',
     headers: {
-      'Authorization': `Bearer ${OPENAI_API_KEY}`,
+      'Authorization': `Bearer ${process.env.GPT_KEY}`,
       'Content-Type': 'application/json',
     },
     body: JSON.stringify({
       model: 'gpt-4o-mini',
-      messages,
+      messages: [
+        {
+          role: 'system',
+          content: 'You must respond with valid JSON only. Start with { and end with }. No markdown, no code blocks, no additional text.'
+        },
+        { role: 'user', content: userPrompt }
+      ],
       response_format: { type: 'json_object' },
-      temperature: 0.3,
-      max_tokens: 8000
+      temperature: 0.2,
+      max_tokens: 4000
     })
   });
 
   if (!response.ok) {
-    const errorText = await response.text();
-    console.error('[DEBUG-Workout-LLM] OpenAI error:', response.status);
-    console.error('[DEBUG-Workout-LLM] OpenAI error details:', errorText);
-    throw new Error(`OpenAI API error: ${response.status} - ${errorText}`);
+    console.error('[GPT-WORKOUT] ❌ API error:', response.status);
+    throw new Error(`GPT API error: ${response.status}`);
   }
 
   const completion = await response.json();
   const workoutContent = completion.choices[0].message.content;
 
-  console.log('[DEBUG-Workout-LLM] Raw response length:', workoutContent.length);
-
   try {
     const workoutPlan = JSON.parse(workoutContent) as WorkoutPlan;
-    
-    // Validate the workout plan structure
-    if (!workoutPlan.weeklyPlan || !Array.isArray(workoutPlan.weeklyPlan)) {
-      throw new Error('Invalid workout plan structure: missing weeklyPlan array');
-    }
-
-    if (workoutPlan.weeklyPlan.length !== 7) {
-      throw new Error(`Invalid workout plan: expected 7 days, got ${workoutPlan.weeklyPlan.length}`);
-    }
-
-    console.log(`[DEBUG-Workout-LLM] Successfully parsed workout plan with ${workoutPlan.weeklyPlan.length} days`);
-    console.log(`[DEBUG-Workout-LLM] Active days: ${workoutPlan.weeklyPlan.filter(d => !d.restDay).length}, Rest days: ${workoutPlan.weeklyPlan.filter(d => d.restDay).length}`);
-
+    console.log(`[GPT-WORKOUT] ✅ Successfully generated ${workoutPlan.weeklyPlan.length} workout days`);
     return workoutPlan;
-    
   } catch (parseError) {
-    console.error('[DEBUG-Workout-LLM] JSON parsing failed:', parseError);
-    console.error('[DEBUG-Workout-LLM] Raw content:', workoutContent.substring(0, 500));
-    throw new Error('Failed to parse workout plan JSON response');
+    console.error('[GPT-WORKOUT] ❌ JSON parse error:', parseError);
+    throw new Error('Failed to parse workout plan JSON');
   }
 }

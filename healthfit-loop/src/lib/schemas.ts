@@ -1,25 +1,44 @@
 import { z } from 'zod';
 
 export const SurveySchema = z.object({
-  email: z.string().email(),
-  firstName: z.string().optional(),
-  lastName: z.string().optional(),
-  age: z.number().int().min(13).max(100).optional(),
-  sex: z.string().optional(),
-  height: z.string().optional(),
-  weight: z.number().int().min(80).max(400).optional(),
-  zipCode: z.string().optional(),
-  goal: z.enum(['WEIGHT_LOSS', 'MUSCLE_GAIN', 'ENDURANCE', 'GENERAL_WELLNESS']),
-  activityLevel: z.string().optional(),
-  budgetTier: z.string().min(1),
+  email: z.string().min(1, "Email is required").email("Invalid email format"),
+  firstName: z.string().min(1, "First name is required"),
+  lastName: z.string().min(1, "Last name is required"),
+  age: z.number().int().min(13, "Must be at least 13 years old").max(120, "Invalid age"),
+  sex: z.enum(['male', 'female', 'other'], { errorMap: () => ({ message: "Please select your sex" }) }),
+  height: z.number().int().min(36, "Height must be at least 36 inches").max(96, "Height must be less than 96 inches"),
+  weight: z.number().int().min(50, "Weight must be at least 50 lbs").max(600, "Weight must be less than 600 lbs"),
+
+  // Full address fields
+  streetAddress: z.string().min(1, "Street address is required"),
+  city: z.string().min(1, "City is required"),
+  state: z.string().min(1, "State is required"),
+  zipCode: z.string().min(1, "ZIP code is required"),
+  country: z.string().default("United States"),
+  goal: z.enum(['WEIGHT_LOSS', 'MUSCLE_GAIN', 'ENDURANCE', 'GENERAL_WELLNESS'], { errorMap: () => ({ message: "Please select a goal" }) }),
+  activityLevel: z.enum(['SEDENTARY', 'LIGHTLY_ACTIVE', 'MODERATELY_ACTIVE', 'VERY_ACTIVE'], { errorMap: () => ({ message: "Please select your activity level" }) }),
+  budgetTier: z.enum(['under_200', '200_400', '400_600', '600_plus'], { errorMap: () => ({ message: "Please select a budget tier" }) }),
   dietPrefs: z.array(z.string()).default([]),
-  mealsOutPerWeek: z.number().int().min(0).max(14).optional(),
+  mealsOutPerWeek: z.number().int().min(0).max(21).default(7),
   distancePreference: z.enum(['close', 'medium', 'far']).default('medium'),
-  
+
   // New cuisine and food preferences
   preferredCuisines: z.array(z.string()).default([]),
   preferredFoods: z.array(z.string()).default([]),
-  
+
+  // Enhanced workout preferences
+  workoutPreferences: z
+    .object({
+      preferredDuration: z.number().int().min(15).max(120).default(45),
+      availableDays: z.array(z.string()).default([]),
+      workoutTypes: z.array(z.string()).default([]),
+      equipmentAccess: z.array(z.string()).default(['bodyweight']),
+      fitnessExperience: z.enum(['beginner', 'intermediate', 'advanced']).default('intermediate'),
+      injuryConsiderations: z.array(z.string()).default([]),
+      timePreferences: z.array(z.string()).default([]),
+    })
+    .optional(),
+
   biomarkers: z
     .object({
       cholesterol: z.number().min(0).max(500).optional(),
@@ -28,6 +47,18 @@ export const SurveySchema = z.object({
     })
     .partial()
     .optional(),
+
+  // Filler questions for background generation
+  fillerQuestions: z
+    .object({
+      cookingFrequency: z.string().optional(),
+      foodAllergies: z.array(z.string()).default([]),
+      eatingOutOccasions: z.array(z.string()).default([]),
+      healthGoalPriority: z.string().optional(),
+      motivationLevel: z.string().optional(),
+    })
+    .optional(),
+
   source: z.string().optional(),
 });
 

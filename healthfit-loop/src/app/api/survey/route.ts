@@ -9,9 +9,13 @@ export const runtime = 'nodejs';
 export async function POST(req: Request) {
   try {
     const payload = await req.json();
+    console.log(`[SURVEY] 📝 Survey submission received. Step: ${payload.currentStep || 'final'}`);
+
     const parsed = SurveySchema.safeParse(payload);
-    
+
     if (!parsed.success) {
+      console.error('[POST /api/survey] Validation failed:', JSON.stringify(parsed.error.flatten(), null, 2));
+      console.error('[POST /api/survey] Input data:', JSON.stringify(payload, null, 2));
       return NextResponse.json(
         { error: 'Invalid input', details: parsed.error.flatten() },
         { status: 400 }
@@ -33,7 +37,13 @@ export async function POST(req: Request) {
       sex,
       height,
       weight,
+
+      // Full address fields
+      streetAddress,
+      city,
+      state,
       zipCode,
+      country,
       goal,
       activityLevel,
       budgetTier,
@@ -42,6 +52,7 @@ export async function POST(req: Request) {
       distancePreference,
       preferredCuisines,
       preferredFoods,
+      workoutPreferences,
       biomarkers,
       source,
     } = parsed.data;
@@ -55,15 +66,22 @@ export async function POST(req: Request) {
         sex: sex || '',
         height: height || '',
         weight: weight || 0,
+
+        // Full address fields
+        streetAddress: streetAddress || '',
+        city: city || '',
+        state: state || '',
         zipCode: zipCode || '',
+        country: country || 'United States',
         goal,
         activityLevel: activityLevel || '',
-        budgetTier: budgetTier || '',
+        budgetTier: budgetTier || 'medium',
         dietPrefs: dietPrefs || [],
         mealsOutPerWeek: mealsOutPerWeek || 0,
         distancePreference: distancePreference || 'medium',
         preferredCuisines: preferredCuisines || [],
         preferredFoods: preferredFoods || [],
+        workoutPreferencesJson: workoutPreferences || undefined,
         biomarkerJson: biomarkers || undefined,
         source: source || 'web',
         isGuest: true,
@@ -86,10 +104,46 @@ export async function POST(req: Request) {
       maxAge: 60 * 60 * 24 * 7
     });
 
-    return NextResponse.json({ 
-      ok: true, 
+    // Check if this is step 4 completion to trigger progressive generation
+    if (payload.currentStep === 4) {
+      console.log('[PROGRESSIVE] 🚀 Step 4 completed - triggering background restaurant discovery');
+      console.log('[PROGRESSIVE] 📊 Survey data for discovery:', {
+        surveyId: survey.id,
+        sessionId,
+        goal: parsed.data.goal,
+        city: parsed.data.city,
+        state: parsed.data.state,
+        cuisines: parsed.data.preferredCuisines?.length || 0,
+        distancePreference: parsed.data.distancePreference
+      });
+
+      // Trigger background restaurant discovery (non-blocking)
+      triggerBackgroundRestaurantDiscovery(survey.id, sessionId, parsed.data).catch(error => {
+        console.error('[PROGRESSIVE] ❌ Background restaurant discovery failed:', error);
+      });
+    } else if (payload.currentStep === 6) {
+      console.log('[WORKOUT-TRIGGER] 🏋️ Step 6 completed - triggering background workout generation');
+      console.log('[WORKOUT-TRIGGER] 📊 Survey data for workout generation:', {
+        surveyId: survey.id,
+        sessionId,
+        goal: parsed.data.goal,
+        activityLevel: parsed.data.activityLevel,
+        age: parsed.data.age,
+        workoutPrefs: !!parsed.data.workoutPreferences
+      });
+
+      // Trigger background workout generation (non-blocking)
+      triggerBackgroundWorkoutGeneration(survey.id, sessionId, parsed.data).catch(error => {
+        console.error('[WORKOUT-TRIGGER] ❌ Background workout generation failed:', error);
+      });
+    } else {
+      console.log(`[PROGRESSIVE] ℹ️ Step ${payload.currentStep || 'final'} completed - no background processes triggered`);
+    }
+
+    return NextResponse.json({
+      ok: true,
       surveyId: survey.id,
-      sessionId 
+      sessionId
     });
   } catch (err) {
     console.error('[POST /api/survey] Error:', err);
@@ -136,5 +190,109 @@ export async function GET(req: Request) {
   } catch (err) {
     console.error('[GET /api/survey] Error:', err);
     return NextResponse.json({ error: 'Server error' }, { status: 500 });
+  }
+}
+
+// Progressive generation functions
+async function triggerBackgroundRestaurantDiscovery(surveyId: string, sessionId: string, surveyData: any) {
+  const startTime = Date.now();
+  try {
+    console.log('[PROGRESSIVE] 🚀 Starting background restaurant discovery for survey:', surveyId);
+    console.log('[PROGRESSIVE] 🌐 Making fetch request to restaurant discovery endpoint...');
+
+    const baseUrl = process.env.NODE_ENV === 'production'
+      ? 'https://your-production-domain.com'
+      : 'http://localhost:3001';
+
+    const fetchStartTime = Date.now();
+    const response = await fetch(`${baseUrl}/api/ai/restaurants/discover`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Cookie': `survey_id=${surveyId}; guest_session=${sessionId}`
+      },
+      body: JSON.stringify({ surveyData })
+    });
+    const fetchTime = Date.now() - fetchStartTime;
+
+    if (response.ok) {
+      const result = await response.json();
+      const totalTime = Date.now() - startTime;
+      console.log('[PROGRESSIVE] ✅ Restaurant discovery completed:', {
+        success: result.success,
+        restaurantCount: result.restaurantCount,
+        timings: result.timings,
+        totalBackgroundTime: totalTime
+      });
+      console.log('[PROGRESSIVE] 📈 Performance:', {
+        fetchTime: `${fetchTime}ms`,
+        totalTime: `${totalTime}ms`,
+        timeBreakdown: result.timings
+      });
+    } else {
+      const totalTime = Date.now() - startTime;
+      console.error('[PROGRESSIVE] ❌ Restaurant discovery failed:', {
+        status: response.status,
+        statusText: response.statusText,
+        totalTime: `${totalTime}ms`
+      });
+    }
+  } catch (error) {
+    const totalTime = Date.now() - startTime;
+    console.error('[PROGRESSIVE] ❌ Restaurant discovery error:', {
+      error: error.message,
+      totalTime: `${totalTime}ms`
+    });
+  }
+}
+
+async function triggerBackgroundWorkoutGeneration(surveyId: string, sessionId: string, surveyData: any) {
+  const startTime = Date.now();
+  try {
+    console.log('[WORKOUT-TRIGGER] 🏋️ Starting background workout generation for survey:', surveyId);
+    console.log('[WORKOUT-TRIGGER] 🌐 Making fetch request to workout generation endpoint...');
+
+    const baseUrl = process.env.NODE_ENV === 'production'
+      ? 'https://your-production-domain.com'
+      : 'http://localhost:3001';
+
+    const fetchStartTime = Date.now();
+    const response = await fetch(`${baseUrl}/api/ai/workouts/generate`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Cookie': `survey_id=${surveyId}; guest_session=${sessionId}`
+      },
+      body: JSON.stringify({ backgroundGeneration: true })
+    });
+    const fetchTime = Date.now() - fetchStartTime;
+
+    if (response.ok) {
+      const result = await response.json();
+      const totalTime = Date.now() - startTime;
+      console.log('[WORKOUT-TRIGGER] ✅ Workout generation completed:', {
+        success: result.success,
+        timings: result.timings,
+        totalBackgroundTime: totalTime
+      });
+      console.log('[WORKOUT-TRIGGER] 📈 Performance:', {
+        fetchTime: `${fetchTime}ms`,
+        totalTime: `${totalTime}ms`,
+        workoutTimings: result.timings
+      });
+    } else {
+      const totalTime = Date.now() - startTime;
+      console.error('[WORKOUT-TRIGGER] ❌ Workout generation failed:', {
+        status: response.status,
+        statusText: response.statusText,
+        totalTime: `${totalTime}ms`
+      });
+    }
+  } catch (error) {
+    const totalTime = Date.now() - startTime;
+    console.error('[WORKOUT-TRIGGER] ❌ Workout generation error:', {
+      error: error.message,
+      totalTime: `${totalTime}ms`
+    });
   }
 }

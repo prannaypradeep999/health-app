@@ -1,0 +1,4074 @@
+
+===============================================
+TIMESTAMP: 2025-10-28T03:23:42.754Z
+ENDPOINT: menuItems/search
+SESSION: session_1761621817227
+===============================================
+
+REQUEST PARAMS:
+{
+  "restaurantChain": "Tender Greens",
+  "number": "15"
+}
+
+RAW SPOONACULAR RESPONSE:
+{
+  "type": "menuItem",
+  "menuItems": [],
+  "offset": 0,
+  "number": 15,
+  "totalMenuItems": 0,
+  "processingTimeMs": 2
+}
+
+PROCESSED DATA:
+null
+
+DISPLAY DATA:
+null
+
+VALIDATION FLAGS (0):
+
+
+===============================================
+
+
+===============================================
+TIMESTAMP: 2025-10-28T03:23:42.759Z
+ENDPOINT: menuItems/search
+SESSION: session_1761621817227
+===============================================
+
+REQUEST PARAMS:
+{
+  "restaurantChain": "Tender Greens",
+  "number": "15"
+}
+
+RAW SPOONACULAR RESPONSE:
+{
+  "type": "menuItem",
+  "menuItems": [],
+  "offset": 0,
+  "number": 15,
+  "totalMenuItems": 0,
+  "processingTimeMs": 2
+}
+
+PROCESSED DATA:
+null
+
+DISPLAY DATA:
+null
+
+VALIDATION FLAGS (0):
+
+
+===============================================
+
+
+===============================================
+TIMESTAMP: 2025-10-28T03:23:42.765Z
+ENDPOINT: menuItems/search
+SESSION: session_1761621817227
+===============================================
+
+REQUEST PARAMS:
+{
+  "restaurantChain": "Chipotle Mexican Grill",
+  "number": "15"
+}
+
+RAW SPOONACULAR RESPONSE:
+{
+  "type": "menuItem",
+  "menuItems": [
+    {
+      "id": 369638,
+      "title": "Chipotle BBQ Pork Salad Ingredient",
+      "image": "https://spoonacular.com/menuItemImages/salad.jpg",
+      "imageType": "jpg",
+      "restaurantChain": "Willy's Mexicana Grill",
+      "servings": {
+        "number": 1,
+        "size": 1,
+        "unit": "salad"
+      }
+    },
+    {
+      "id": 369614,
+      "title": "Chipotle BBQ Pork Quesadilla",
+      "image": "https://spoonacular.com/menuItemImages/quesadillas.jpg",
+      "imageType": "jpg",
+      "restaurantChain": "Willy's Mexicana Grill",
+      "servings": {
+        "number": 1,
+        "size": 1,
+        "unit": "quesadilla"
+      }
+    },
+    {
+      "id": 369590,
+      "title": "Chipotle BBQ Pork Taco",
+      "image": "https://spoonacular.com/menuItemImages/taco-isolated.jpg",
+      "imageType": "jpg",
+      "restaurantChain": "Willy's Mexicana Grill",
+      "servings": {
+        "number": 1,
+        "size": 1,
+        "unit": "taco"
+      }
+    },
+    {
+      "id": 369766,
+      "title": "Chipotle BBQ Pork Super Nachos",
+      "image": "https://spoonacular.com/menuItemImages/nachos.jpg",
+      "imageType": "jpg",
+      "restaurantChain": "Willy's Mexicana Grill",
+      "servings": {
+        "number": 1,
+        "size": 1,
+        "unit": "nachos"
+      }
+    },
+    {
+      "id": 369665,
+      "title": "Chipotle Salsa (cup)",
+      "image": "https://spoonacular.com/menuItemImages/salsa.jpg",
+      "imageType": "jpg",
+      "restaurantChain": "Willy's Mexicana Grill",
+      "servings": {
+        "number": 1,
+        "size": 1,
+        "unit": "cup"
+      }
+    },
+    {
+      "id": 369667,
+      "title": "Chipotle Salsa",
+      "image": "https://spoonacular.com/menuItemImages/salsa.jpg",
+      "imageType": "jpg",
+      "restaurantChain": "Willy's Mexicana Grill",
+      "servings": {
+        "number": 1,
+        "size": 1,
+        "unit": "side"
+      }
+    },
+    {
+      "id": 369636,
+      "title": "Chipotle BBQ Pork Salad",
+      "image": "https://spoonacular.com/menuItemImages/salad.jpg",
+      "imageType": "jpg",
+      "restaurantChain": "Willy's Mexicana Grill",
+      "servings": {
+        "number": 1,
+        "size": 1,
+        "unit": "salad"
+      }
+    },
+    {
+      "id": 369720,
+      "title": "Chipotle BBQ Pork Burrito Ingredient",
+      "image": "https://spoonacular.com/menuItemImages/burrito-plain.jpg",
+      "imageType": "jpg",
+      "restaurantChain": "Willy's Mexicana Grill",
+      "servings": {
+        "number": 1,
+        "size": 1,
+        "unit": "burrito"
+      }
+    },
+    {
+      "id": 394422,
+      "title": "Chipotle BBQ Chicken Pizza",
+      "image": "https://spoonacular.com/menuItemImages/vegetarian-pizza.jpg",
+      "imageType": "jpg",
+      "restaurantChain": "Sharky's Woodfired Mexican Grill",
+      "servings": {
+        "number": 1,
+        "size": 1,
+        "unit": "Pizza"
+      }
+    },
+    {
+      "id": 369639,
+      "title": "Chipotle Ranch",
+      "image": "https://spoonacular.com/menuItemImages/ranch-dressing.jpg",
+      "imageType": "jpg",
+      "restaurantChain": "Willy's Mexicana Grill",
+      "servings": {
+        "number": 1,
+        "size": 1,
+        "unit": "salad"
+      }
+    },
+    {
+      "id": 369786,
+      "title": "Chipotle BBQ Pork Kid Burrito Ingredient",
+      "image": "https://spoonacular.com/menuItemImages/burrito-plain.jpg",
+      "imageType": "jpg",
+      "restaurantChain": "Willy's Mexicana Grill",
+      "servings": {
+        "number": 1,
+        "size": 1,
+        "unit": "kids burrito"
+      }
+    },
+    {
+      "id": 369615,
+      "title": "Chipotle BBQ Pork Quesadilla Ingredient",
+      "image": "https://spoonacular.com/menuItemImages/quesadillas.jpg",
+      "imageType": "jpg",
+      "restaurantChain": "Willy's Mexicana Grill",
+      "servings": {
+        "number": 1,
+        "size": 1,
+        "unit": "quesadilla"
+      }
+    },
+    {
+      "id": 308215,
+      "title": "Chipotle Shrimp Salad",
+      "image": "https://spoonacular.com/menuItemImages/seafood-salad.jpg",
+      "imageType": "jpg",
+      "restaurantChain": "La Salsa Fresh Mexican Grill",
+      "servings": {
+        "number": 1,
+        "size": 23,
+        "unit": "oz"
+      }
+    },
+    {
+      "id": 369666,
+      "title": "Chipotle Salsa (bowl)",
+      "image": "https://img.spoonacular.com/menu-items/369666-312x231.jpg",
+      "imageType": "jpg",
+      "restaurantChain": "Willy's Mexicana Grill",
+      "servings": {
+        "number": 1,
+        "size": 1,
+        "unit": "bowl"
+      }
+    },
+    {
+      "id": 369696,
+      "title": "Chipotle BBQ Pork Kid's Taco Ingredient",
+      "image": "https://spoonacular.com/menuItemImages/taco-isolated.jpg",
+      "imageType": "jpg",
+      "restaurantChain": "Willy's Mexicana Grill",
+      "servings": {
+        "number": 1,
+        "size": 1,
+        "unit": "kids tacos"
+      }
+    }
+  ],
+  "offset": 0,
+  "number": 15,
+  "totalMenuItems": 19,
+  "processingTimeMs": 33
+}
+
+PROCESSED DATA:
+null
+
+DISPLAY DATA:
+null
+
+VALIDATION FLAGS (0):
+
+
+===============================================
+
+
+===============================================
+TIMESTAMP: 2025-10-28T03:23:42.782Z
+ENDPOINT: menuItems/search
+SESSION: session_1761621817227
+===============================================
+
+REQUEST PARAMS:
+{
+  "restaurantChain": "Panera Bread",
+  "number": "15"
+}
+
+RAW SPOONACULAR RESPONSE:
+{
+  "type": "menuItem",
+  "menuItems": [
+    {
+      "id": 417561,
+      "title": "Steak & White Cheddar Panini on Hoagie Roll",
+      "image": "https://spoonacular.com/menuItemImages/panini.jpg",
+      "imageType": "jpg",
+      "restaurantChain": "Panera Bread",
+      "servings": {
+        "number": 1,
+        "size": null,
+        "unit": "Whole"
+      }
+    },
+    {
+      "id": 417462,
+      "title": "Caramel Latte",
+      "image": "https://spoonacular.com/menuItemImages/latte.png",
+      "imageType": "png",
+      "restaurantChain": "Panera Bread",
+      "servings": {
+        "number": 1,
+        "size": null,
+        "unit": null
+      }
+    },
+    {
+      "id": 417528,
+      "title": "Lipton Brisk Raspberry Tea",
+      "image": "https://spoonacular.com/menuItemImages/cup-of-tea.jpg",
+      "imageType": "jpg",
+      "restaurantChain": "Panera Bread",
+      "servings": {
+        "number": 1,
+        "size": null,
+        "unit": null
+      }
+    },
+    {
+      "id": 417429,
+      "title": "Caramel Apple Thumbprint Scone",
+      "image": "https://img.spoonacular.com/menu-items/417429-312x231.jpg",
+      "imageType": "jpg",
+      "restaurantChain": "Panera Bread",
+      "servings": {
+        "number": 1,
+        "size": null,
+        "unit": null
+      }
+    },
+    {
+      "id": 417594,
+      "title": "Green Goddess Dressing",
+      "image": "https://spoonacular.com/cdn/ingredients_100x100/white-bread.jpg",
+      "imageType": "jpg",
+      "restaurantChain": "Panera Bread",
+      "servings": {
+        "number": 1,
+        "size": null,
+        "unit": null
+      }
+    },
+    {
+      "id": 251143,
+      "title": "Wild Blueberry Scone",
+      "image": "https://spoonacular.com/menuItemImages/scone.jpg",
+      "imageType": "jpg",
+      "restaurantChain": "Panera Bread",
+      "servings": {
+        "number": 1,
+        "size": null,
+        "unit": null
+      }
+    },
+    {
+      "id": 251110,
+      "title": "French Toast Bagel",
+      "image": "https://spoonacular.com/menuItemImages/french-toast.png",
+      "imageType": "png",
+      "restaurantChain": "Panera Bread",
+      "servings": {
+        "number": 1,
+        "size": null,
+        "unit": null
+      }
+    },
+    {
+      "id": 417562,
+      "title": "Tuna Salad Sandwich on Black Pepper Focaccia",
+      "image": "https://img.spoonacular.com/menu-items/417562-312x231.jpg",
+      "imageType": "jpg",
+      "restaurantChain": "Panera Bread",
+      "servings": {
+        "number": 1,
+        "size": null,
+        "unit": "Half"
+      }
+    },
+    {
+      "id": 417527,
+      "title": "Lipton Brisk Raspberry Tea",
+      "image": "https://spoonacular.com/menuItemImages/cup-of-tea.jpg",
+      "imageType": "jpg",
+      "restaurantChain": "Panera Bread",
+      "servings": {
+        "number": 1,
+        "size": null,
+        "unit": null
+      }
+    },
+    {
+      "id": 320006,
+      "title": "Orange Mini Scone",
+      "image": "https://spoonacular.com/menuItemImages/scone.jpg",
+      "imageType": "jpg",
+      "restaurantChain": "Panera Bread",
+      "servings": {
+        "number": 1,
+        "size": null,
+        "unit": null
+      }
+    },
+    {
+      "id": 417430,
+      "title": "Mini Scones Variety Pack",
+      "image": "https://spoonacular.com/menuItemImages/scone.jpg",
+      "imageType": "jpg",
+      "restaurantChain": "Panera Bread",
+      "servings": {
+        "number": 1,
+        "size": 9,
+        "unit": "pack"
+      }
+    },
+    {
+      "id": 417428,
+      "title": "Cobblestone Sweet Roll",
+      "image": "https://spoonacular.com/menuItemImages/roll.jpg",
+      "imageType": "jpg",
+      "restaurantChain": "Panera Bread",
+      "servings": {
+        "number": 1,
+        "size": null,
+        "unit": null
+      }
+    },
+    {
+      "id": 417560,
+      "title": "Steak & White Cheddar Panini on Hoagie Roll",
+      "image": "https://spoonacular.com/menuItemImages/panini.jpg",
+      "imageType": "jpg",
+      "restaurantChain": "Panera Bread",
+      "servings": {
+        "number": 1,
+        "size": null,
+        "unit": "Half"
+      }
+    },
+    {
+      "id": 417593,
+      "title": "Chile Lime Rojo Ranch Dressing",
+      "image": "https://spoonacular.com/menuItemImages/ranch-dressing.jpg",
+      "imageType": "jpg",
+      "restaurantChain": "Panera Bread",
+      "servings": {
+        "number": 1,
+        "size": null,
+        "unit": null
+      }
+    },
+    {
+      "id": 417595,
+      "title": "Green Goddess Dressing",
+      "image": "https://spoonacular.com/cdn/ingredients_100x100/white-bread.jpg",
+      "imageType": "jpg",
+      "restaurantChain": "Panera Bread",
+      "servings": {
+        "number": 1,
+        "size": null,
+        "unit": null
+      }
+    }
+  ],
+  "offset": 0,
+  "number": 15,
+  "totalMenuItems": 285,
+  "processingTimeMs": 45
+}
+
+PROCESSED DATA:
+null
+
+DISPLAY DATA:
+null
+
+VALIDATION FLAGS (0):
+
+
+===============================================
+
+
+===============================================
+TIMESTAMP: 2025-10-28T03:23:42.794Z
+ENDPOINT: menuItems/search
+SESSION: session_1761621817227
+===============================================
+
+REQUEST PARAMS:
+{
+  "restaurantChain": "Freshii",
+  "number": "15"
+}
+
+RAW SPOONACULAR RESPONSE:
+{
+  "type": "menuItem",
+  "menuItems": [
+    {
+      "id": 330444,
+      "title": "Southwestern Soup",
+      "image": "https://img.spoonacular.com/menu-items/330444-312x231.jpg",
+      "imageType": "jpg",
+      "restaurantChain": "Freshii",
+      "servings": {
+        "number": 1,
+        "size": 1,
+        "unit": "soup"
+      }
+    },
+    {
+      "id": 330440,
+      "title": "Baja Burrito",
+      "image": "https://spoonacular.com/menuItemImages/burrito-plain.jpg",
+      "imageType": "jpg",
+      "restaurantChain": "Freshii",
+      "servings": {
+        "number": 1,
+        "size": 1,
+        "unit": "burrito"
+      }
+    },
+    {
+      "id": 330461,
+      "title": "Muesli",
+      "image": "https://img.spoonacular.com/menu-items/330461-312x231.jpg",
+      "imageType": "jpg",
+      "restaurantChain": "Freshii",
+      "servings": {
+        "number": 1,
+        "size": 1,
+        "unit": "muesli"
+      }
+    },
+    {
+      "id": 330452,
+      "title": "Powerhouse Smoothie",
+      "image": "https://spoonacular.com/menuItemImages/smoothie.png",
+      "imageType": "png",
+      "restaurantChain": "Freshii",
+      "servings": {
+        "number": 1,
+        "size": 1,
+        "unit": "smoothie"
+      }
+    },
+    {
+      "id": 330423,
+      "title": "Superbiotic Salad",
+      "image": "https://spoonacular.com/menuItemImages/salad.jpg",
+      "imageType": "jpg",
+      "restaurantChain": "Freshii",
+      "servings": {
+        "number": 1,
+        "size": 1,
+        "unit": "salad"
+      }
+    },
+    {
+      "id": 330432,
+      "title": "Falafel (Bowl)",
+      "image": "https://spoonacular.com/menuItemImages/falafel.jpg",
+      "imageType": "jpg",
+      "restaurantChain": "Freshii",
+      "servings": {
+        "number": 1,
+        "size": 1,
+        "unit": "bowl"
+      }
+    },
+    {
+      "id": 330460,
+      "title": "Blueberry Crumble Breakfast Oatmeal",
+      "image": "https://spoonacular.com/menuItemImages/crumble.png",
+      "imageType": "png",
+      "restaurantChain": "Freshii",
+      "servings": {
+        "number": 1,
+        "size": 1,
+        "unit": "oatmeal"
+      }
+    },
+    {
+      "id": 330457,
+      "title": "Apple Cinnamon Breakfast Oatmeal",
+      "image": "https://spoonacular.com/menuItemImages/oatmeal.jpg",
+      "imageType": "jpg",
+      "restaurantChain": "Freshii",
+      "servings": {
+        "number": 1,
+        "size": 1,
+        "unit": "oatmeal"
+      }
+    },
+    {
+      "id": 330456,
+      "title": "Steak, Egg & Cheese Breakfast Grilled Burrito",
+      "image": "https://spoonacular.com/menuItemImages/burrito-plain.jpg",
+      "imageType": "jpg",
+      "restaurantChain": "Freshii",
+      "servings": {
+        "number": 1,
+        "size": 1,
+        "unit": "burrito"
+      }
+    },
+    {
+      "id": 330419,
+      "title": "Cobb Salad",
+      "image": "https://spoonacular.com/menuItemImages/cobb-salad.png",
+      "imageType": "png",
+      "restaurantChain": "Freshii",
+      "servings": {
+        "number": 1,
+        "size": 1,
+        "unit": "salad"
+      }
+    },
+    {
+      "id": 330435,
+      "title": "Pangoa (Bowl)",
+      "image": "https://img.spoonacular.com/menu-items/330435-312x231.jpg",
+      "imageType": "jpg",
+      "restaurantChain": "Freshii",
+      "servings": {
+        "number": 1,
+        "size": 1,
+        "unit": "bowl"
+      }
+    },
+    {
+      "id": 330436,
+      "title": "Warrior (Bowl)",
+      "image": "https://img.spoonacular.com/menu-items/330436-312x231.jpg",
+      "imageType": "jpg",
+      "restaurantChain": "Freshii",
+      "servings": {
+        "number": 1,
+        "size": 1,
+        "unit": "bowl"
+      }
+    },
+    {
+      "id": 330439,
+      "title": "Falafel Burrito",
+      "image": "https://spoonacular.com/menuItemImages/falafel.jpg",
+      "imageType": "jpg",
+      "restaurantChain": "Freshii",
+      "servings": {
+        "number": 1,
+        "size": 1,
+        "unit": "burrito"
+      }
+    },
+    {
+      "id": 330445,
+      "title": "Spicy Lemongrass Soup",
+      "image": "https://img.spoonacular.com/menu-items/330445-312x231.jpg",
+      "imageType": "jpg",
+      "restaurantChain": "Freshii",
+      "servings": {
+        "number": 1,
+        "size": 1,
+        "unit": "soup"
+      }
+    },
+    {
+      "id": 330447,
+      "title": "Green Energy Juice",
+      "image": "https://spoonacular.com/menuItemImages/plastic-to-go-drink-cup.jpg",
+      "imageType": "jpg",
+      "restaurantChain": "Freshii",
+      "servings": {
+        "number": 1,
+        "size": 1,
+        "unit": "juice"
+      }
+    }
+  ],
+  "offset": 0,
+  "number": 15,
+  "totalMenuItems": 43,
+  "processingTimeMs": 21
+}
+
+PROCESSED DATA:
+null
+
+DISPLAY DATA:
+null
+
+VALIDATION FLAGS (0):
+
+
+===============================================
+
+
+===============================================
+TIMESTAMP: 2025-10-28T03:23:42.797Z
+ENDPOINT: menuItems/search
+SESSION: session_1761621817227
+===============================================
+
+REQUEST PARAMS:
+{
+  "restaurantChain": "sweetgreen",
+  "number": "15"
+}
+
+RAW SPOONACULAR RESPONSE:
+{
+  "type": "menuItem",
+  "menuItems": [
+    {
+      "id": 364018,
+      "title": "Red Grapes",
+      "image": "https://spoonacular.com/cdn/ingredients_100x100/red-grapes.jpg",
+      "imageType": "jpg",
+      "restaurantChain": "Sweetgreen",
+      "servings": {
+        "number": 1,
+        "size": 55,
+        "unit": "g"
+      }
+    },
+    {
+      "id": 364042,
+      "title": "Cucumber Basil Yogurt",
+      "image": "https://spoonacular.com/menuItemImages/white-cream.jpg",
+      "imageType": "jpg",
+      "restaurantChain": "Sweetgreen",
+      "servings": {
+        "number": 1,
+        "size": 38,
+        "unit": "g"
+      }
+    },
+    {
+      "id": 364002,
+      "title": "Organic Baby Spinach",
+      "image": "https://spoonacular.com/cdn/ingredients_100x100/spinach.jpg",
+      "imageType": "jpg",
+      "restaurantChain": "Sweetgreen",
+      "servings": {
+        "number": 1,
+        "size": 142,
+        "unit": "g"
+      }
+    },
+    {
+      "id": 364043,
+      "title": "Extra Virgin Olive Oil",
+      "image": "https://spoonacular.com/cdn/ingredients_100x100/olive-oil.jpg",
+      "imageType": "jpg",
+      "restaurantChain": "Sweetgreen",
+      "servings": {
+        "number": 1,
+        "size": 28,
+        "unit": "g"
+      }
+    },
+    {
+      "id": 364027,
+      "title": "Citrus Shrimp",
+      "image": "https://img.spoonacular.com/menu-items/364027-312x231.jpg",
+      "imageType": "jpg",
+      "restaurantChain": "Sweetgreen",
+      "servings": {
+        "number": 1,
+        "size": 73,
+        "unit": "g"
+      }
+    },
+    {
+      "id": 363992,
+      "title": "Earth (Bowl)",
+      "image": "https://img.spoonacular.com/menu-items/363992-312x231.jpg",
+      "imageType": "jpg",
+      "restaurantChain": "Sweetgreen",
+      "servings": {
+        "number": 1,
+        "size": 369,
+        "unit": "g"
+      }
+    },
+    {
+      "id": 364034,
+      "title": "Toasted Parmesan Crisp",
+      "image": "https://img.spoonacular.com/menu-items/364034-312x231.jpg",
+      "imageType": "jpg",
+      "restaurantChain": "Sweetgreen",
+      "servings": {
+        "number": 1,
+        "size": 14,
+        "unit": "g"
+      }
+    },
+    {
+      "id": 364033,
+      "title": "Organic White Cheddar",
+      "image": "https://spoonacular.com/cdn/ingredients_100x100/cheddar-cheese.jpg",
+      "imageType": "jpg",
+      "restaurantChain": "Sweetgreen",
+      "servings": {
+        "number": 1,
+        "size": 28,
+        "unit": "g"
+      }
+    },
+    {
+      "id": 364028,
+      "title": "Local Hard Boiled Egg",
+      "image": "https://spoonacular.com/cdn/ingredients_100x100/egg.jpg",
+      "imageType": "jpg",
+      "restaurantChain": "Sweetgreen",
+      "servings": {
+        "number": 1,
+        "size": 50,
+        "unit": "g"
+      }
+    },
+    {
+      "id": 363995,
+      "title": "Guacamole Greens",
+      "image": "https://img.spoonacular.com/menu-items/guacamole.jpg",
+      "imageType": "jpg",
+      "restaurantChain": "Sweetgreen",
+      "servings": {
+        "number": 1,
+        "size": 424,
+        "unit": "g"
+      }
+    },
+    {
+      "id": 364024,
+      "title": "Baked Falafel",
+      "image": "https://spoonacular.com/menuItemImages/falafel.jpg",
+      "imageType": "jpg",
+      "restaurantChain": "Sweetgreen",
+      "servings": {
+        "number": 1,
+        "size": 99,
+        "unit": "g"
+      }
+    },
+    {
+      "id": 364016,
+      "title": "Pita Chips",
+      "image": "https://img.spoonacular.com/menu-items/364016-312x231.jpg",
+      "imageType": "jpg",
+      "restaurantChain": "Sweetgreen",
+      "servings": {
+        "number": 1,
+        "size": 21,
+        "unit": "g"
+      }
+    },
+    {
+      "id": 364007,
+      "title": "Grape Tomatoes",
+      "image": "https://spoonacular.com/cdn/ingredients_100x100/tomato.jpg",
+      "imageType": "jpg",
+      "restaurantChain": "Sweetgreen",
+      "servings": {
+        "number": 1,
+        "size": 37,
+        "unit": "g"
+      }
+    },
+    {
+      "id": 364020,
+      "title": "Roasted Sweet Potatoes",
+      "image": "https://spoonacular.com/cdn/ingredients_100x100/potatoes-yukon-gold.jpg",
+      "imageType": "jpg",
+      "restaurantChain": "Sweetgreen",
+      "servings": {
+        "number": 1,
+        "size": 58,
+        "unit": "g"
+      }
+    },
+    {
+      "id": 364023,
+      "title": "Tortilla Chips",
+      "image": "https://spoonacular.com/menuItemImages/tortilla-chips.jpg",
+      "imageType": "jpg",
+      "restaurantChain": "Sweetgreen",
+      "servings": {
+        "number": 1,
+        "size": 15,
+        "unit": "g"
+      }
+    }
+  ],
+  "offset": 0,
+  "number": 15,
+  "totalMenuItems": 35,
+  "processingTimeMs": 25
+}
+
+PROCESSED DATA:
+null
+
+DISPLAY DATA:
+null
+
+VALIDATION FLAGS (0):
+
+
+===============================================
+
+
+===============================================
+TIMESTAMP: 2025-10-28T03:23:42.892Z
+ENDPOINT: menuItems/search
+SESSION: session_1761621817227
+===============================================
+
+REQUEST PARAMS:
+{
+  "restaurantChain": "sweetgreen",
+  "number": "15"
+}
+
+RAW SPOONACULAR RESPONSE:
+{
+  "type": "menuItem",
+  "menuItems": [
+    {
+      "id": 364018,
+      "title": "Red Grapes",
+      "image": "https://spoonacular.com/cdn/ingredients_100x100/red-grapes.jpg",
+      "imageType": "jpg",
+      "restaurantChain": "Sweetgreen",
+      "servings": {
+        "number": 1,
+        "size": 55,
+        "unit": "g"
+      }
+    },
+    {
+      "id": 364042,
+      "title": "Cucumber Basil Yogurt",
+      "image": "https://spoonacular.com/menuItemImages/white-cream.jpg",
+      "imageType": "jpg",
+      "restaurantChain": "Sweetgreen",
+      "servings": {
+        "number": 1,
+        "size": 38,
+        "unit": "g"
+      }
+    },
+    {
+      "id": 364002,
+      "title": "Organic Baby Spinach",
+      "image": "https://spoonacular.com/cdn/ingredients_100x100/spinach.jpg",
+      "imageType": "jpg",
+      "restaurantChain": "Sweetgreen",
+      "servings": {
+        "number": 1,
+        "size": 142,
+        "unit": "g"
+      }
+    },
+    {
+      "id": 364043,
+      "title": "Extra Virgin Olive Oil",
+      "image": "https://spoonacular.com/cdn/ingredients_100x100/olive-oil.jpg",
+      "imageType": "jpg",
+      "restaurantChain": "Sweetgreen",
+      "servings": {
+        "number": 1,
+        "size": 28,
+        "unit": "g"
+      }
+    },
+    {
+      "id": 364027,
+      "title": "Citrus Shrimp",
+      "image": "https://img.spoonacular.com/menu-items/364027-312x231.jpg",
+      "imageType": "jpg",
+      "restaurantChain": "Sweetgreen",
+      "servings": {
+        "number": 1,
+        "size": 73,
+        "unit": "g"
+      }
+    },
+    {
+      "id": 363992,
+      "title": "Earth (Bowl)",
+      "image": "https://img.spoonacular.com/menu-items/363992-312x231.jpg",
+      "imageType": "jpg",
+      "restaurantChain": "Sweetgreen",
+      "servings": {
+        "number": 1,
+        "size": 369,
+        "unit": "g"
+      }
+    },
+    {
+      "id": 364034,
+      "title": "Toasted Parmesan Crisp",
+      "image": "https://img.spoonacular.com/menu-items/364034-312x231.jpg",
+      "imageType": "jpg",
+      "restaurantChain": "Sweetgreen",
+      "servings": {
+        "number": 1,
+        "size": 14,
+        "unit": "g"
+      }
+    },
+    {
+      "id": 364033,
+      "title": "Organic White Cheddar",
+      "image": "https://spoonacular.com/cdn/ingredients_100x100/cheddar-cheese.jpg",
+      "imageType": "jpg",
+      "restaurantChain": "Sweetgreen",
+      "servings": {
+        "number": 1,
+        "size": 28,
+        "unit": "g"
+      }
+    },
+    {
+      "id": 364028,
+      "title": "Local Hard Boiled Egg",
+      "image": "https://spoonacular.com/cdn/ingredients_100x100/egg.jpg",
+      "imageType": "jpg",
+      "restaurantChain": "Sweetgreen",
+      "servings": {
+        "number": 1,
+        "size": 50,
+        "unit": "g"
+      }
+    },
+    {
+      "id": 363995,
+      "title": "Guacamole Greens",
+      "image": "https://img.spoonacular.com/menu-items/guacamole.jpg",
+      "imageType": "jpg",
+      "restaurantChain": "Sweetgreen",
+      "servings": {
+        "number": 1,
+        "size": 424,
+        "unit": "g"
+      }
+    },
+    {
+      "id": 364024,
+      "title": "Baked Falafel",
+      "image": "https://spoonacular.com/menuItemImages/falafel.jpg",
+      "imageType": "jpg",
+      "restaurantChain": "Sweetgreen",
+      "servings": {
+        "number": 1,
+        "size": 99,
+        "unit": "g"
+      }
+    },
+    {
+      "id": 364016,
+      "title": "Pita Chips",
+      "image": "https://img.spoonacular.com/menu-items/364016-312x231.jpg",
+      "imageType": "jpg",
+      "restaurantChain": "Sweetgreen",
+      "servings": {
+        "number": 1,
+        "size": 21,
+        "unit": "g"
+      }
+    },
+    {
+      "id": 364007,
+      "title": "Grape Tomatoes",
+      "image": "https://spoonacular.com/cdn/ingredients_100x100/tomato.jpg",
+      "imageType": "jpg",
+      "restaurantChain": "Sweetgreen",
+      "servings": {
+        "number": 1,
+        "size": 37,
+        "unit": "g"
+      }
+    },
+    {
+      "id": 364020,
+      "title": "Roasted Sweet Potatoes",
+      "image": "https://spoonacular.com/cdn/ingredients_100x100/potatoes-yukon-gold.jpg",
+      "imageType": "jpg",
+      "restaurantChain": "Sweetgreen",
+      "servings": {
+        "number": 1,
+        "size": 58,
+        "unit": "g"
+      }
+    },
+    {
+      "id": 364023,
+      "title": "Tortilla Chips",
+      "image": "https://spoonacular.com/menuItemImages/tortilla-chips.jpg",
+      "imageType": "jpg",
+      "restaurantChain": "Sweetgreen",
+      "servings": {
+        "number": 1,
+        "size": 15,
+        "unit": "g"
+      }
+    }
+  ],
+  "offset": 0,
+  "number": 15,
+  "totalMenuItems": 35,
+  "processingTimeMs": 20
+}
+
+PROCESSED DATA:
+null
+
+DISPLAY DATA:
+null
+
+VALIDATION FLAGS (0):
+
+
+===============================================
+
+
+===============================================
+TIMESTAMP: 2025-10-28T03:23:42.895Z
+ENDPOINT: menuItems/search
+SESSION: session_1761621817227
+===============================================
+
+REQUEST PARAMS:
+{
+  "restaurantChain": "Five Guys",
+  "number": "15"
+}
+
+RAW SPOONACULAR RESPONSE:
+{
+  "type": "menuItem",
+  "menuItems": [
+    {
+      "id": 240631,
+      "title": "Fries",
+      "image": "https://spoonacular.com/menuItemImages/french-fries.jpg",
+      "imageType": "jpg",
+      "restaurantChain": "Five Guys",
+      "servings": {
+        "number": 1,
+        "size": 567,
+        "unit": "g"
+      }
+    },
+    {
+      "id": 240656,
+      "title": "Ketchup",
+      "image": "https://img.spoonacular.com/menu-items/240656-312x231.jpg",
+      "imageType": "jpg",
+      "restaurantChain": "Five Guys",
+      "servings": {
+        "number": 1,
+        "size": 17,
+        "unit": "g"
+      }
+    },
+    {
+      "id": 336274,
+      "title": "Large Fries",
+      "image": "https://spoonacular.com/menuItemImages/french-fries.jpg",
+      "imageType": "jpg",
+      "restaurantChain": "Five Guys",
+      "servings": {
+        "number": 1,
+        "size": 1,
+        "unit": "fries"
+      }
+    },
+    {
+      "id": 240622,
+      "title": "Little Bacon Burger w/ Bun",
+      "image": "https://spoonacular.com/menuItemImages/hamburger.jpg",
+      "imageType": "jpg",
+      "restaurantChain": "Five Guys",
+      "servings": {
+        "number": 1,
+        "size": 185,
+        "unit": "g"
+      }
+    },
+    {
+      "id": 336273,
+      "title": "Veggie Sandwich",
+      "image": "https://spoonacular.com/menuItemImages/sandwich.jpg",
+      "imageType": "jpg",
+      "restaurantChain": "Five Guys",
+      "servings": {
+        "number": 1,
+        "size": 1,
+        "unit": "sandwich"
+      }
+    },
+    {
+      "id": 240663,
+      "title": "Relish",
+      "image": "https://img.spoonacular.com/menu-items/240663-312x231.jpg",
+      "imageType": "jpg",
+      "restaurantChain": "Five Guys",
+      "servings": {
+        "number": 1,
+        "size": 15,
+        "unit": "g"
+      }
+    },
+    {
+      "id": 336283,
+      "title": "Bunless Little Bacon Cheeseburger",
+      "image": "https://spoonacular.com/menuItemImages/cheeseburger.jpg",
+      "imageType": "jpg",
+      "restaurantChain": "Five Guys",
+      "servings": {
+        "number": 1,
+        "size": 1,
+        "unit": "burger"
+      }
+    },
+    {
+      "id": 336282,
+      "title": "Bunless Little Cheeseburger",
+      "image": "https://spoonacular.com/menuItemImages/cheeseburger.jpg",
+      "imageType": "jpg",
+      "restaurantChain": "Five Guys",
+      "servings": {
+        "number": 1,
+        "size": 1,
+        "unit": "burger"
+      }
+    },
+    {
+      "id": 336281,
+      "title": "Bunless Little Bacon Burger",
+      "image": "https://spoonacular.com/menuItemImages/hamburger.jpg",
+      "imageType": "jpg",
+      "restaurantChain": "Five Guys",
+      "servings": {
+        "number": 1,
+        "size": 1,
+        "unit": "burger"
+      }
+    },
+    {
+      "id": 336280,
+      "title": "Bunless Hamburger",
+      "image": "https://spoonacular.com/menuItemImages/hamburger.jpg",
+      "imageType": "jpg",
+      "restaurantChain": "Five Guys",
+      "servings": {
+        "number": 1,
+        "size": 1,
+        "unit": "burger"
+      }
+    },
+    {
+      "id": 240648,
+      "title": "BBQ Sauce",
+      "image": "https://img.spoonacular.com/menu-items/240648-312x231.jpg",
+      "imageType": "jpg",
+      "restaurantChain": "Five Guys",
+      "servings": {
+        "number": 1,
+        "size": 28,
+        "unit": "g"
+      }
+    },
+    {
+      "id": 240649,
+      "title": "Bun",
+      "image": "https://spoonacular.com/menuItemImages/roll.jpg",
+      "imageType": "jpg",
+      "restaurantChain": "Five Guys",
+      "servings": {
+        "number": 1,
+        "size": 77,
+        "unit": "g"
+      }
+    },
+    {
+      "id": 240614,
+      "title": "Bacon Burger w/ Bun",
+      "image": "https://spoonacular.com/menuItemImages/hamburger.jpg",
+      "imageType": "jpg",
+      "restaurantChain": "Five Guys",
+      "servings": {
+        "number": 1,
+        "size": 279,
+        "unit": "g"
+      }
+    },
+    {
+      "id": 240654,
+      "title": "Hot Sauce",
+      "image": "https://img.spoonacular.com/menu-items/240654-312x231.jpg",
+      "imageType": "jpg",
+      "restaurantChain": "Five Guys",
+      "servings": {
+        "number": 1,
+        "size": 5,
+        "unit": "g"
+      }
+    },
+    {
+      "id": 240658,
+      "title": "Mayonnaise",
+      "image": "https://spoonacular.com/menuItemImages/mayonnaise-dish.jpg",
+      "imageType": "jpg",
+      "restaurantChain": "Five Guys",
+      "servings": {
+        "number": 1,
+        "size": 14,
+        "unit": "g"
+      }
+    }
+  ],
+  "offset": 0,
+  "number": 15,
+  "totalMenuItems": 46,
+  "processingTimeMs": 22
+}
+
+PROCESSED DATA:
+null
+
+DISPLAY DATA:
+null
+
+VALIDATION FLAGS (0):
+
+
+===============================================
+
+
+===============================================
+TIMESTAMP: 2025-10-28T03:23:42.904Z
+ENDPOINT: menuItems/search
+SESSION: session_1761621817227
+===============================================
+
+REQUEST PARAMS:
+{
+  "restaurantChain": "Subway",
+  "number": "15"
+}
+
+RAW SPOONACULAR RESPONSE:
+{
+  "type": "menuItem",
+  "menuItems": [
+    {
+      "id": 314960,
+      "title": "Veggie Delite - Kids Meal Sandwiches",
+      "image": "https://img.spoonacular.com/menu-items/314960.jpg",
+      "imageType": "jpg",
+      "restaurantChain": "Subway",
+      "servings": {
+        "number": 1,
+        "size": 1,
+        "unit": "Sandwich"
+      }
+    },
+    {
+      "id": 315026,
+      "title": "Sunrise Subway Melt on 6\" Flatbread - Egg White",
+      "image": "https://spoonacular.com/menuItemImages/turkey-sub.png",
+      "imageType": "png",
+      "restaurantChain": "Subway",
+      "servings": {
+        "number": 1,
+        "size": 1,
+        "unit": "Sandwich"
+      }
+    },
+    {
+      "id": 263774,
+      "title": "Fuze Brewed Tea, Unsweetened",
+      "image": "https://spoonacular.com/menuItemImages/cup-of-tea.jpg",
+      "imageType": "jpg",
+      "restaurantChain": "Subway",
+      "servings": {
+        "number": 1,
+        "size": 21,
+        "unit": "fl"
+      }
+    },
+    {
+      "id": 263775,
+      "title": "Juice Box",
+      "image": "https://spoonacular.com/menuItemImages/plastic-to-go-drink-cup.jpg",
+      "imageType": "jpg",
+      "restaurantChain": "Subway",
+      "servings": {
+        "number": 1,
+        "size": 6,
+        "unit": "fl"
+      }
+    },
+    {
+      "id": 314961,
+      "title": "Turkey Breast - Kids Meal Sandwiches",
+      "image": "https://img.spoonacular.com/menu-items/314961.jpg",
+      "imageType": "jpg",
+      "restaurantChain": "Subway",
+      "servings": {
+        "number": 1,
+        "size": 1,
+        "unit": "Sandwich"
+      }
+    },
+    {
+      "id": 263776,
+      "title": "Milk, Chocolate Flavored, Reduced Fat",
+      "image": "https://spoonacular.com/menuItemImages/plastic-to-go-drink-cup.jpg",
+      "imageType": "jpg",
+      "restaurantChain": "Subway",
+      "servings": {
+        "number": 1,
+        "size": 12,
+        "unit": "fl"
+      }
+    },
+    {
+      "id": 314959,
+      "title": "Roast Beef - Kids Meal Sandwiches",
+      "image": "https://img.spoonacular.com/menu-items/314959.jpg",
+      "imageType": "jpg",
+      "restaurantChain": "Subway",
+      "servings": {
+        "number": 1,
+        "size": 1,
+        "unit": "Sandwich"
+      }
+    },
+    {
+      "id": 263906,
+      "title": "Loaded Baked Potato",
+      "image": "https://spoonacular.com/menuItemImages/loaded-baked-potato.jpg",
+      "imageType": "jpg",
+      "restaurantChain": "Subway",
+      "servings": {
+        "number": 1,
+        "size": 255,
+        "unit": "g"
+      }
+    },
+    {
+      "id": 263907,
+      "title": "Minestrone",
+      "image": "https://spoonacular.com/menuItemImages/minestrone.jpg",
+      "imageType": "jpg",
+      "restaurantChain": "Subway",
+      "servings": {
+        "number": 1,
+        "size": 255,
+        "unit": "g"
+      }
+    },
+    {
+      "id": 314958,
+      "title": "Black Forest Ham - Kids Meal Sandwiches",
+      "image": "https://img.spoonacular.com/menu-items/314958.jpg",
+      "imageType": "jpg",
+      "restaurantChain": "Subway",
+      "servings": {
+        "number": 1,
+        "size": 1,
+        "unit": "Sandwich"
+      }
+    },
+    {
+      "id": 263908,
+      "title": "Poblano Corn Chowder",
+      "image": "https://spoonacular.com/menuItemImages/corn-chowder.png",
+      "imageType": "png",
+      "restaurantChain": "Subway",
+      "servings": {
+        "number": 1,
+        "size": 255,
+        "unit": "g"
+      }
+    },
+    {
+      "id": 263777,
+      "title": "Milk, Low Fat",
+      "image": "https://spoonacular.com/menuItemImages/plastic-to-go-drink-cup.jpg",
+      "imageType": "jpg",
+      "restaurantChain": "Subway",
+      "servings": {
+        "number": 1,
+        "size": 12,
+        "unit": "fl"
+      }
+    },
+    {
+      "id": 314962,
+      "title": "6\" Chicken Pizziola Melt",
+      "image": "https://spoonacular.com/menuItemImages/sandwich.jpg",
+      "imageType": "jpg",
+      "restaurantChain": "Subway",
+      "servings": {
+        "number": 1,
+        "size": 1,
+        "unit": "Sandwich"
+      }
+    },
+    {
+      "id": 263839,
+      "title": "Chicken & Bacon Ranch on Flatbread",
+      "image": "https://img.spoonacular.com/menu-items/263839.jpg",
+      "imageType": "jpg",
+      "restaurantChain": "Subway",
+      "servings": {
+        "number": 1,
+        "size": 301,
+        "unit": "g"
+      }
+    },
+    {
+      "id": 263773,
+      "title": "Fuze Brewed Sweet Tea",
+      "image": "https://spoonacular.com/menuItemImages/iced-tea.png",
+      "imageType": "png",
+      "restaurantChain": "Subway",
+      "servings": {
+        "number": 1,
+        "size": 21,
+        "unit": "fl"
+      }
+    }
+  ],
+  "offset": 0,
+  "number": 15,
+  "totalMenuItems": 256,
+  "processingTimeMs": 41
+}
+
+PROCESSED DATA:
+null
+
+DISPLAY DATA:
+null
+
+VALIDATION FLAGS (0):
+
+
+===============================================
+
+
+===============================================
+TIMESTAMP: 2025-10-28T03:23:42.909Z
+ENDPOINT: menuItems/search
+SESSION: session_1761621817227
+===============================================
+
+REQUEST PARAMS:
+{
+  "restaurantChain": "Momiji Capitol Hill",
+  "number": "15"
+}
+
+RAW SPOONACULAR RESPONSE:
+{
+  "type": "menuItem",
+  "menuItems": [],
+  "offset": 0,
+  "number": 15,
+  "totalMenuItems": 0,
+  "processingTimeMs": 53
+}
+
+PROCESSED DATA:
+null
+
+DISPLAY DATA:
+null
+
+VALIDATION FLAGS (0):
+
+
+===============================================
+
+
+===============================================
+TIMESTAMP: 2025-10-28T03:23:42.911Z
+ENDPOINT: menuItems/search
+SESSION: session_1761621817227
+===============================================
+
+REQUEST PARAMS:
+{
+  "restaurantChain": "re:public",
+  "number": "15"
+}
+
+RAW SPOONACULAR RESPONSE:
+{
+  "type": "menuItem",
+  "menuItems": [],
+  "offset": 0,
+  "number": 15,
+  "totalMenuItems": 0,
+  "processingTimeMs": 86
+}
+
+PROCESSED DATA:
+null
+
+DISPLAY DATA:
+null
+
+VALIDATION FLAGS (0):
+
+
+===============================================
+
+
+===============================================
+TIMESTAMP: 2025-10-28T03:23:42.916Z
+ENDPOINT: menuItems/search
+SESSION: session_1761621817227
+===============================================
+
+REQUEST PARAMS:
+{
+  "restaurantChain": "Just Salad",
+  "number": "15"
+}
+
+RAW SPOONACULAR RESPONSE:
+{
+  "type": "menuItem",
+  "menuItems": [
+    {
+      "id": 376081,
+      "title": "Tuna Salad Mini Sandwich",
+      "image": "https://spoonacular.com/menuItemImages/seafood-salad.jpg",
+      "imageType": "jpg",
+      "restaurantChain": "Just Fresh",
+      "servings": {
+        "number": 1,
+        "size": 78,
+        "unit": "g"
+      }
+    },
+    {
+      "id": 375995,
+      "title": "Chicken Salad",
+      "image": "https://img.spoonacular.com/menu-items/375995-312x231.jpg",
+      "imageType": "jpg",
+      "restaurantChain": "Just Fresh",
+      "servings": {
+        "number": 1,
+        "size": null,
+        "unit": null
+      }
+    },
+    {
+      "id": 376012,
+      "title": "Tuna Salad Sandwich",
+      "image": "https://spoonacular.com/menuItemImages/tuna-sandwich.png",
+      "imageType": "png",
+      "restaurantChain": "Just Fresh",
+      "servings": {
+        "number": 1,
+        "size": 288,
+        "unit": "g"
+      }
+    },
+    {
+      "id": 375983,
+      "title": "Garden Salad",
+      "image": "https://spoonacular.com/menuItemImages/salad.jpg",
+      "imageType": "jpg",
+      "restaurantChain": "Just Fresh",
+      "servings": {
+        "number": 1,
+        "size": 254,
+        "unit": "g"
+      }
+    },
+    {
+      "id": 374300,
+      "title": "Just Cheese Salad",
+      "image": "https://spoonacular.com/menuItemImages/salad.jpg",
+      "imageType": "jpg",
+      "restaurantChain": "Groucho's Deli",
+      "servings": {
+        "number": 1,
+        "size": null,
+        "unit": null
+      }
+    },
+    {
+      "id": 374296,
+      "title": "Just Bacon Salad",
+      "image": "https://spoonacular.com/menuItemImages/salad.jpg",
+      "imageType": "jpg",
+      "restaurantChain": "Groucho's Deli",
+      "servings": {
+        "number": 1,
+        "size": null,
+        "unit": null
+      }
+    },
+    {
+      "id": 376057,
+      "title": "Green Pea Salad",
+      "image": "https://spoonacular.com/menuItemImages/salad.jpg",
+      "imageType": "jpg",
+      "restaurantChain": "Just Fresh",
+      "servings": {
+        "number": 1,
+        "size": null,
+        "unit": null
+      }
+    },
+    {
+      "id": 374297,
+      "title": "Just Bean Salad",
+      "image": "https://spoonacular.com/menuItemImages/three-bean-salad.jpg",
+      "imageType": "jpg",
+      "restaurantChain": "Groucho's Deli",
+      "servings": {
+        "number": 1,
+        "size": null,
+        "unit": null
+      }
+    },
+    {
+      "id": 376100,
+      "title": "Mini Chicken Salad",
+      "image": "https://img.spoonacular.com/menu-items/376100-312x231.jpg",
+      "imageType": "jpg",
+      "restaurantChain": "Just Fresh",
+      "servings": {
+        "number": 1,
+        "size": null,
+        "unit": null
+      }
+    },
+    {
+      "id": 376101,
+      "title": "Mini Tuna Salad",
+      "image": "https://img.spoonacular.com/menu-items/376101-312x231.jpg",
+      "imageType": "jpg",
+      "restaurantChain": "Just Fresh",
+      "servings": {
+        "number": 1,
+        "size": null,
+        "unit": null
+      }
+    },
+    {
+      "id": 375981,
+      "title": "Chicken Salad Plate",
+      "image": "https://img.spoonacular.com/menu-items/375981-312x231.jpg",
+      "imageType": "jpg",
+      "restaurantChain": "Just Fresh",
+      "servings": {
+        "number": 1,
+        "size": null,
+        "unit": null
+      }
+    },
+    {
+      "id": 375989,
+      "title": "Tuna Salad Plate",
+      "image": "https://spoonacular.com/menuItemImages/seafood-salad.jpg",
+      "imageType": "jpg",
+      "restaurantChain": "Just Fresh",
+      "servings": {
+        "number": 1,
+        "size": 408,
+        "unit": "g"
+      }
+    },
+    {
+      "id": 375985,
+      "title": "Resolution Salad",
+      "image": "https://spoonacular.com/menuItemImages/salad.jpg",
+      "imageType": "jpg",
+      "restaurantChain": "Just Fresh",
+      "servings": {
+        "number": 1,
+        "size": 443,
+        "unit": "g"
+      }
+    },
+    {
+      "id": 357768,
+      "title": "Chopped Power Salad-Lunch",
+      "image": "https://spoonacular.com/menuItemImages/salad.jpg",
+      "imageType": "jpg",
+      "restaurantChain": "Uno Chicago Grill",
+      "servings": {
+        "number": 1,
+        "size": null,
+        "unit": null
+      }
+    },
+    {
+      "id": 252232,
+      "title": "Club Salad",
+      "image": "https://spoonacular.com/menuItemImages/salad.jpg",
+      "imageType": "jpg",
+      "restaurantChain": "Papa Murphy's",
+      "servings": {
+        "number": 1,
+        "size": 189,
+        "unit": "g"
+      }
+    }
+  ],
+  "offset": 0,
+  "number": 15,
+  "totalMenuItems": 4538,
+  "processingTimeMs": 215
+}
+
+PROCESSED DATA:
+null
+
+DISPLAY DATA:
+null
+
+VALIDATION FLAGS (0):
+
+
+===============================================
+
+
+===============================================
+TIMESTAMP: 2025-10-28T03:23:42.920Z
+ENDPOINT: menuItems/search
+SESSION: session_1761621817227
+===============================================
+
+REQUEST PARAMS:
+{
+  "restaurantChain": "Just Salad",
+  "number": "15"
+}
+
+RAW SPOONACULAR RESPONSE:
+{
+  "type": "menuItem",
+  "menuItems": [
+    {
+      "id": 376081,
+      "title": "Tuna Salad Mini Sandwich",
+      "image": "https://spoonacular.com/menuItemImages/seafood-salad.jpg",
+      "imageType": "jpg",
+      "restaurantChain": "Just Fresh",
+      "servings": {
+        "number": 1,
+        "size": 78,
+        "unit": "g"
+      }
+    },
+    {
+      "id": 375995,
+      "title": "Chicken Salad",
+      "image": "https://img.spoonacular.com/menu-items/375995-312x231.jpg",
+      "imageType": "jpg",
+      "restaurantChain": "Just Fresh",
+      "servings": {
+        "number": 1,
+        "size": null,
+        "unit": null
+      }
+    },
+    {
+      "id": 376012,
+      "title": "Tuna Salad Sandwich",
+      "image": "https://spoonacular.com/menuItemImages/tuna-sandwich.png",
+      "imageType": "png",
+      "restaurantChain": "Just Fresh",
+      "servings": {
+        "number": 1,
+        "size": 288,
+        "unit": "g"
+      }
+    },
+    {
+      "id": 375983,
+      "title": "Garden Salad",
+      "image": "https://spoonacular.com/menuItemImages/salad.jpg",
+      "imageType": "jpg",
+      "restaurantChain": "Just Fresh",
+      "servings": {
+        "number": 1,
+        "size": 254,
+        "unit": "g"
+      }
+    },
+    {
+      "id": 374300,
+      "title": "Just Cheese Salad",
+      "image": "https://spoonacular.com/menuItemImages/salad.jpg",
+      "imageType": "jpg",
+      "restaurantChain": "Groucho's Deli",
+      "servings": {
+        "number": 1,
+        "size": null,
+        "unit": null
+      }
+    },
+    {
+      "id": 374296,
+      "title": "Just Bacon Salad",
+      "image": "https://spoonacular.com/menuItemImages/salad.jpg",
+      "imageType": "jpg",
+      "restaurantChain": "Groucho's Deli",
+      "servings": {
+        "number": 1,
+        "size": null,
+        "unit": null
+      }
+    },
+    {
+      "id": 376057,
+      "title": "Green Pea Salad",
+      "image": "https://spoonacular.com/menuItemImages/salad.jpg",
+      "imageType": "jpg",
+      "restaurantChain": "Just Fresh",
+      "servings": {
+        "number": 1,
+        "size": null,
+        "unit": null
+      }
+    },
+    {
+      "id": 374297,
+      "title": "Just Bean Salad",
+      "image": "https://spoonacular.com/menuItemImages/three-bean-salad.jpg",
+      "imageType": "jpg",
+      "restaurantChain": "Groucho's Deli",
+      "servings": {
+        "number": 1,
+        "size": null,
+        "unit": null
+      }
+    },
+    {
+      "id": 376100,
+      "title": "Mini Chicken Salad",
+      "image": "https://img.spoonacular.com/menu-items/376100-312x231.jpg",
+      "imageType": "jpg",
+      "restaurantChain": "Just Fresh",
+      "servings": {
+        "number": 1,
+        "size": null,
+        "unit": null
+      }
+    },
+    {
+      "id": 376101,
+      "title": "Mini Tuna Salad",
+      "image": "https://img.spoonacular.com/menu-items/376101-312x231.jpg",
+      "imageType": "jpg",
+      "restaurantChain": "Just Fresh",
+      "servings": {
+        "number": 1,
+        "size": null,
+        "unit": null
+      }
+    },
+    {
+      "id": 375981,
+      "title": "Chicken Salad Plate",
+      "image": "https://img.spoonacular.com/menu-items/375981-312x231.jpg",
+      "imageType": "jpg",
+      "restaurantChain": "Just Fresh",
+      "servings": {
+        "number": 1,
+        "size": null,
+        "unit": null
+      }
+    },
+    {
+      "id": 375989,
+      "title": "Tuna Salad Plate",
+      "image": "https://spoonacular.com/menuItemImages/seafood-salad.jpg",
+      "imageType": "jpg",
+      "restaurantChain": "Just Fresh",
+      "servings": {
+        "number": 1,
+        "size": 408,
+        "unit": "g"
+      }
+    },
+    {
+      "id": 375985,
+      "title": "Resolution Salad",
+      "image": "https://spoonacular.com/menuItemImages/salad.jpg",
+      "imageType": "jpg",
+      "restaurantChain": "Just Fresh",
+      "servings": {
+        "number": 1,
+        "size": 443,
+        "unit": "g"
+      }
+    },
+    {
+      "id": 357768,
+      "title": "Chopped Power Salad-Lunch",
+      "image": "https://spoonacular.com/menuItemImages/salad.jpg",
+      "imageType": "jpg",
+      "restaurantChain": "Uno Chicago Grill",
+      "servings": {
+        "number": 1,
+        "size": null,
+        "unit": null
+      }
+    },
+    {
+      "id": 252232,
+      "title": "Club Salad",
+      "image": "https://spoonacular.com/menuItemImages/salad.jpg",
+      "imageType": "jpg",
+      "restaurantChain": "Papa Murphy's",
+      "servings": {
+        "number": 1,
+        "size": 189,
+        "unit": "g"
+      }
+    }
+  ],
+  "offset": 0,
+  "number": 15,
+  "totalMenuItems": 4538,
+  "processingTimeMs": 213
+}
+
+PROCESSED DATA:
+null
+
+DISPLAY DATA:
+null
+
+VALIDATION FLAGS (0):
+
+
+===============================================
+
+
+===============================================
+TIMESTAMP: 2025-10-28T03:23:42.922Z
+ENDPOINT: menuItems/search
+SESSION: session_1761621817227
+===============================================
+
+REQUEST PARAMS:
+{
+  "restaurantChain": "Freshii - West Olympia",
+  "number": "15"
+}
+
+RAW SPOONACULAR RESPONSE:
+{
+  "type": "menuItem",
+  "menuItems": [
+    {
+      "id": 330444,
+      "title": "Southwestern Soup",
+      "image": "https://img.spoonacular.com/menu-items/330444-312x231.jpg",
+      "imageType": "jpg",
+      "restaurantChain": "Freshii",
+      "servings": {
+        "number": 1,
+        "size": 1,
+        "unit": "soup"
+      }
+    },
+    {
+      "id": 330440,
+      "title": "Baja Burrito",
+      "image": "https://spoonacular.com/menuItemImages/burrito-plain.jpg",
+      "imageType": "jpg",
+      "restaurantChain": "Freshii",
+      "servings": {
+        "number": 1,
+        "size": 1,
+        "unit": "burrito"
+      }
+    },
+    {
+      "id": 330461,
+      "title": "Muesli",
+      "image": "https://img.spoonacular.com/menu-items/330461-312x231.jpg",
+      "imageType": "jpg",
+      "restaurantChain": "Freshii",
+      "servings": {
+        "number": 1,
+        "size": 1,
+        "unit": "muesli"
+      }
+    },
+    {
+      "id": 330452,
+      "title": "Powerhouse Smoothie",
+      "image": "https://spoonacular.com/menuItemImages/smoothie.png",
+      "imageType": "png",
+      "restaurantChain": "Freshii",
+      "servings": {
+        "number": 1,
+        "size": 1,
+        "unit": "smoothie"
+      }
+    },
+    {
+      "id": 330423,
+      "title": "Superbiotic Salad",
+      "image": "https://spoonacular.com/menuItemImages/salad.jpg",
+      "imageType": "jpg",
+      "restaurantChain": "Freshii",
+      "servings": {
+        "number": 1,
+        "size": 1,
+        "unit": "salad"
+      }
+    },
+    {
+      "id": 330432,
+      "title": "Falafel (Bowl)",
+      "image": "https://spoonacular.com/menuItemImages/falafel.jpg",
+      "imageType": "jpg",
+      "restaurantChain": "Freshii",
+      "servings": {
+        "number": 1,
+        "size": 1,
+        "unit": "bowl"
+      }
+    },
+    {
+      "id": 330460,
+      "title": "Blueberry Crumble Breakfast Oatmeal",
+      "image": "https://spoonacular.com/menuItemImages/crumble.png",
+      "imageType": "png",
+      "restaurantChain": "Freshii",
+      "servings": {
+        "number": 1,
+        "size": 1,
+        "unit": "oatmeal"
+      }
+    },
+    {
+      "id": 330457,
+      "title": "Apple Cinnamon Breakfast Oatmeal",
+      "image": "https://spoonacular.com/menuItemImages/oatmeal.jpg",
+      "imageType": "jpg",
+      "restaurantChain": "Freshii",
+      "servings": {
+        "number": 1,
+        "size": 1,
+        "unit": "oatmeal"
+      }
+    },
+    {
+      "id": 330456,
+      "title": "Steak, Egg & Cheese Breakfast Grilled Burrito",
+      "image": "https://spoonacular.com/menuItemImages/burrito-plain.jpg",
+      "imageType": "jpg",
+      "restaurantChain": "Freshii",
+      "servings": {
+        "number": 1,
+        "size": 1,
+        "unit": "burrito"
+      }
+    },
+    {
+      "id": 330419,
+      "title": "Cobb Salad",
+      "image": "https://spoonacular.com/menuItemImages/cobb-salad.png",
+      "imageType": "png",
+      "restaurantChain": "Freshii",
+      "servings": {
+        "number": 1,
+        "size": 1,
+        "unit": "salad"
+      }
+    },
+    {
+      "id": 330435,
+      "title": "Pangoa (Bowl)",
+      "image": "https://img.spoonacular.com/menu-items/330435-312x231.jpg",
+      "imageType": "jpg",
+      "restaurantChain": "Freshii",
+      "servings": {
+        "number": 1,
+        "size": 1,
+        "unit": "bowl"
+      }
+    },
+    {
+      "id": 330436,
+      "title": "Warrior (Bowl)",
+      "image": "https://img.spoonacular.com/menu-items/330436-312x231.jpg",
+      "imageType": "jpg",
+      "restaurantChain": "Freshii",
+      "servings": {
+        "number": 1,
+        "size": 1,
+        "unit": "bowl"
+      }
+    },
+    {
+      "id": 330439,
+      "title": "Falafel Burrito",
+      "image": "https://spoonacular.com/menuItemImages/falafel.jpg",
+      "imageType": "jpg",
+      "restaurantChain": "Freshii",
+      "servings": {
+        "number": 1,
+        "size": 1,
+        "unit": "burrito"
+      }
+    },
+    {
+      "id": 330445,
+      "title": "Spicy Lemongrass Soup",
+      "image": "https://img.spoonacular.com/menu-items/330445-312x231.jpg",
+      "imageType": "jpg",
+      "restaurantChain": "Freshii",
+      "servings": {
+        "number": 1,
+        "size": 1,
+        "unit": "soup"
+      }
+    },
+    {
+      "id": 330447,
+      "title": "Green Energy Juice",
+      "image": "https://spoonacular.com/menuItemImages/plastic-to-go-drink-cup.jpg",
+      "imageType": "jpg",
+      "restaurantChain": "Freshii",
+      "servings": {
+        "number": 1,
+        "size": 1,
+        "unit": "juice"
+      }
+    }
+  ],
+  "offset": 0,
+  "number": 15,
+  "totalMenuItems": 43,
+  "processingTimeMs": 126
+}
+
+PROCESSED DATA:
+null
+
+DISPLAY DATA:
+null
+
+VALIDATION FLAGS (0):
+
+
+===============================================
+
+
+===============================================
+TIMESTAMP: 2025-10-28T03:23:42.986Z
+ENDPOINT: menuItems/search
+SESSION: session_1761621817227
+===============================================
+
+REQUEST PARAMS:
+{
+  "restaurantChain": "Six Seven Restaurant",
+  "number": "15"
+}
+
+RAW SPOONACULAR RESPONSE:
+{
+  "type": "menuItem",
+  "menuItems": [],
+  "offset": 0,
+  "number": 15,
+  "totalMenuItems": 0,
+  "processingTimeMs": 3
+}
+
+PROCESSED DATA:
+null
+
+DISPLAY DATA:
+null
+
+VALIDATION FLAGS (0):
+
+
+===============================================
+
+
+===============================================
+TIMESTAMP: 2025-10-28T03:23:43.092Z
+ENDPOINT: menuItems/search
+SESSION: session_1761621817227
+===============================================
+
+REQUEST PARAMS:
+{
+  "restaurantChain": "Pret A Manger",
+  "number": "15"
+}
+
+RAW SPOONACULAR RESPONSE:
+{
+  "type": "menuItem",
+  "menuItems": [
+    {
+      "id": 335671,
+      "title": "Grapefruit Juice",
+      "image": "https://spoonacular.com/menuItemImages/plastic-to-go-drink-cup.jpg",
+      "imageType": "jpg",
+      "restaurantChain": "Pret A Manger",
+      "servings": {
+        "number": 1,
+        "size": 15,
+        "unit": "fl oz"
+      }
+    },
+    {
+      "id": 335638,
+      "title": "Chicken and Avocado Salad",
+      "image": "https://spoonacular.com/menuItemImages/salad.jpg",
+      "imageType": "jpg",
+      "restaurantChain": "Pret A Manger",
+      "servings": {
+        "number": 1,
+        "size": 360,
+        "unit": "g"
+      }
+    },
+    {
+      "id": 335605,
+      "title": "Slim Super Greens",
+      "image": "https://img.spoonacular.com/menu-items/335605-312x231.jpg",
+      "imageType": "jpg",
+      "restaurantChain": "Pret A Manger",
+      "servings": {
+        "number": 1,
+        "size": 131.25,
+        "unit": "g"
+      }
+    },
+    {
+      "id": 335704,
+      "title": "Harvest Cookie",
+      "image": "https://spoonacular.com/menuItemImages/cookies.jpg",
+      "imageType": "jpg",
+      "restaurantChain": "Pret A Manger",
+      "servings": {
+        "number": 1,
+        "size": 71,
+        "unit": "g"
+      }
+    },
+    {
+      "id": 335705,
+      "title": "Classic Carrot Cake",
+      "image": "https://spoonacular.com/menuItemImages/carrot-cake.jpg",
+      "imageType": "jpg",
+      "restaurantChain": "Pret A Manger",
+      "servings": {
+        "number": 1,
+        "size": 113,
+        "unit": "g"
+      }
+    },
+    {
+      "id": 286695,
+      "title": "Orange Juice",
+      "image": "https://spoonacular.com/menuItemImages/plastic-to-go-drink-cup.jpg",
+      "imageType": "jpg",
+      "restaurantChain": "Pret A Manger",
+      "servings": {
+        "number": 1,
+        "size": 260,
+        "unit": "g"
+      }
+    },
+    {
+      "id": 335703,
+      "title": "Chocolate Trail Mix",
+      "image": "https://img.spoonacular.com/menu-items/335703-312x231.jpg",
+      "imageType": "jpg",
+      "restaurantChain": "Pret A Manger",
+      "servings": {
+        "number": 1,
+        "size": 1.75,
+        "unit": "oz"
+      }
+    },
+    {
+      "id": 300053,
+      "title": "Large Fruit Salad",
+      "image": "https://spoonacular.com/menuItemImages/fruit-salad.png",
+      "imageType": "png",
+      "restaurantChain": "Pret A Manger",
+      "servings": {
+        "number": 1,
+        "size": 315,
+        "unit": "g"
+      }
+    },
+    {
+      "id": 286663,
+      "title": "Apple Juice",
+      "image": "https://spoonacular.com/menuItemImages/plastic-to-go-drink-cup.jpg",
+      "imageType": "jpg",
+      "restaurantChain": "Pret A Manger",
+      "servings": {
+        "number": 1,
+        "size": 250,
+        "unit": "g"
+      }
+    },
+    {
+      "id": 335702,
+      "title": "Dark Chocolate w/ Sea Salt",
+      "image": "https://spoonacular.com/cdn/ingredients_100x100/milk-chocolate.jpg",
+      "imageType": "jpg",
+      "restaurantChain": "Pret A Manger",
+      "servings": {
+        "number": 1,
+        "size": 25,
+        "unit": "g"
+      }
+    },
+    {
+      "id": 335641,
+      "title": "NEW! Falafel Mezze Salad",
+      "image": "https://spoonacular.com/menuItemImages/falafel.jpg",
+      "imageType": "jpg",
+      "restaurantChain": "Pret A Manger",
+      "servings": {
+        "number": 1,
+        "size": 382,
+        "unit": "g"
+      }
+    },
+    {
+      "id": 335706,
+      "title": "Milk Chocolate w/ Cardamom",
+      "image": "https://spoonacular.com/menuItemImages/plastic-to-go-drink-cup.jpg",
+      "imageType": "jpg",
+      "restaurantChain": "Pret A Manger",
+      "servings": {
+        "number": 1,
+        "size": 25,
+        "unit": "g"
+      }
+    },
+    {
+      "id": 335667,
+      "title": "Spanish Meatball (Regular)",
+      "image": "https://spoonacular.com/menuItemImages/meatballs.jpg",
+      "imageType": "jpg",
+      "restaurantChain": "Pret A Manger",
+      "servings": {
+        "number": 1,
+        "size": 340,
+        "unit": "g"
+      }
+    },
+    {
+      "id": 335709,
+      "title": "Pecan Bar",
+      "image": "https://img.spoonacular.com/menu-items/335709-312x231.jpg",
+      "imageType": "jpg",
+      "restaurantChain": "Pret A Manger",
+      "servings": {
+        "number": 1,
+        "size": 71,
+        "unit": "g"
+      }
+    },
+    {
+      "id": 335602,
+      "title": "Slim Balsamic Chicken and Avocado",
+      "image": "https://img.spoonacular.com/menu-items/335602-312x231.jpg",
+      "imageType": "jpg",
+      "restaurantChain": "Pret A Manger",
+      "servings": {
+        "number": 1,
+        "size": 118,
+        "unit": "g"
+      }
+    }
+  ],
+  "offset": 0,
+  "number": 15,
+  "totalMenuItems": 117,
+  "processingTimeMs": 306
+}
+
+PROCESSED DATA:
+null
+
+DISPLAY DATA:
+null
+
+VALIDATION FLAGS (0):
+
+
+===============================================
+
+
+===============================================
+TIMESTAMP: 2025-10-28T03:23:43.107Z
+ENDPOINT: menuItems/search
+SESSION: session_1761621817227
+===============================================
+
+REQUEST PARAMS:
+{
+  "restaurantChain": "Pret A Manger",
+  "number": "15"
+}
+
+RAW SPOONACULAR RESPONSE:
+{
+  "type": "menuItem",
+  "menuItems": [
+    {
+      "id": 335671,
+      "title": "Grapefruit Juice",
+      "image": "https://spoonacular.com/menuItemImages/plastic-to-go-drink-cup.jpg",
+      "imageType": "jpg",
+      "restaurantChain": "Pret A Manger",
+      "servings": {
+        "number": 1,
+        "size": 15,
+        "unit": "fl oz"
+      }
+    },
+    {
+      "id": 335638,
+      "title": "Chicken and Avocado Salad",
+      "image": "https://spoonacular.com/menuItemImages/salad.jpg",
+      "imageType": "jpg",
+      "restaurantChain": "Pret A Manger",
+      "servings": {
+        "number": 1,
+        "size": 360,
+        "unit": "g"
+      }
+    },
+    {
+      "id": 335605,
+      "title": "Slim Super Greens",
+      "image": "https://img.spoonacular.com/menu-items/335605-312x231.jpg",
+      "imageType": "jpg",
+      "restaurantChain": "Pret A Manger",
+      "servings": {
+        "number": 1,
+        "size": 131.25,
+        "unit": "g"
+      }
+    },
+    {
+      "id": 335704,
+      "title": "Harvest Cookie",
+      "image": "https://spoonacular.com/menuItemImages/cookies.jpg",
+      "imageType": "jpg",
+      "restaurantChain": "Pret A Manger",
+      "servings": {
+        "number": 1,
+        "size": 71,
+        "unit": "g"
+      }
+    },
+    {
+      "id": 335705,
+      "title": "Classic Carrot Cake",
+      "image": "https://spoonacular.com/menuItemImages/carrot-cake.jpg",
+      "imageType": "jpg",
+      "restaurantChain": "Pret A Manger",
+      "servings": {
+        "number": 1,
+        "size": 113,
+        "unit": "g"
+      }
+    },
+    {
+      "id": 286695,
+      "title": "Orange Juice",
+      "image": "https://spoonacular.com/menuItemImages/plastic-to-go-drink-cup.jpg",
+      "imageType": "jpg",
+      "restaurantChain": "Pret A Manger",
+      "servings": {
+        "number": 1,
+        "size": 260,
+        "unit": "g"
+      }
+    },
+    {
+      "id": 335703,
+      "title": "Chocolate Trail Mix",
+      "image": "https://img.spoonacular.com/menu-items/335703-312x231.jpg",
+      "imageType": "jpg",
+      "restaurantChain": "Pret A Manger",
+      "servings": {
+        "number": 1,
+        "size": 1.75,
+        "unit": "oz"
+      }
+    },
+    {
+      "id": 300053,
+      "title": "Large Fruit Salad",
+      "image": "https://spoonacular.com/menuItemImages/fruit-salad.png",
+      "imageType": "png",
+      "restaurantChain": "Pret A Manger",
+      "servings": {
+        "number": 1,
+        "size": 315,
+        "unit": "g"
+      }
+    },
+    {
+      "id": 286663,
+      "title": "Apple Juice",
+      "image": "https://spoonacular.com/menuItemImages/plastic-to-go-drink-cup.jpg",
+      "imageType": "jpg",
+      "restaurantChain": "Pret A Manger",
+      "servings": {
+        "number": 1,
+        "size": 250,
+        "unit": "g"
+      }
+    },
+    {
+      "id": 335702,
+      "title": "Dark Chocolate w/ Sea Salt",
+      "image": "https://spoonacular.com/cdn/ingredients_100x100/milk-chocolate.jpg",
+      "imageType": "jpg",
+      "restaurantChain": "Pret A Manger",
+      "servings": {
+        "number": 1,
+        "size": 25,
+        "unit": "g"
+      }
+    },
+    {
+      "id": 335641,
+      "title": "NEW! Falafel Mezze Salad",
+      "image": "https://spoonacular.com/menuItemImages/falafel.jpg",
+      "imageType": "jpg",
+      "restaurantChain": "Pret A Manger",
+      "servings": {
+        "number": 1,
+        "size": 382,
+        "unit": "g"
+      }
+    },
+    {
+      "id": 335706,
+      "title": "Milk Chocolate w/ Cardamom",
+      "image": "https://spoonacular.com/menuItemImages/plastic-to-go-drink-cup.jpg",
+      "imageType": "jpg",
+      "restaurantChain": "Pret A Manger",
+      "servings": {
+        "number": 1,
+        "size": 25,
+        "unit": "g"
+      }
+    },
+    {
+      "id": 335667,
+      "title": "Spanish Meatball (Regular)",
+      "image": "https://spoonacular.com/menuItemImages/meatballs.jpg",
+      "imageType": "jpg",
+      "restaurantChain": "Pret A Manger",
+      "servings": {
+        "number": 1,
+        "size": 340,
+        "unit": "g"
+      }
+    },
+    {
+      "id": 335709,
+      "title": "Pecan Bar",
+      "image": "https://img.spoonacular.com/menu-items/335709-312x231.jpg",
+      "imageType": "jpg",
+      "restaurantChain": "Pret A Manger",
+      "servings": {
+        "number": 1,
+        "size": 71,
+        "unit": "g"
+      }
+    },
+    {
+      "id": 335602,
+      "title": "Slim Balsamic Chicken and Avocado",
+      "image": "https://img.spoonacular.com/menu-items/335602-312x231.jpg",
+      "imageType": "jpg",
+      "restaurantChain": "Pret A Manger",
+      "servings": {
+        "number": 1,
+        "size": 118,
+        "unit": "g"
+      }
+    }
+  ],
+  "offset": 0,
+  "number": 15,
+  "totalMenuItems": 117,
+  "processingTimeMs": 335
+}
+
+PROCESSED DATA:
+null
+
+DISPLAY DATA:
+null
+
+VALIDATION FLAGS (0):
+
+
+===============================================
+
+
+===============================================
+TIMESTAMP: 2025-10-28T03:23:43.306Z
+ENDPOINT: menuItems/search
+SESSION: session_1761621817227
+===============================================
+
+REQUEST PARAMS:
+{
+  "restaurantChain": "In-N-Out Burger",
+  "number": "15"
+}
+
+RAW SPOONACULAR RESPONSE:
+{
+  "type": "menuItem",
+  "menuItems": [
+    {
+      "id": 419315,
+      "title": "In-N-Out Iced Tea",
+      "image": "https://spoonacular.com/menuItemImages/iced-tea.png",
+      "imageType": "png",
+      "restaurantChain": "In N Out Burger",
+      "servings": {
+        "number": 1,
+        "size": 16,
+        "unit": "16oz"
+      }
+    },
+    {
+      "id": 419317,
+      "title": "In-N-Out Milk",
+      "image": "https://spoonacular.com/menuItemImages/plastic-to-go-drink-cup.jpg",
+      "imageType": "jpg",
+      "restaurantChain": "In N Out Burger",
+      "servings": {
+        "number": 1,
+        "size": 10,
+        "unit": "10oz"
+      }
+    },
+    {
+      "id": 419313,
+      "title": "In-N-Out Lemonade",
+      "image": "https://spoonacular.com/menuItemImages/plastic-to-go-drink-cup.jpg",
+      "imageType": "jpg",
+      "restaurantChain": "In N Out Burger",
+      "servings": {
+        "number": 1,
+        "size": 16,
+        "unit": "16oz"
+      }
+    },
+    {
+      "id": 419307,
+      "title": "In-N-Out Strawberry Shake",
+      "image": "https://spoonacular.com/menuItemImages/strawberry-shake.jpg",
+      "imageType": "jpg",
+      "restaurantChain": "In N Out Burger",
+      "servings": {
+        "number": 1,
+        "size": 15,
+        "unit": "15oz"
+      }
+    },
+    {
+      "id": 419305,
+      "title": "In-N-Out Chocolate Shake",
+      "image": "https://spoonacular.com/menuItemImages/chocolate-shake.jpg",
+      "imageType": "jpg",
+      "restaurantChain": "In N Out Burger",
+      "servings": {
+        "number": 1,
+        "size": 15,
+        "unit": "15oz"
+      }
+    },
+    {
+      "id": 243811,
+      "title": "In-N-Out French Fries",
+      "image": "https://img.spoonacular.com/menu-items/243811.jpg",
+      "imageType": "jpg",
+      "restaurantChain": "In N Out Burger",
+      "servings": {
+        "number": 1,
+        "size": null,
+        "unit": null
+      }
+    },
+    {
+      "id": 243808,
+      "title": "In-N-Out Hamburger w/Onion",
+      "image": "https://img.spoonacular.com/menu-items/243808.jpg",
+      "imageType": "jpg",
+      "restaurantChain": "In N Out Burger",
+      "servings": {
+        "number": 1,
+        "size": null,
+        "unit": null
+      }
+    },
+    {
+      "id": 419311,
+      "title": "In-N-Out Dr Pepper",
+      "image": "https://spoonacular.com/menuItemImages/plastic-to-go-drink-cup.jpg",
+      "imageType": "jpg",
+      "restaurantChain": "In N Out Burger",
+      "servings": {
+        "number": 1,
+        "size": 16,
+        "unit": "16oz"
+      }
+    },
+    {
+      "id": 419309,
+      "title": "In-N-Out Diet Coke",
+      "image": "https://spoonacular.com/menuItemImages/plastic-to-go-drink-cup.jpg",
+      "imageType": "jpg",
+      "restaurantChain": "In N Out Burger",
+      "servings": {
+        "number": 1,
+        "size": 16,
+        "unit": "16oz"
+      }
+    },
+    {
+      "id": 419314,
+      "title": "In-N-Out Minute Maid Light Lemonade",
+      "image": "https://spoonacular.com/menuItemImages/plastic-to-go-drink-cup.jpg",
+      "imageType": "jpg",
+      "restaurantChain": "In N Out Burger",
+      "servings": {
+        "number": 1,
+        "size": 16,
+        "unit": "16oz"
+      }
+    },
+    {
+      "id": 419312,
+      "title": "In-N-Out Root Beer",
+      "image": "https://spoonacular.com/menuItemImages/plastic-to-go-drink-cup.jpg",
+      "imageType": "jpg",
+      "restaurantChain": "In N Out Burger",
+      "servings": {
+        "number": 1,
+        "size": 16,
+        "unit": "16oz"
+      }
+    },
+    {
+      "id": 419316,
+      "title": "In-N-Out Coffee",
+      "image": "https://spoonacular.com/menuItemImages/coffee.png",
+      "imageType": "png",
+      "restaurantChain": "In N Out Burger",
+      "servings": {
+        "number": 1,
+        "size": 16,
+        "unit": "16oz"
+      }
+    },
+    {
+      "id": 419308,
+      "title": "In-N-Out Coca-Cola",
+      "image": "https://spoonacular.com/menuItemImages/plastic-to-go-drink-cup.jpg",
+      "imageType": "jpg",
+      "restaurantChain": "In N Out Burger",
+      "servings": {
+        "number": 1,
+        "size": 16,
+        "unit": "16oz"
+      }
+    },
+    {
+      "id": 419306,
+      "title": "In-N-Out Vanilla Shake",
+      "image": "https://spoonacular.com/menuItemImages/vanilla-milkshake.png",
+      "imageType": "png",
+      "restaurantChain": "In N Out Burger",
+      "servings": {
+        "number": 1,
+        "size": 15,
+        "unit": "15oz"
+      }
+    },
+    {
+      "id": 419304,
+      "title": "In-N-Out Protein Style Double (Double)",
+      "image": "https://img.spoonacular.com/menu-items/419304.jpg",
+      "imageType": "jpg",
+      "restaurantChain": "In N Out Burger",
+      "servings": {
+        "number": 1,
+        "size": null,
+        "unit": null
+      }
+    }
+  ],
+  "offset": 0,
+  "number": 15,
+  "totalMenuItems": 22,
+  "processingTimeMs": 179
+}
+
+PROCESSED DATA:
+null
+
+DISPLAY DATA:
+null
+
+VALIDATION FLAGS (0):
+
+
+===============================================
+
+
+===============================================
+TIMESTAMP: 2025-10-28T03:23:43.968Z
+ENDPOINT: menuItems/search
+SESSION: session_1761621817227
+===============================================
+
+REQUEST PARAMS:
+{
+  "restaurantChain": "Due' Cucina Italian Restaurant - Capitol Hill",
+  "number": "15"
+}
+
+RAW SPOONACULAR RESPONSE:
+{
+  "type": "menuItem",
+  "menuItems": [],
+  "offset": 0,
+  "number": 15,
+  "totalMenuItems": 0,
+  "processingTimeMs": 22
+}
+
+PROCESSED DATA:
+null
+
+DISPLAY DATA:
+null
+
+VALIDATION FLAGS (0):
+
+
+===============================================
+
+
+===============================================
+TIMESTAMP: 2025-10-28T03:23:44.130Z
+ENDPOINT: menuItems/search
+SESSION: session_1761621817227
+===============================================
+
+REQUEST PARAMS:
+{
+  "restaurantChain": "QDOBA Mexican Eats",
+  "number": "15"
+}
+
+RAW SPOONACULAR RESPONSE:
+{
+  "type": "menuItem",
+  "menuItems": [
+    {
+      "id": 424283,
+      "title": "Habanero BBQ Brisket Quesadilla",
+      "image": "https://img.spoonacular.com/menu-items/424283.jpg",
+      "imageType": "jpg",
+      "restaurantChain": "Qdoba",
+      "servings": {
+        "number": 1,
+        "size": null,
+        "unit": null
+      }
+    },
+    {
+      "id": 424281,
+      "title": "Habanero BBQ Brisket Taco Salad",
+      "image": "https://img.spoonacular.com/menu-items/424281.jpg",
+      "imageType": "jpg",
+      "restaurantChain": "Qdoba",
+      "servings": {
+        "number": 1,
+        "size": null,
+        "unit": null
+      }
+    },
+    {
+      "id": 424282,
+      "title": "Habanero BBQ Brisket Taco",
+      "image": "https://img.spoonacular.com/menu-items/424282.jpg",
+      "imageType": "jpg",
+      "restaurantChain": "Qdoba",
+      "servings": {
+        "number": 1,
+        "size": null,
+        "unit": null
+      }
+    },
+    {
+      "id": 424286,
+      "title": "Cookie, Chocolate Chunk",
+      "image": "https://spoonacular.com/menuItemImages/cookies.jpg",
+      "imageType": "jpg",
+      "restaurantChain": "Qdoba",
+      "servings": {
+        "number": 1,
+        "size": null,
+        "unit": null
+      }
+    },
+    {
+      "id": 424284,
+      "title": "Apple Sauce",
+      "image": "https://img.spoonacular.com/menu-items/424284-312x231.jpg",
+      "imageType": "jpg",
+      "restaurantChain": "Qdoba",
+      "servings": {
+        "number": 1,
+        "size": null,
+        "unit": null
+      }
+    },
+    {
+      "id": 424285,
+      "title": "Brownies",
+      "image": "https://img.spoonacular.com/menu-items/424285.png",
+      "imageType": "png",
+      "restaurantChain": "Qdoba",
+      "servings": {
+        "number": 1,
+        "size": null,
+        "unit": null
+      }
+    },
+    {
+      "id": 424280,
+      "title": "Habanero BBQ Brisket 3-Cheese Nachos",
+      "image": "https://img.spoonacular.com/menu-items/424280-312x231.jpg",
+      "imageType": "jpg",
+      "restaurantChain": "Qdoba",
+      "servings": {
+        "number": 1,
+        "size": null,
+        "unit": null
+      }
+    },
+    {
+      "id": 424279,
+      "title": "Habanero BBQ Brisket Loaded Totilla Soup",
+      "image": "https://img.spoonacular.com/menu-items/424279.jpg",
+      "imageType": "jpg",
+      "restaurantChain": "Qdoba",
+      "servings": {
+        "number": 1,
+        "size": null,
+        "unit": null
+      }
+    },
+    {
+      "id": 424278,
+      "title": "Habanero BBQ Brisket Burrito",
+      "image": "https://img.spoonacular.com/menu-items/424278.jpg",
+      "imageType": "jpg",
+      "restaurantChain": "Qdoba",
+      "servings": {
+        "number": 1,
+        "size": null,
+        "unit": null
+      }
+    },
+    {
+      "id": 424276,
+      "title": "The Gladiator Knockout Tacos",
+      "image": "https://img.spoonacular.com/menu-items/424276.png",
+      "imageType": "png",
+      "restaurantChain": "Qdoba",
+      "servings": {
+        "number": 1,
+        "size": null,
+        "unit": null
+      }
+    },
+    {
+      "id": 424277,
+      "title": "Bohemian Veg Knockout Tacos",
+      "image": "https://img.spoonacular.com/menu-items/424277.png",
+      "imageType": "png",
+      "restaurantChain": "Qdoba",
+      "servings": {
+        "number": 1,
+        "size": null,
+        "unit": null
+      }
+    },
+    {
+      "id": 424272,
+      "title": "Drunken Yardbird Knockout Tacos",
+      "image": "https://img.spoonacular.com/menu-items/424272.png",
+      "imageType": "png",
+      "restaurantChain": "Qdoba",
+      "servings": {
+        "number": 1,
+        "size": null,
+        "unit": null
+      }
+    },
+    {
+      "id": 424275,
+      "title": "Triple Threat Knockout Tacos",
+      "image": "https://img.spoonacular.com/menu-items/424275.png",
+      "imageType": "png",
+      "restaurantChain": "Qdoba",
+      "servings": {
+        "number": 1,
+        "size": null,
+        "unit": null
+      }
+    },
+    {
+      "id": 424273,
+      "title": "Mad Rancher Knockout Tacos",
+      "image": "https://img.spoonacular.com/menu-items/424273.png",
+      "imageType": "png",
+      "restaurantChain": "Qdoba",
+      "servings": {
+        "number": 1,
+        "size": null,
+        "unit": null
+      }
+    },
+    {
+      "id": 424274,
+      "title": "Two Timer Knockout Tacos",
+      "image": "https://img.spoonacular.com/menu-items/424274.png",
+      "imageType": "png",
+      "restaurantChain": "Qdoba",
+      "servings": {
+        "number": 1,
+        "size": null,
+        "unit": null
+      }
+    }
+  ],
+  "offset": 0,
+  "number": 15,
+  "totalMenuItems": 15,
+  "processingTimeMs": 25
+}
+
+PROCESSED DATA:
+null
+
+DISPLAY DATA:
+null
+
+VALIDATION FLAGS (0):
+
+
+===============================================
+
+
+===============================================
+TIMESTAMP: 2025-10-28T03:23:44.157Z
+ENDPOINT: menuItems/search
+SESSION: session_1761621817227
+===============================================
+
+REQUEST PARAMS:
+{
+  "restaurantChain": "Blaze Pizza",
+  "number": "15"
+}
+
+RAW SPOONACULAR RESPONSE:
+{
+  "type": "menuItem",
+  "menuItems": [
+    {
+      "id": 402629,
+      "title": "Antipasto (entrée)",
+      "image": "https://spoonacular.com/menuItemImages/antipasti.jpg",
+      "imageType": "jpg",
+      "restaurantChain": "Blaze Pizza",
+      "servings": {
+        "number": 1,
+        "size": 1,
+        "unit": "Salad"
+      }
+    },
+    {
+      "id": 402630,
+      "title": "Beet & Goat Cheese",
+      "image": "https://spoonacular.com/cdn/ingredients_100x100/goat-cheese.jpg",
+      "imageType": "jpg",
+      "restaurantChain": "Blaze Pizza",
+      "servings": {
+        "number": 1,
+        "size": 1,
+        "unit": "Salad"
+      }
+    },
+    {
+      "id": 402628,
+      "title": "Simple Pie",
+      "image": "https://img.spoonacular.com/menu-items/402628-312x231.jpg",
+      "imageType": "jpg",
+      "restaurantChain": "Blaze Pizza",
+      "servings": {
+        "number": 1,
+        "size": 1,
+        "unit": "Slice"
+      }
+    },
+    {
+      "id": 402635,
+      "title": "Tomato Basil Ovaline",
+      "image": "https://spoonacular.com/cdn/ingredients_100x100/mixed-fresh-herbs.jpg",
+      "imageType": "jpg",
+      "restaurantChain": "Blaze Pizza",
+      "servings": {
+        "number": 1,
+        "size": 1,
+        "unit": "Salad"
+      }
+    },
+    {
+      "id": 349591,
+      "title": "Trail Blazer - Large Original Crust",
+      "image": "https://img.spoonacular.com/menu-items/349591.jpg",
+      "imageType": "jpg",
+      "restaurantChain": "Pizza Ranch",
+      "servings": {
+        "number": 1,
+        "size": 1,
+        "unit": "slice"
+      }
+    },
+    {
+      "id": 349593,
+      "title": "Trail Blazer - Thin Crust Large Pizza",
+      "image": "https://img.spoonacular.com/menu-items/349593.jpg",
+      "imageType": "jpg",
+      "restaurantChain": "Pizza Ranch",
+      "servings": {
+        "number": 1,
+        "size": 1,
+        "unit": "slice"
+      }
+    },
+    {
+      "id": 349509,
+      "title": "Trail Blazer - Skillet Crust Medium Pizza, Buffet",
+      "image": "https://img.spoonacular.com/menu-items/349509.jpg",
+      "imageType": "jpg",
+      "restaurantChain": "Pizza Ranch",
+      "servings": {
+        "number": 1,
+        "size": 1,
+        "unit": "slice"
+      }
+    },
+    {
+      "id": 349512,
+      "title": "Trail Blazer - Thin Crust Medium Pizza, Carry-out",
+      "image": "https://img.spoonacular.com/menu-items/349512.jpg",
+      "imageType": "jpg",
+      "restaurantChain": "Pizza Ranch",
+      "servings": {
+        "number": 1,
+        "size": 1,
+        "unit": "slice"
+      }
+    },
+    {
+      "id": 349510,
+      "title": "Trail Blazer - Skillet Crust Medium Pizza, Carry-out",
+      "image": "https://img.spoonacular.com/menu-items/349510.jpg",
+      "imageType": "jpg",
+      "restaurantChain": "Pizza Ranch",
+      "servings": {
+        "number": 1,
+        "size": 1,
+        "unit": "slice"
+      }
+    },
+    {
+      "id": 349592,
+      "title": "Trail Blazer - Skillet Crust Large Pizza",
+      "image": "https://img.spoonacular.com/menu-items/349592.jpg",
+      "imageType": "jpg",
+      "restaurantChain": "Pizza Ranch",
+      "servings": {
+        "number": 1,
+        "size": 1,
+        "unit": "slice"
+      }
+    },
+    {
+      "id": 349511,
+      "title": "Trail Blazer - Thin Crust Medium Pizza, Buffet",
+      "image": "https://img.spoonacular.com/menu-items/349511.jpg",
+      "imageType": "jpg",
+      "restaurantChain": "Pizza Ranch",
+      "servings": {
+        "number": 1,
+        "size": 1,
+        "unit": "slice"
+      }
+    },
+    {
+      "id": 349616,
+      "title": "Trail Blazer - Glutten-Free Crust",
+      "image": "https://img.spoonacular.com/menu-items/349616.jpg",
+      "imageType": "jpg",
+      "restaurantChain": "Pizza Ranch",
+      "servings": {
+        "number": 1,
+        "size": 1,
+        "unit": "slice"
+      }
+    },
+    {
+      "id": 349357,
+      "title": "Trail Blazer - Thin Crust Small Pizza",
+      "image": "https://img.spoonacular.com/menu-items/349357.jpg",
+      "imageType": "jpg",
+      "restaurantChain": "Pizza Ranch",
+      "servings": {
+        "number": 1,
+        "size": 1,
+        "unit": "slice"
+      }
+    },
+    {
+      "id": 349356,
+      "title": "Trail Blazer - Skillet Crust Small Pizza",
+      "image": "https://img.spoonacular.com/menu-items/349356.jpg",
+      "imageType": "jpg",
+      "restaurantChain": "Pizza Ranch",
+      "servings": {
+        "number": 1,
+        "size": 1,
+        "unit": "slice"
+      }
+    },
+    {
+      "id": 349355,
+      "title": "Trail Blazer - Original Crust Small Pizza",
+      "image": "https://img.spoonacular.com/menu-items/349355.jpg",
+      "imageType": "jpg",
+      "restaurantChain": "Pizza Ranch",
+      "servings": {
+        "number": 1,
+        "size": 1,
+        "unit": "slice"
+      }
+    }
+  ],
+  "offset": 0,
+  "number": 15,
+  "totalMenuItems": 17,
+  "processingTimeMs": 27
+}
+
+PROCESSED DATA:
+null
+
+DISPLAY DATA:
+null
+
+VALIDATION FLAGS (0):
+
+
+===============================================
+
+
+===============================================
+TIMESTAMP: 2025-10-28T03:23:44.163Z
+ENDPOINT: menuItems/search
+SESSION: session_1761621817227
+===============================================
+
+REQUEST PARAMS:
+{
+  "restaurantChain": "Panera Bread",
+  "number": "15"
+}
+
+RAW SPOONACULAR RESPONSE:
+{
+  "type": "menuItem",
+  "menuItems": [
+    {
+      "id": 417561,
+      "title": "Steak & White Cheddar Panini on Hoagie Roll",
+      "image": "https://spoonacular.com/menuItemImages/panini.jpg",
+      "imageType": "jpg",
+      "restaurantChain": "Panera Bread",
+      "servings": {
+        "number": 1,
+        "size": null,
+        "unit": "Whole"
+      }
+    },
+    {
+      "id": 417462,
+      "title": "Caramel Latte",
+      "image": "https://spoonacular.com/menuItemImages/latte.png",
+      "imageType": "png",
+      "restaurantChain": "Panera Bread",
+      "servings": {
+        "number": 1,
+        "size": null,
+        "unit": null
+      }
+    },
+    {
+      "id": 417528,
+      "title": "Lipton Brisk Raspberry Tea",
+      "image": "https://spoonacular.com/menuItemImages/cup-of-tea.jpg",
+      "imageType": "jpg",
+      "restaurantChain": "Panera Bread",
+      "servings": {
+        "number": 1,
+        "size": null,
+        "unit": null
+      }
+    },
+    {
+      "id": 417429,
+      "title": "Caramel Apple Thumbprint Scone",
+      "image": "https://img.spoonacular.com/menu-items/417429-312x231.jpg",
+      "imageType": "jpg",
+      "restaurantChain": "Panera Bread",
+      "servings": {
+        "number": 1,
+        "size": null,
+        "unit": null
+      }
+    },
+    {
+      "id": 417594,
+      "title": "Green Goddess Dressing",
+      "image": "https://spoonacular.com/cdn/ingredients_100x100/white-bread.jpg",
+      "imageType": "jpg",
+      "restaurantChain": "Panera Bread",
+      "servings": {
+        "number": 1,
+        "size": null,
+        "unit": null
+      }
+    },
+    {
+      "id": 251143,
+      "title": "Wild Blueberry Scone",
+      "image": "https://spoonacular.com/menuItemImages/scone.jpg",
+      "imageType": "jpg",
+      "restaurantChain": "Panera Bread",
+      "servings": {
+        "number": 1,
+        "size": null,
+        "unit": null
+      }
+    },
+    {
+      "id": 251110,
+      "title": "French Toast Bagel",
+      "image": "https://spoonacular.com/menuItemImages/french-toast.png",
+      "imageType": "png",
+      "restaurantChain": "Panera Bread",
+      "servings": {
+        "number": 1,
+        "size": null,
+        "unit": null
+      }
+    },
+    {
+      "id": 417562,
+      "title": "Tuna Salad Sandwich on Black Pepper Focaccia",
+      "image": "https://img.spoonacular.com/menu-items/417562-312x231.jpg",
+      "imageType": "jpg",
+      "restaurantChain": "Panera Bread",
+      "servings": {
+        "number": 1,
+        "size": null,
+        "unit": "Half"
+      }
+    },
+    {
+      "id": 417527,
+      "title": "Lipton Brisk Raspberry Tea",
+      "image": "https://spoonacular.com/menuItemImages/cup-of-tea.jpg",
+      "imageType": "jpg",
+      "restaurantChain": "Panera Bread",
+      "servings": {
+        "number": 1,
+        "size": null,
+        "unit": null
+      }
+    },
+    {
+      "id": 320006,
+      "title": "Orange Mini Scone",
+      "image": "https://spoonacular.com/menuItemImages/scone.jpg",
+      "imageType": "jpg",
+      "restaurantChain": "Panera Bread",
+      "servings": {
+        "number": 1,
+        "size": null,
+        "unit": null
+      }
+    },
+    {
+      "id": 417430,
+      "title": "Mini Scones Variety Pack",
+      "image": "https://spoonacular.com/menuItemImages/scone.jpg",
+      "imageType": "jpg",
+      "restaurantChain": "Panera Bread",
+      "servings": {
+        "number": 1,
+        "size": 9,
+        "unit": "pack"
+      }
+    },
+    {
+      "id": 417428,
+      "title": "Cobblestone Sweet Roll",
+      "image": "https://spoonacular.com/menuItemImages/roll.jpg",
+      "imageType": "jpg",
+      "restaurantChain": "Panera Bread",
+      "servings": {
+        "number": 1,
+        "size": null,
+        "unit": null
+      }
+    },
+    {
+      "id": 417560,
+      "title": "Steak & White Cheddar Panini on Hoagie Roll",
+      "image": "https://spoonacular.com/menuItemImages/panini.jpg",
+      "imageType": "jpg",
+      "restaurantChain": "Panera Bread",
+      "servings": {
+        "number": 1,
+        "size": null,
+        "unit": "Half"
+      }
+    },
+    {
+      "id": 417593,
+      "title": "Chile Lime Rojo Ranch Dressing",
+      "image": "https://spoonacular.com/menuItemImages/ranch-dressing.jpg",
+      "imageType": "jpg",
+      "restaurantChain": "Panera Bread",
+      "servings": {
+        "number": 1,
+        "size": null,
+        "unit": null
+      }
+    },
+    {
+      "id": 417595,
+      "title": "Green Goddess Dressing",
+      "image": "https://spoonacular.com/cdn/ingredients_100x100/white-bread.jpg",
+      "imageType": "jpg",
+      "restaurantChain": "Panera Bread",
+      "servings": {
+        "number": 1,
+        "size": null,
+        "unit": null
+      }
+    }
+  ],
+  "offset": 0,
+  "number": 15,
+  "totalMenuItems": 285,
+  "processingTimeMs": 33
+}
+
+PROCESSED DATA:
+null
+
+DISPLAY DATA:
+null
+
+VALIDATION FLAGS (0):
+
+
+===============================================
+
+
+===============================================
+TIMESTAMP: 2025-10-28T03:23:44.575Z
+ENDPOINT: menuItems/search
+SESSION: session_1761621817227
+===============================================
+
+REQUEST PARAMS:
+{
+  "restaurantChain": "Subway",
+  "number": "15"
+}
+
+RAW SPOONACULAR RESPONSE:
+{
+  "type": "menuItem",
+  "menuItems": [
+    {
+      "id": 314960,
+      "title": "Veggie Delite - Kids Meal Sandwiches",
+      "image": "https://img.spoonacular.com/menu-items/314960.jpg",
+      "imageType": "jpg",
+      "restaurantChain": "Subway",
+      "servings": {
+        "number": 1,
+        "size": 1,
+        "unit": "Sandwich"
+      }
+    },
+    {
+      "id": 315026,
+      "title": "Sunrise Subway Melt on 6\" Flatbread - Egg White",
+      "image": "https://spoonacular.com/menuItemImages/turkey-sub.png",
+      "imageType": "png",
+      "restaurantChain": "Subway",
+      "servings": {
+        "number": 1,
+        "size": 1,
+        "unit": "Sandwich"
+      }
+    },
+    {
+      "id": 263774,
+      "title": "Fuze Brewed Tea, Unsweetened",
+      "image": "https://spoonacular.com/menuItemImages/cup-of-tea.jpg",
+      "imageType": "jpg",
+      "restaurantChain": "Subway",
+      "servings": {
+        "number": 1,
+        "size": 21,
+        "unit": "fl"
+      }
+    },
+    {
+      "id": 263775,
+      "title": "Juice Box",
+      "image": "https://spoonacular.com/menuItemImages/plastic-to-go-drink-cup.jpg",
+      "imageType": "jpg",
+      "restaurantChain": "Subway",
+      "servings": {
+        "number": 1,
+        "size": 6,
+        "unit": "fl"
+      }
+    },
+    {
+      "id": 314961,
+      "title": "Turkey Breast - Kids Meal Sandwiches",
+      "image": "https://img.spoonacular.com/menu-items/314961.jpg",
+      "imageType": "jpg",
+      "restaurantChain": "Subway",
+      "servings": {
+        "number": 1,
+        "size": 1,
+        "unit": "Sandwich"
+      }
+    },
+    {
+      "id": 263776,
+      "title": "Milk, Chocolate Flavored, Reduced Fat",
+      "image": "https://spoonacular.com/menuItemImages/plastic-to-go-drink-cup.jpg",
+      "imageType": "jpg",
+      "restaurantChain": "Subway",
+      "servings": {
+        "number": 1,
+        "size": 12,
+        "unit": "fl"
+      }
+    },
+    {
+      "id": 314959,
+      "title": "Roast Beef - Kids Meal Sandwiches",
+      "image": "https://img.spoonacular.com/menu-items/314959.jpg",
+      "imageType": "jpg",
+      "restaurantChain": "Subway",
+      "servings": {
+        "number": 1,
+        "size": 1,
+        "unit": "Sandwich"
+      }
+    },
+    {
+      "id": 263906,
+      "title": "Loaded Baked Potato",
+      "image": "https://spoonacular.com/menuItemImages/loaded-baked-potato.jpg",
+      "imageType": "jpg",
+      "restaurantChain": "Subway",
+      "servings": {
+        "number": 1,
+        "size": 255,
+        "unit": "g"
+      }
+    },
+    {
+      "id": 263907,
+      "title": "Minestrone",
+      "image": "https://spoonacular.com/menuItemImages/minestrone.jpg",
+      "imageType": "jpg",
+      "restaurantChain": "Subway",
+      "servings": {
+        "number": 1,
+        "size": 255,
+        "unit": "g"
+      }
+    },
+    {
+      "id": 314958,
+      "title": "Black Forest Ham - Kids Meal Sandwiches",
+      "image": "https://img.spoonacular.com/menu-items/314958.jpg",
+      "imageType": "jpg",
+      "restaurantChain": "Subway",
+      "servings": {
+        "number": 1,
+        "size": 1,
+        "unit": "Sandwich"
+      }
+    },
+    {
+      "id": 263908,
+      "title": "Poblano Corn Chowder",
+      "image": "https://spoonacular.com/menuItemImages/corn-chowder.png",
+      "imageType": "png",
+      "restaurantChain": "Subway",
+      "servings": {
+        "number": 1,
+        "size": 255,
+        "unit": "g"
+      }
+    },
+    {
+      "id": 263777,
+      "title": "Milk, Low Fat",
+      "image": "https://spoonacular.com/menuItemImages/plastic-to-go-drink-cup.jpg",
+      "imageType": "jpg",
+      "restaurantChain": "Subway",
+      "servings": {
+        "number": 1,
+        "size": 12,
+        "unit": "fl"
+      }
+    },
+    {
+      "id": 314962,
+      "title": "6\" Chicken Pizziola Melt",
+      "image": "https://spoonacular.com/menuItemImages/sandwich.jpg",
+      "imageType": "jpg",
+      "restaurantChain": "Subway",
+      "servings": {
+        "number": 1,
+        "size": 1,
+        "unit": "Sandwich"
+      }
+    },
+    {
+      "id": 263839,
+      "title": "Chicken & Bacon Ranch on Flatbread",
+      "image": "https://img.spoonacular.com/menu-items/263839.jpg",
+      "imageType": "jpg",
+      "restaurantChain": "Subway",
+      "servings": {
+        "number": 1,
+        "size": 301,
+        "unit": "g"
+      }
+    },
+    {
+      "id": 263773,
+      "title": "Fuze Brewed Sweet Tea",
+      "image": "https://spoonacular.com/menuItemImages/iced-tea.png",
+      "imageType": "png",
+      "restaurantChain": "Subway",
+      "servings": {
+        "number": 1,
+        "size": 21,
+        "unit": "fl"
+      }
+    }
+  ],
+  "offset": 0,
+  "number": 15,
+  "totalMenuItems": 256,
+  "processingTimeMs": 34
+}
+
+PROCESSED DATA:
+null
+
+DISPLAY DATA:
+null
+
+VALIDATION FLAGS (0):
+
+
+===============================================
+
+
+===============================================
+TIMESTAMP: 2025-10-28T03:23:48.246Z
+ENDPOINT: menuItems/search
+SESSION: session_1761621817227
+===============================================
+
+REQUEST PARAMS:
+{
+  "restaurantChain": "Blaze Pizza",
+  "number": "15"
+}
+
+RAW SPOONACULAR RESPONSE:
+{
+  "type": "menuItem",
+  "menuItems": [
+    {
+      "id": 402629,
+      "title": "Antipasto (entrée)",
+      "image": "https://spoonacular.com/menuItemImages/antipasti.jpg",
+      "imageType": "jpg",
+      "restaurantChain": "Blaze Pizza",
+      "servings": {
+        "number": 1,
+        "size": 1,
+        "unit": "Salad"
+      }
+    },
+    {
+      "id": 402630,
+      "title": "Beet & Goat Cheese",
+      "image": "https://spoonacular.com/cdn/ingredients_100x100/goat-cheese.jpg",
+      "imageType": "jpg",
+      "restaurantChain": "Blaze Pizza",
+      "servings": {
+        "number": 1,
+        "size": 1,
+        "unit": "Salad"
+      }
+    },
+    {
+      "id": 402628,
+      "title": "Simple Pie",
+      "image": "https://img.spoonacular.com/menu-items/402628-312x231.jpg",
+      "imageType": "jpg",
+      "restaurantChain": "Blaze Pizza",
+      "servings": {
+        "number": 1,
+        "size": 1,
+        "unit": "Slice"
+      }
+    },
+    {
+      "id": 402635,
+      "title": "Tomato Basil Ovaline",
+      "image": "https://spoonacular.com/cdn/ingredients_100x100/mixed-fresh-herbs.jpg",
+      "imageType": "jpg",
+      "restaurantChain": "Blaze Pizza",
+      "servings": {
+        "number": 1,
+        "size": 1,
+        "unit": "Salad"
+      }
+    },
+    {
+      "id": 349591,
+      "title": "Trail Blazer - Large Original Crust",
+      "image": "https://img.spoonacular.com/menu-items/349591.jpg",
+      "imageType": "jpg",
+      "restaurantChain": "Pizza Ranch",
+      "servings": {
+        "number": 1,
+        "size": 1,
+        "unit": "slice"
+      }
+    },
+    {
+      "id": 349593,
+      "title": "Trail Blazer - Thin Crust Large Pizza",
+      "image": "https://img.spoonacular.com/menu-items/349593.jpg",
+      "imageType": "jpg",
+      "restaurantChain": "Pizza Ranch",
+      "servings": {
+        "number": 1,
+        "size": 1,
+        "unit": "slice"
+      }
+    },
+    {
+      "id": 349509,
+      "title": "Trail Blazer - Skillet Crust Medium Pizza, Buffet",
+      "image": "https://img.spoonacular.com/menu-items/349509.jpg",
+      "imageType": "jpg",
+      "restaurantChain": "Pizza Ranch",
+      "servings": {
+        "number": 1,
+        "size": 1,
+        "unit": "slice"
+      }
+    },
+    {
+      "id": 349512,
+      "title": "Trail Blazer - Thin Crust Medium Pizza, Carry-out",
+      "image": "https://img.spoonacular.com/menu-items/349512.jpg",
+      "imageType": "jpg",
+      "restaurantChain": "Pizza Ranch",
+      "servings": {
+        "number": 1,
+        "size": 1,
+        "unit": "slice"
+      }
+    },
+    {
+      "id": 349510,
+      "title": "Trail Blazer - Skillet Crust Medium Pizza, Carry-out",
+      "image": "https://img.spoonacular.com/menu-items/349510.jpg",
+      "imageType": "jpg",
+      "restaurantChain": "Pizza Ranch",
+      "servings": {
+        "number": 1,
+        "size": 1,
+        "unit": "slice"
+      }
+    },
+    {
+      "id": 349592,
+      "title": "Trail Blazer - Skillet Crust Large Pizza",
+      "image": "https://img.spoonacular.com/menu-items/349592.jpg",
+      "imageType": "jpg",
+      "restaurantChain": "Pizza Ranch",
+      "servings": {
+        "number": 1,
+        "size": 1,
+        "unit": "slice"
+      }
+    },
+    {
+      "id": 349511,
+      "title": "Trail Blazer - Thin Crust Medium Pizza, Buffet",
+      "image": "https://img.spoonacular.com/menu-items/349511.jpg",
+      "imageType": "jpg",
+      "restaurantChain": "Pizza Ranch",
+      "servings": {
+        "number": 1,
+        "size": 1,
+        "unit": "slice"
+      }
+    },
+    {
+      "id": 349616,
+      "title": "Trail Blazer - Glutten-Free Crust",
+      "image": "https://img.spoonacular.com/menu-items/349616.jpg",
+      "imageType": "jpg",
+      "restaurantChain": "Pizza Ranch",
+      "servings": {
+        "number": 1,
+        "size": 1,
+        "unit": "slice"
+      }
+    },
+    {
+      "id": 349357,
+      "title": "Trail Blazer - Thin Crust Small Pizza",
+      "image": "https://img.spoonacular.com/menu-items/349357.jpg",
+      "imageType": "jpg",
+      "restaurantChain": "Pizza Ranch",
+      "servings": {
+        "number": 1,
+        "size": 1,
+        "unit": "slice"
+      }
+    },
+    {
+      "id": 349356,
+      "title": "Trail Blazer - Skillet Crust Small Pizza",
+      "image": "https://img.spoonacular.com/menu-items/349356.jpg",
+      "imageType": "jpg",
+      "restaurantChain": "Pizza Ranch",
+      "servings": {
+        "number": 1,
+        "size": 1,
+        "unit": "slice"
+      }
+    },
+    {
+      "id": 349355,
+      "title": "Trail Blazer - Original Crust Small Pizza",
+      "image": "https://img.spoonacular.com/menu-items/349355.jpg",
+      "imageType": "jpg",
+      "restaurantChain": "Pizza Ranch",
+      "servings": {
+        "number": 1,
+        "size": 1,
+        "unit": "slice"
+      }
+    }
+  ],
+  "offset": 0,
+  "number": 15,
+  "totalMenuItems": 17,
+  "processingTimeMs": 24
+}
+
+PROCESSED DATA:
+null
+
+DISPLAY DATA:
+null
+
+VALIDATION FLAGS (0):
+
+
+===============================================
+

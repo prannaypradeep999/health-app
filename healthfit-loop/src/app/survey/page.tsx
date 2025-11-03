@@ -1,19 +1,34 @@
 'use client';
 
-import React, { useState, useMemo, useEffect } from 'react';
-import Image from 'next/image';
-import { useSearchParams } from 'next/navigation';
-import { ChevronRight, ChevronLeft, Check } from 'lucide-react';
+import React, { useState, useMemo, useEffect, Suspense } from 'react';
+import { useSearchParams, useRouter } from 'next/navigation';
+import { Button } from '@/components/ui/button';
+import { Card } from '@/components/ui/card';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
+import { Slider } from '@/components/ui/slider';
+import { Progress } from '@/components/ui/progress';
+import { ArrowRight, Target, Activity, DollarSign, Utensils, Apple, Dumbbell, FlaskConical, ChevronLeft, ChevronRight } from 'lucide-react';
+import Logo from '@/components/logo';
 
+// Survey data interface from existing survey
 interface SurveyData {
   email: string;
   firstName: string;
   lastName: string;
   age: number | '';
   sex: string;
-  height: string;
+  height: number | '';
   weight: number | '';
+
+  // Full address fields
+  streetAddress: string;
+  city: string;
+  state: string;
   zipCode: string;
+  country: string;
   goal: string;
   activityLevel: string;
   budgetTier: string;
@@ -27,12 +42,816 @@ interface SurveyData {
     vitaminD?: number;
     iron?: number;
   };
+  workoutPreferences: {
+    preferredDuration: number;
+    availableDays: string[];
+    workoutTypes: string[];
+    equipmentAccess: string[];
+    fitnessExperience: string;
+    injuryConsiderations: string[];
+    timePreferences: string[];
+  };
+  fillerQuestions: {
+    cookingFrequency: string;
+    foodAllergies: string[];
+    eatingOutOccasions: string[];
+    healthGoalPriority: string;
+    motivationLevel: string;
+  };
   source?: string;
 }
 
-const SurveyPage: React.FC = () => {
+// Welcome screen component (from Figma UI)
+interface OnboardingWelcomeProps {
+  onStart: () => void;
+}
+
+function OnboardingWelcome({ onStart }: OnboardingWelcomeProps) {
+  return (
+    <div className="min-h-screen bg-gray-50 p-6 flex flex-col">
+      <div className="flex-1 flex flex-col justify-center max-w-sm mx-auto w-full">
+        <div className="text-center mb-12">
+          <div className="mx-auto mb-6 flex items-center justify-center">
+            <Logo variant="full" width={200} height={50} href="" />
+          </div>
+          <p className="text-lg text-gray-600 leading-relaxed">
+            AI-powered nutrition and fitness tailored to your lifestyle
+          </p>
+        </div>
+
+        <Card className="p-8 mb-8 border border-gray-200 bg-white">
+          <div className="space-y-6">
+            <div className="flex items-start space-x-4">
+              <div className="w-12 h-12 bg-red-50 rounded-2xl flex items-center justify-center border border-red-200">
+                <Utensils className="w-6 h-6 text-red-600" />
+              </div>
+              <div>
+                <h3 className="font-medium text-gray-900 mb-1">Smart Meal Planning</h3>
+                <p className="text-sm text-gray-600 leading-relaxed">
+                  Personalized nutrition that fits your schedule and preferences
+                </p>
+              </div>
+            </div>
+
+            <div className="flex items-start space-x-4">
+              <div className="w-12 h-12 bg-red-50 rounded-2xl flex items-center justify-center border border-red-200">
+                <Activity className="w-6 h-6 text-red-600" />
+              </div>
+              <div>
+                <h3 className="font-medium text-gray-900 mb-1">Adaptive Workouts</h3>
+                <p className="text-sm text-gray-600 leading-relaxed">
+                  Exercise routines that evolve with your progress
+                </p>
+              </div>
+            </div>
+
+            <div className="flex items-start space-x-4">
+              <div className="w-12 h-12 bg-red-50 rounded-2xl flex items-center justify-center border border-red-200">
+                <Dumbbell className="w-6 h-6 text-red-600" />
+              </div>
+              <div>
+                <h3 className="font-medium text-gray-900 mb-1">Progress Insights</h3>
+                <p className="text-sm text-gray-600 leading-relaxed">
+                  Clear analytics to track your health journey
+                </p>
+              </div>
+            </div>
+          </div>
+        </Card>
+
+        <Button
+          onClick={onStart}
+          className="w-full h-14 bg-red-600 hover:bg-red-700 text-white transition-all duration-200 transform hover:scale-[1.02]"
+        >
+          Get Started
+          <ArrowRight className="w-5 h-5 ml-2" />
+        </Button>
+
+        <p className="text-center text-sm text-gray-500 mt-4">
+          Setup takes less than 2 minutes
+        </p>
+      </div>
+    </div>
+  );
+}
+
+// Survey steps component
+interface OnboardingStepsProps {
+  onComplete: (data: SurveyData) => void;
+  onBack: () => void;
+}
+
+function OnboardingSteps({ onComplete, onBack }: OnboardingStepsProps) {
+  const [currentStep, setCurrentStep] = useState(1);
+  const [isGeneratingMeals, setIsGeneratingMeals] = useState(false);
+  const [formData, setFormData] = useState<SurveyData>({
+    email: '',
+    firstName: '',
+    lastName: '',
+    age: '',
+    sex: '',
+    height: '',
+    weight: '',
+
+    // Full address fields
+    streetAddress: '',
+    city: '',
+    state: '',
+    zipCode: '',
+    country: 'United States',
+    goal: '',
+    activityLevel: '',
+    budgetTier: '',
+    mealsOutPerWeek: 7,
+    distancePreference: 'medium',
+    dietPrefs: [],
+    preferredCuisines: [],
+    preferredFoods: [],
+    biomarkers: {},
+    workoutPreferences: {
+      preferredDuration: 45,
+      availableDays: [],
+      workoutTypes: [],
+      equipmentAccess: ['bodyweight'],
+      fitnessExperience: 'intermediate',
+      injuryConsiderations: [],
+      timePreferences: []
+    },
+    fillerQuestions: {
+      cookingFrequency: '',
+      foodAllergies: [],
+      eatingOutOccasions: [],
+      healthGoalPriority: '',
+      motivationLevel: ''
+    },
+    source: 'web_v2'
+  });
+
+  const totalSteps = 7;
+  const progress = (currentStep / totalSteps) * 100;
+
+  const stepIcons = [
+    Target, Activity, DollarSign, Utensils, Apple, Dumbbell, FlaskConical
+  ];
+
+  // Data options from existing survey
+  const goals = [
+    { value: 'WEIGHT_LOSS', label: 'Weight Loss' },
+    { value: 'MUSCLE_GAIN', label: 'Muscle Gain' },
+    { value: 'ENDURANCE', label: 'Endurance' },
+    { value: 'GENERAL_WELLNESS', label: 'Wellness' }
+  ];
+
+  const activityLevels = [
+    { value: 'SEDENTARY', label: 'Sedentary', desc: 'Little to no exercise' },
+    { value: 'LIGHTLY_ACTIVE', label: 'Light', desc: '1-3 days per week' },
+    { value: 'MODERATELY_ACTIVE', label: 'Moderate', desc: '3-5 days per week' },
+    { value: 'VERY_ACTIVE', label: 'High', desc: '6-7 days per week' }
+  ];
+
+  const budgetOptions = [
+    { value: 'under_200', label: 'Under $200/mo' },
+    { value: '200_400', label: '$200-400/mo' },
+    { value: '400_600', label: '$400-600/mo' },
+    { value: '600_plus', label: '$600+/mo' }
+  ];
+
+  const cuisineOptions = [
+    'Mediterranean', 'Italian', 'Mexican', 'Chinese',
+    'Japanese', 'Thai', 'Indian', 'Middle Eastern',
+    'American', 'Korean', 'French', 'Greek'
+  ];
+
+  const foodOptionsByCategory = {
+    'Proteins': ['Chicken', 'Salmon', 'Tuna', 'Beef', 'Pork', 'Turkey', 'Eggs', 'Tofu', 'Tempeh', 'Beans', 'Lentils', 'Greek Yogurt'],
+    'Grains & Starches': ['Rice', 'Quinoa', 'Pasta', 'Bread', 'Oats', 'Sweet Potato', 'Regular Potato', 'Couscous'],
+    'Vegetables': ['Spinach', 'Broccoli', 'Kale', 'Bell Peppers', 'Carrots', 'Tomatoes', 'Avocado', 'Mushrooms', 'Onions', 'Zucchini'],
+    'Fruits': ['Berries', 'Bananas', 'Apples', 'Oranges', 'Grapes', 'Mango', 'Pineapple', 'Watermelon'],
+    'Healthy Fats': ['Nuts', 'Seeds', 'Olive Oil', 'Coconut Oil', 'Nut Butters', 'Cheese', 'Dark Chocolate']
+  };
+
+  const equipmentOptions = [
+    'Dumbbells', 'Resistance Bands', 'Yoga Mat', 'Pull-up Bar', 'Kettlebell', 'None'
+  ];
+
+  const updateFormData = (field: string, value: any) => {
+    setFormData(prev => ({ ...prev, [field]: value }));
+  };
+
+  const handleNext = async () => {
+    // Show loading after step 5 (food preferences completed)
+    if (currentStep === 5) {
+      setIsGeneratingMeals(true);
+
+      try {
+        // Start meal generation with current form data (including food preferences)
+        const progressiveData = {
+          email: formData.email || 'temp@example.com',
+          firstName: formData.firstName || 'User',
+          lastName: formData.lastName || '',
+          age: Number(formData.age) || 25,
+          sex: formData.sex || 'other',
+          height: Number(formData.height) || 70,
+          weight: Number(formData.weight) || 150,
+
+          // Full address fields
+          streetAddress: formData.streetAddress || '',
+          city: formData.city || '',
+          state: formData.state || '',
+          zipCode: formData.zipCode || '10001',
+          country: formData.country || 'United States',
+          goal: formData.goal || 'GENERAL_WELLNESS',
+          activityLevel: formData.activityLevel || 'MODERATELY_ACTIVE',
+          budgetTier: formData.budgetTier || 'under_200',
+          dietPrefs: [],
+          mealsOutPerWeek: formData.mealsOutPerWeek || 7,
+          distancePreference: formData.distancePreference || 'medium',
+          preferredCuisines: formData.preferredCuisines || [],
+          preferredFoods: formData.preferredFoods || []
+        };
+
+        // Start meal generation with Google Places API in background
+        fetch('/api/ai/meals/generate', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            backgroundGeneration: true,
+            partialSurveyData: progressiveData
+          })
+        }).catch(error => {
+          console.error('Meal generation failed:', error);
+        });
+
+        // Show loading animation for 5 seconds, then continue
+        await new Promise(resolve => setTimeout(resolve, 5000));
+
+      } catch (error) {
+        console.error('[Progressive] Failed to start meal generation:', error);
+      } finally {
+        setIsGeneratingMeals(false);
+        setCurrentStep(currentStep + 1);
+      }
+      return;
+    }
+
+    // Normal step progression
+    if (currentStep < totalSteps) {
+      setCurrentStep(currentStep + 1);
+    } else {
+      onComplete(formData);
+    }
+  };
+
+  const handlePrevious = () => {
+    if (currentStep === 1) {
+      onBack();
+    } else {
+      setCurrentStep(currentStep - 1);
+    }
+  };
+
+  const toggleArrayItem = (field: string, item: string) => {
+    const currentArray = formData[field as keyof typeof formData] as string[];
+
+    if (currentArray.includes(item)) {
+      // Remove item if already selected
+      const updated = currentArray.filter(i => i !== item);
+      updateFormData(field, updated);
+    } else {
+      // Add item, but limit cuisines to 5 max
+      if (field === 'preferredCuisines' && currentArray.length >= 5) {
+        return; // Don't add if already at max
+      }
+      const updated = [...currentArray, item];
+      updateFormData(field, updated);
+    }
+  };
+
+  const renderStep = () => {
+    switch (currentStep) {
+      case 1:
+        return (
+          <div className="space-y-6">
+            <div className="text-center mb-8">
+              <Target className="w-12 h-12 text-red-600 mx-auto mb-4" />
+              <h2 className="text-2xl font-medium text-gray-900 mb-2">Personal Information</h2>
+              <p className="text-gray-600">Help us understand your starting point</p>
+            </div>
+            <div className="space-y-4">
+              <div>
+                <Label className="text-gray-700 mb-2 block">Email</Label>
+                <Input
+                  type="email"
+                  value={formData.email}
+                  onChange={(e) => updateFormData("email", e.target.value)}
+                  placeholder="your.email@example.com"
+                  className="border-gray-300 focus:border-red-500 bg-white text-gray-900 placeholder:text-gray-500"
+                />
+              </div>
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <Label className="text-gray-700 mb-2 block">First Name</Label>
+                  <Input
+                    value={formData.firstName}
+                    onChange={(e) => updateFormData("firstName", e.target.value)}
+                    placeholder="John"
+                    className="border-gray-300 focus:border-red-500 bg-white text-gray-900 placeholder:text-gray-500"
+                  />
+                </div>
+                <div>
+                  <Label className="text-gray-700 mb-2 block">Last Name</Label>
+                  <Input
+                    value={formData.lastName}
+                    onChange={(e) => updateFormData("lastName", e.target.value)}
+                    placeholder="Doe"
+                    className="border-gray-300 focus:border-red-500 bg-white text-gray-900 placeholder:text-gray-500"
+                  />
+                </div>
+              </div>
+              <div className="grid grid-cols-3 gap-4">
+                <div>
+                  <Label className="text-gray-700 mb-2 block">Age</Label>
+                  <Input
+                    type="number"
+                    value={formData.age}
+                    onChange={(e) => updateFormData("age", e.target.value ? Number(e.target.value) : '')}
+                    placeholder="25"
+                    className="border-gray-300 focus:border-red-500 bg-white text-gray-900 placeholder:text-gray-500"
+                  />
+                </div>
+                <div>
+                  <Label className="text-gray-700 mb-2 block">Sex</Label>
+                  <Select value={formData.sex} onValueChange={(value) => updateFormData("sex", value)}>
+                    <SelectTrigger className="border-gray-300 focus:border-red-500 bg-white text-gray-900 placeholder:text-gray-500">
+                      <SelectValue placeholder="Select" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="male">Male</SelectItem>
+                      <SelectItem value="female">Female</SelectItem>
+                      <SelectItem value="other">Other</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div>
+                  <Label className="text-gray-700 mb-2 block">Height</Label>
+                  <Select value={formData.height?.toString() || ''} onValueChange={(value) => updateFormData("height", value ? Number(value) : '')}>
+                    <SelectTrigger className="border-gray-300 focus:border-red-500 bg-white text-gray-900">
+                      <SelectValue placeholder="Select height" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {Array.from({ length: 60 }, (_, i) => i + 36).map((inches) => {
+                        const feet = Math.floor(inches / 12);
+                        const remainingInches = inches % 12;
+                        const displayText = `${feet}'${remainingInches}" (${inches}")`;
+                        return (
+                          <SelectItem key={inches} value={inches.toString()}>
+                            {displayText}
+                          </SelectItem>
+                        );
+                      })}
+                    </SelectContent>
+                  </Select>
+                </div>
+              </div>
+              <div>
+                <Label className="text-gray-700 mb-2 block">Weight (lbs)</Label>
+                <Input
+                  type="number"
+                  value={formData.weight}
+                  onChange={(e) => updateFormData("weight", e.target.value ? Number(e.target.value) : '')}
+                  placeholder="150"
+                  className="border-gray-300 focus:border-red-500 bg-white text-gray-900 placeholder:text-gray-500"
+                />
+              </div>
+
+              {/* Full Address Section */}
+              <div className="space-y-4 border-t pt-4">
+                <h3 className="text-sm font-medium text-gray-700">Address</h3>
+                <div>
+                  <Label className="text-gray-700 mb-2 block">Street Address</Label>
+                  <Input
+                    value={formData.streetAddress}
+                    onChange={(e) => updateFormData("streetAddress", e.target.value)}
+                    placeholder="123 Main Street"
+                    className="border-gray-300 focus:border-red-500 bg-white text-gray-900 placeholder:text-gray-500"
+                  />
+                </div>
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <Label className="text-gray-700 mb-2 block">City</Label>
+                    <Input
+                      value={formData.city}
+                      onChange={(e) => updateFormData("city", e.target.value)}
+                      placeholder="New York"
+                      className="border-gray-300 focus:border-red-500 bg-white text-gray-900 placeholder:text-gray-500"
+                    />
+                  </div>
+                  <div>
+                    <Label className="text-gray-700 mb-2 block">State</Label>
+                    <Input
+                      value={formData.state}
+                      onChange={(e) => updateFormData("state", e.target.value)}
+                      placeholder="NY"
+                      className="border-gray-300 focus:border-red-500 bg-white text-gray-900 placeholder:text-gray-500"
+                    />
+                  </div>
+                </div>
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <Label className="text-gray-700 mb-2 block">ZIP Code</Label>
+                    <Input
+                      value={formData.zipCode}
+                      onChange={(e) => updateFormData("zipCode", e.target.value)}
+                      placeholder="10001"
+                      className="border-gray-300 focus:border-red-500 bg-white text-gray-900 placeholder:text-gray-500"
+                    />
+                  </div>
+                  <div>
+                    <Label className="text-gray-700 mb-2 block">Country</Label>
+                    <Input
+                      value={formData.country}
+                      onChange={(e) => updateFormData("country", e.target.value)}
+                      placeholder="United States"
+                      className="border-gray-300 focus:border-red-500 bg-white text-gray-900 placeholder:text-gray-500"
+                    />
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        );
+
+      case 2:
+        return (
+          <div className="space-y-6">
+            <div className="text-center mb-8">
+              <Activity className="w-12 h-12 text-red-600 mx-auto mb-4" />
+              <h2 className="text-2xl font-medium text-gray-900 mb-2">Health Goals</h2>
+              <p className="text-gray-600">What would you like to achieve?</p>
+            </div>
+            <div>
+              <Label className="text-neutral-700 mb-4 block">Primary goals (select all that apply)</Label>
+              <div className="grid grid-cols-2 gap-3">
+                {goals.map((goal) => (
+                  <Button
+                    key={goal.value}
+                    variant={formData.goal === goal.value ? "default" : "outline"}
+                    className={`h-auto p-4 text-left transition-all duration-200 ${
+                      formData.goal === goal.value
+                        ? "bg-red-600 text-white"
+                        : "border-gray-300 hover:border-gray-400 bg-white text-gray-900 hover:bg-gray-50"
+                    }`}
+                    onClick={() => updateFormData("goal", goal.value)}
+                  >
+                    <div className="font-medium">{goal.label}</div>
+                  </Button>
+                ))}
+              </div>
+            </div>
+            <div>
+              <Label className="text-neutral-700 mb-4 block">Current activity level</Label>
+              <RadioGroup value={formData.activityLevel} onValueChange={(value) => updateFormData("activityLevel", value)}>
+                <div className="space-y-3">
+                  {activityLevels.map((option) => (
+                    <div key={option.value} className="flex items-center space-x-3 p-3 rounded-lg border border-gray-300 bg-white">
+                      <RadioGroupItem value={option.value} id={option.value} />
+                      <div>
+                        <Label htmlFor={option.value} className="font-medium text-gray-900">{option.label}</Label>
+                        <p className="text-sm text-gray-600">{option.desc}</p>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </RadioGroup>
+            </div>
+          </div>
+        );
+
+      case 3:
+        return (
+          <div className="space-y-6">
+            <div className="text-center mb-8">
+              <DollarSign className="w-12 h-12 text-red-600 mx-auto mb-4" />
+              <h2 className="text-2xl font-medium text-gray-900 mb-2">Budget Preferences</h2>
+              <p className="text-gray-600">Help us recommend options within your range</p>
+            </div>
+            <div>
+              <Label className="text-neutral-700 mb-4 block">Monthly food budget</Label>
+              <div className="grid grid-cols-2 gap-3">
+                {budgetOptions.map((option) => (
+                  <Button
+                    key={option.value}
+                    variant={formData.budgetTier === option.value ? "default" : "outline"}
+                    className={`p-4 transition-all duration-200 ${
+                      formData.budgetTier === option.value
+                        ? "bg-red-600 text-white"
+                        : "border-gray-300 hover:border-gray-400 bg-white text-gray-900 hover:bg-gray-50"
+                    }`}
+                    onClick={() => updateFormData("budgetTier", option.value)}
+                  >
+                    {option.label}
+                  </Button>
+                ))}
+              </div>
+            </div>
+            <div>
+              <Label className="text-neutral-700 mb-4 block">Meals out per week: {Array.isArray(formData.mealsOutPerWeek) ? formData.mealsOutPerWeek[0] : formData.mealsOutPerWeek}</Label>
+              <Slider
+                value={Array.isArray(formData.mealsOutPerWeek) ? formData.mealsOutPerWeek : [formData.mealsOutPerWeek as number]}
+                onValueChange={(value) => updateFormData("mealsOutPerWeek", value[0])}
+                max={21}
+                min={0}
+                step={1}
+                className="mb-6"
+              />
+              <div className="flex justify-between text-sm text-neutral-500">
+                <span>0</span>
+                <span>21</span>
+              </div>
+            </div>
+            <div>
+              <Label className="text-neutral-700 mb-4 block">How far are you willing to travel for restaurants?</Label>
+              <div className="grid grid-cols-1 gap-3">
+                {[
+                  { value: 'close', label: 'Close to me', description: 'Under 2 miles' },
+                  { value: 'medium', label: 'Moderate distance', description: '2-5 miles' },
+                  { value: 'far', label: 'Willing to travel', description: '5-10+ miles' }
+                ].map((option) => (
+                  <Button
+                    key={option.value}
+                    variant={formData.distancePreference === option.value ? "default" : "outline"}
+                    className={`p-4 h-auto text-left transition-all duration-200 ${
+                      formData.distancePreference === option.value
+                        ? "bg-red-600 text-white"
+                        : "border-gray-300 hover:border-gray-400 bg-white text-gray-900 hover:bg-gray-50"
+                    }`}
+                    onClick={() => updateFormData("distancePreference", option.value)}
+                  >
+                    <div>
+                      <div className="font-medium">{option.label}</div>
+                      <div className="text-sm opacity-80">{option.description}</div>
+                    </div>
+                  </Button>
+                ))}
+              </div>
+            </div>
+          </div>
+        );
+
+      case 4:
+        return (
+          <div className="space-y-6">
+            <div className="text-center mb-8">
+              <Utensils className="w-12 h-12 text-red-600 mx-auto mb-4" />
+              <h2 className="text-2xl font-medium text-gray-900 mb-2">Cuisine Preferences</h2>
+              <p className="text-gray-600">Select up to 5 cuisines you enjoy ({formData.preferredCuisines.length}/5)</p>
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              {cuisineOptions.map((cuisine) => (
+                <Button
+                  key={cuisine}
+                  variant={formData.preferredCuisines.includes(cuisine) ? "default" : "outline"}
+                  className={`h-12 transition-all duration-200 ${
+                    formData.preferredCuisines.includes(cuisine)
+                      ? "bg-red-600 text-white"
+                      : "border-gray-300 hover:border-gray-400 bg-white text-gray-900 hover:bg-gray-50"
+                  }`}
+                  onClick={() => toggleArrayItem("preferredCuisines", cuisine)}
+                >
+                  {cuisine}
+                </Button>
+              ))}
+            </div>
+          </div>
+        );
+
+      case 5:
+        return (
+          <div className="space-y-6">
+            <div className="text-center mb-8">
+              <Apple className="w-12 h-12 text-red-600 mx-auto mb-4" />
+              <h2 className="text-2xl font-medium text-gray-900 mb-2">Food Preferences</h2>
+              <p className="text-gray-600">Select foods you enjoy from each category</p>
+            </div>
+            <div className="space-y-6">
+              {Object.entries(foodOptionsByCategory).map(([category, foods]) => (
+                <div key={category} className="space-y-3">
+                  <h3 className="font-medium text-gray-800 text-sm">{category}</h3>
+                  <div className="grid grid-cols-3 gap-2">
+                    {foods.map((food) => (
+                      <Button
+                        key={food}
+                        variant={formData.preferredFoods.includes(food) ? "default" : "outline"}
+                        className={`h-10 text-xs transition-all duration-200 ${
+                          formData.preferredFoods.includes(food)
+                            ? "bg-red-600 text-white"
+                            : "border-gray-300 hover:border-gray-400 bg-white text-gray-900 hover:bg-gray-50"
+                        }`}
+                        onClick={() => toggleArrayItem("preferredFoods", food)}
+                      >
+                        {food}
+                      </Button>
+                    ))}
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        );
+
+      case 6:
+        return (
+          <div className="space-y-6">
+            {/* Meal/Diet Preferences Completion Indicator */}
+            <div className="bg-green-50 border border-green-200 rounded-lg p-4 mb-6">
+              <div className="flex items-center">
+                <div className="w-6 h-6 bg-green-600 rounded-full flex items-center justify-center mr-3">
+                  <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-white">
+                    <polyline points="20,6 9,17 4,12"></polyline>
+                  </svg>
+                </div>
+                <div className="text-sm font-semibold text-green-800">
+                  Meal/Diet Preferences Submitted
+                </div>
+              </div>
+            </div>
+
+            <div className="text-center mb-8">
+              <Dumbbell className="w-12 h-12 text-red-600 mx-auto mb-4" />
+              <h2 className="text-2xl font-medium text-gray-900 mb-2">Workout Preferences</h2>
+              <p className="text-gray-600">Let's design your fitness routine</p>
+            </div>
+            <div>
+              <Label className="text-neutral-700 mb-4 block">Workout duration: {formData.workoutPreferences.preferredDuration} minutes</Label>
+              <Slider
+                value={[formData.workoutPreferences.preferredDuration]}
+                onValueChange={(value) => updateFormData("workoutPreferences", { ...formData.workoutPreferences, preferredDuration: value[0] })}
+                max={90}
+                min={15}
+                step={15}
+                className="mb-6"
+              />
+            </div>
+            <div>
+              <Label className="text-neutral-700 mb-4 block">Available days</Label>
+              <div className="grid grid-cols-4 gap-2">
+                {["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"].map((day) => (
+                  <Button
+                    key={day}
+                    variant={formData.workoutPreferences.availableDays.includes(day) ? "default" : "outline"}
+                    className={`h-12 transition-all duration-200 ${
+                      formData.workoutPreferences.availableDays.includes(day)
+                        ? "bg-red-600 text-white"
+                        : "border-gray-300 hover:border-gray-400 bg-white text-gray-900 hover:bg-gray-50"
+                    }`}
+                    onClick={() => {
+                      const currentDays = formData.workoutPreferences.availableDays;
+                      const updated = currentDays.includes(day)
+                        ? currentDays.filter(d => d !== day)
+                        : [...currentDays, day];
+                      updateFormData("workoutPreferences", { ...formData.workoutPreferences, availableDays: updated });
+                    }}
+                  >
+                    {day}
+                  </Button>
+                ))}
+              </div>
+            </div>
+            <div>
+              <Label className="text-neutral-700 mb-4 block">Available equipment</Label>
+              <div className="grid grid-cols-2 gap-3">
+                {equipmentOptions.map((equipment) => (
+                  <Button
+                    key={equipment}
+                    variant={formData.workoutPreferences.equipmentAccess.includes(equipment) ? "default" : "outline"}
+                    className={`h-12 transition-all duration-200 ${
+                      formData.workoutPreferences.equipmentAccess.includes(equipment)
+                        ? "bg-red-600 text-white"
+                        : "border-gray-300 hover:border-gray-400 bg-white text-gray-900 hover:bg-gray-50"
+                    }`}
+                    onClick={() => {
+                      const currentEquipment = formData.workoutPreferences.equipmentAccess;
+                      const updated = currentEquipment.includes(equipment)
+                        ? currentEquipment.filter(e => e !== equipment)
+                        : [...currentEquipment, equipment];
+                      updateFormData("workoutPreferences", { ...formData.workoutPreferences, equipmentAccess: updated });
+                    }}
+                  >
+                    {equipment}
+                  </Button>
+                ))}
+              </div>
+            </div>
+          </div>
+        );
+
+      case 7:
+        return (
+          <div className="space-y-6">
+            <div className="text-center mb-8">
+              <FlaskConical className="w-12 h-12 text-red-600 mx-auto mb-4" />
+              <h2 className="text-2xl font-medium text-gray-900 mb-2">Health Metrics</h2>
+              <p className="text-gray-600">Optional data to enhance your plan (skip if unavailable)</p>
+            </div>
+            <div className="space-y-4">
+              <div>
+                <Label className="text-gray-700 mb-2 block">Cholesterol (mg/dL)</Label>
+                <Input
+                  type="number"
+                  value={formData.biomarkers.cholesterol || ''}
+                  onChange={(e) => updateFormData("biomarkers", { ...formData.biomarkers, cholesterol: e.target.value ? Number(e.target.value) : undefined })}
+                  placeholder="e.g. 180"
+                  className="border-gray-300 focus:border-red-500 bg-white text-gray-900 placeholder:text-gray-500"
+                />
+              </div>
+              <div>
+                <Label className="text-gray-700 mb-2 block">Vitamin D (ng/mL)</Label>
+                <Input
+                  type="number"
+                  value={formData.biomarkers.vitaminD || ''}
+                  onChange={(e) => updateFormData("biomarkers", { ...formData.biomarkers, vitaminD: e.target.value ? Number(e.target.value) : undefined })}
+                  placeholder="e.g. 30"
+                  className="border-gray-300 focus:border-red-500 bg-white text-gray-900 placeholder:text-gray-500"
+                />
+              </div>
+              <div>
+                <Label className="text-gray-700 mb-2 block">Iron levels (μg/dL)</Label>
+                <Input
+                  type="number"
+                  value={formData.biomarkers.iron || ''}
+                  onChange={(e) => updateFormData("biomarkers", { ...formData.biomarkers, iron: e.target.value ? Number(e.target.value) : undefined })}
+                  placeholder="e.g. 100"
+                  className="border-gray-300 focus:border-red-500 bg-white text-gray-900 placeholder:text-gray-500"
+                />
+              </div>
+            </div>
+          </div>
+        );
+
+      default:
+        return null;
+    }
+  };
+
+  return (
+    <div className="min-h-screen bg-gray-50 p-6">
+      <div className="max-w-md mx-auto">
+        <div className="mb-8">
+          <div className="flex items-center justify-between mb-4">
+            <h1 className="text-xl font-medium text-gray-900">Setup</h1>
+            <span className="text-sm text-gray-600">{currentStep} of {totalSteps}</span>
+          </div>
+          <Progress value={progress} className="h-3 bg-gray-200 [&>div]:bg-red-600" />
+        </div>
+
+        <Card className="p-8 mb-6 border border-gray-200 bg-white">
+          {isGeneratingMeals ? (
+            <div className="text-center py-12">
+              <div className="mb-6">
+                <div className="text-lg font-medium text-gray-900 mb-2">
+                  Thanks for the info, generating your meal plan
+                </div>
+                <p className="text-sm text-gray-600">
+                  We're analyzing your cuisine and food preferences to find perfect options
+                </p>
+              </div>
+              <div className="flex justify-center">
+                <div className="loading-dots"></div>
+              </div>
+            </div>
+          ) : (
+            renderStep()
+          )}
+        </Card>
+
+        {!isGeneratingMeals && (
+          <div className="flex gap-3">
+            <Button
+              variant="outline"
+              onClick={handlePrevious}
+              className="flex-1 h-12 border-gray-300 hover:border-gray-400 bg-white text-gray-900 hover:bg-gray-50"
+            >
+              <ChevronLeft className="w-4 h-4 mr-2" />
+              Back
+            </Button>
+            <Button
+              onClick={handleNext}
+              className="flex-1 h-12 bg-red-600 hover:bg-red-700 text-white transition-all duration-200"
+            >
+              {currentStep === totalSteps ? "Complete" : "Next"}
+              {currentStep !== totalSteps && <ChevronRight className="w-4 h-4 ml-2" />}
+            </Button>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function SurveyContent() {
   const searchParams = useSearchParams();
-  const [currentStep, setCurrentStep] = useState(0);
+  const router = useRouter();
+  const [showSteps, setShowSteps] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [message, setMessage] = useState<{ ok?: boolean; error?: string } | null>(null);
 
@@ -45,263 +864,58 @@ const SurveyPage: React.FC = () => {
         .catch(err => console.warn('Failed to clear stale cookies:', err));
     }
   }, [searchParams]);
-  
-  const [formData, setFormData] = useState<SurveyData>({
-    email: '',
-    firstName: '',
-    lastName: '',
-    age: '',
-    sex: '',
-    height: '',
-    weight: '',
-    zipCode: '',
-    goal: '',
-    activityLevel: '',
-    budgetTier: '',
-    mealsOutPerWeek: 7,
-    distancePreference: 'medium',
-    dietPrefs: [],
-    preferredCuisines: [],
-    preferredFoods: [],
-    biomarkers: {},
-    source: 'web_v2'
-  });
 
-  const ageOptions = Array.from({ length: 88 }, (_, i) => i + 13);
-  const weightOptions = Array.from({ length: 321 }, (_, i) => i + 80);
-  const mealsOutOptions = Array.from({ length: 15 }, (_, i) => i);
-  const [heightFeet, setHeightFeet] = useState<number | ''>('');
-  const [heightInches, setHeightInches] = useState<number | ''>('');
-
-  const goals = [
-    { value: 'WEIGHT_LOSS', label: 'Lose Weight', icon: '🎯', description: 'Achieve your ideal weight' },
-    { value: 'MUSCLE_GAIN', label: 'Build Muscle', icon: '💪', description: 'Build strength and mass' },
-    { value: 'ENDURANCE', label: 'Improve Endurance', icon: '🏃', description: 'Boost stamina and energy' },
-    { value: 'GENERAL_WELLNESS', label: 'General Wellness', icon: '✨', description: 'Overall health improvement' }
-  ];
-
-  const activityLevels = [
-    { value: 'SEDENTARY', label: 'Sedentary', desc: 'Little to no exercise' },
-    { value: 'LIGHTLY_ACTIVE', label: 'Lightly Active', desc: '1-2 days/week' },
-    { value: 'MODERATELY_ACTIVE', label: 'Moderately Active', desc: '3-4 days/week' },
-    { value: 'VERY_ACTIVE', label: 'Very Active', desc: '5-6 days/week' },
-    { value: 'ATHLETE', label: 'Athlete', desc: '2x per day' },
-  ];
-
-  const budgetOptions = [
-    { value: 'under_200', label: 'Under $200/mo', desc: '~$6-7/day' },
-    { value: '200_400', label: '$200-400/mo', desc: '~$7-13/day' },
-    { value: '400_600', label: '$400-600/mo', desc: '~$13-20/day' },
-    { value: '600_plus', label: '$600+/mo', desc: '$20+/day' },
-  ];
-
-  const distanceOptions = [
-    { value: 'close', label: 'Close by', desc: 'Within 5km', icon: '🚶' },
-    { value: 'medium', label: 'Moderate distance', desc: 'Within 10km', icon: '🚗' },
-    { value: 'far', label: 'Don\'t mind traveling', desc: 'Within 20km', icon: '🛣️' },
-  ];
-
-  const dietOptions = [
-    { value: 'vegetarian', label: 'Vegetarian', icon: '🥬' },
-    { value: 'vegan', label: 'Vegan', icon: '🌱' },
-    { value: 'gluten_free', label: 'Gluten Free', icon: '🌾' },
-    { value: 'dairy_free', label: 'Dairy Free', icon: '🥛' },
-    { value: 'keto', label: 'Keto', icon: '🥑' },
-    { value: 'paleo', label: 'Paleo', icon: '🥩' },
-  ];
-
-  // Cuisine data structure with realistic dishes for both restaurants and home cooking
-  const cuisineData = {
-    mediterranean: {
-      label: 'Mediterranean',
-      icon: '🫒',
-      foods: ['greek_salad', 'hummus', 'falafel', 'pita_wraps', 'gyros', 'kebabs', 'tabbouleh', 'grilled_fish']
-    },
-    italian: {
-      label: 'Italian',
-      icon: '🍝',
-      foods: ['pasta', 'pizza', 'risotto', 'lasagna', 'caprese_salad', 'minestrone_soup', 'panini', 'gnocchi']
-    },
-    mexican: {
-      label: 'Mexican',
-      icon: '🌮',
-      foods: ['tacos', 'burritos', 'quesadillas', 'enchiladas', 'fajitas', 'guacamole', 'nachos', 'tortilla_soup']
-    },
-    asian: {
-      label: 'Asian',
-      icon: '🥢',
-      foods: ['stir_fry', 'fried_rice', 'noodles', 'spring_rolls', 'dumplings', 'curry', 'rice_bowls', 'miso_soup']
-    },
-    indian: {
-      label: 'Indian',
-      icon: '🍛',
-      foods: ['curry', 'biryani', 'tandoori', 'paneer_dishes', 'dal_lentils', 'naan_bread', 'samosas', 'tikka_masala']
-    },
-    middle_eastern: {
-      label: 'Middle Eastern',
-      icon: '🥙',
-      foods: ['shawarma', 'falafel', 'hummus', 'baba_ganoush', 'kebabs', 'pita_wraps', 'lentil_soup', 'couscous']
-    },
-    american: {
-      label: 'American',
-      icon: '🍔',
-      foods: ['burgers', 'sandwiches', 'salads', 'bbq', 'mac_and_cheese', 'grilled_chicken', 'wings', 'wraps']
-    },
-    breakfast: {
-      label: 'Breakfast & Brunch',
-      icon: '🥞',
-      foods: ['pancakes', 'eggs_benedict', 'omelettes', 'avocado_toast', 'french_toast', 'breakfast_burritos', 'smoothie_bowls', 'bagels']
-    }
-  };
-
-  // Generate readable food labels for restaurant/cooking searches
-  const foodLabels: { [key: string]: string } = {
-    // Mediterranean
-    greek_salad: 'Greek Salad',
-    hummus: 'Hummus',
-    falafel: 'Falafel',
-    pita_wraps: 'Pita Wraps',
-    gyros: 'Gyros',
-    kebabs: 'Kebabs',
-    tabbouleh: 'Tabbouleh',
-    grilled_fish: 'Grilled Fish',
-    
-    // Italian
-    pasta: 'Pasta',
-    pizza: 'Pizza',
-    risotto: 'Risotto',
-    lasagna: 'Lasagna',
-    caprese_salad: 'Caprese Salad',
-    minestrone_soup: 'Minestrone Soup',
-    panini: 'Panini',
-    gnocchi: 'Gnocchi',
-    
-    // Mexican
-    tacos: 'Tacos',
-    burritos: 'Burritos',
-    quesadillas: 'Quesadillas',
-    enchiladas: 'Enchiladas',
-    fajitas: 'Fajitas',
-    guacamole: 'Guacamole',
-    nachos: 'Nachos',
-    tortilla_soup: 'Tortilla Soup',
-    
-    // Asian
-    stir_fry: 'Stir Fry',
-    fried_rice: 'Fried Rice',
-    noodles: 'Noodles',
-    spring_rolls: 'Spring Rolls',
-    dumplings: 'Dumplings',
-    curry: 'Curry',
-    rice_bowls: 'Rice Bowls',
-    miso_soup: 'Miso Soup',
-    
-    // Indian
-    biryani: 'Biryani',
-    tandoori: 'Tandoori',
-    paneer_dishes: 'Paneer Dishes',
-    dal_lentils: 'Dal (Lentils)',
-    naan_bread: 'Naan Bread',
-    samosas: 'Samosas',
-    tikka_masala: 'Tikka Masala',
-    
-    // Middle Eastern
-    shawarma: 'Shawarma',
-    baba_ganoush: 'Baba Ganoush',
-    lentil_soup: 'Lentil Soup',
-    couscous: 'Couscous',
-    
-    // American
-    burgers: 'Burgers',
-    sandwiches: 'Sandwiches',
-    salads: 'Salads',
-    bbq: 'BBQ',
-    mac_and_cheese: 'Mac & Cheese',
-    grilled_chicken: 'Grilled Chicken',
-    wings: 'Wings',
-    wraps: 'Wraps',
-    
-    // Breakfast
-    pancakes: 'Pancakes',
-    eggs_benedict: 'Eggs Benedict',
-    omelettes: 'Omelettes',
-    avocado_toast: 'Avocado Toast',
-    french_toast: 'French Toast',
-    breakfast_burritos: 'Breakfast Burritos',
-    smoothie_bowls: 'Smoothie Bowls',
-    bagels: 'Bagels'
-  };
-
-  // Get available foods based on selected cuisines
-  const availableFoods = useMemo(() => {
-    if (formData.preferredCuisines.length === 0) return [];
-    
-    const foods: string[] = [];
-    formData.preferredCuisines.forEach(cuisine => {
-      if (cuisineData[cuisine as keyof typeof cuisineData]) {
-        foods.push(...cuisineData[cuisine as keyof typeof cuisineData].foods);
-      }
-    });
-    return foods;
-  }, [formData.preferredCuisines]);
-
-  const totalSteps = 6; // Updated to 6 steps
-
-  const handleNext = () => {
-    if (currentStep < totalSteps - 1) {
-      setCurrentStep(currentStep + 1);
-    }
+  const handleStart = () => {
+    setShowSteps(true);
   };
 
   const handleBack = () => {
-    if (currentStep > 0) {
-      setCurrentStep(currentStep - 1);
-    }
+    setShowSteps(false);
   };
 
-  const handleSubmit = async () => {
+  const handleComplete = async (surveyData: SurveyData) => {
     setMessage(null);
     setSubmitting(true);
-    
+
     try {
       const biomarkers: Record<string, number> = {};
-      if (formData.biomarkers.cholesterol) biomarkers.cholesterol = formData.biomarkers.cholesterol;
-      if (formData.biomarkers.vitaminD) biomarkers.vitaminD = formData.biomarkers.vitaminD;
-      if (formData.biomarkers.iron) biomarkers.iron = formData.biomarkers.iron;
+      if (surveyData.biomarkers.cholesterol) biomarkers.cholesterol = surveyData.biomarkers.cholesterol;
+      if (surveyData.biomarkers.vitaminD) biomarkers.vitaminD = surveyData.biomarkers.vitaminD;
+      if (surveyData.biomarkers.iron) biomarkers.iron = surveyData.biomarkers.iron;
 
       const res = await fetch('/api/survey', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          email: formData.email,
-          firstName: formData.firstName,
-          lastName: formData.lastName,
-          age: Number(formData.age),
-          sex: formData.sex,
-          height: formData.height,
-          weight: Number(formData.weight),
-          zipCode: formData.zipCode,
-          goal: formData.goal,
-          activityLevel: formData.activityLevel,
-          budgetTier: formData.budgetTier,
-          mealsOutPerWeek: Number(formData.mealsOutPerWeek),
-          distancePreference: formData.distancePreference,
-          dietPrefs: formData.dietPrefs,
-          preferredCuisines: formData.preferredCuisines,
-          preferredFoods: formData.preferredFoods,
+          email: surveyData.email,
+          firstName: surveyData.firstName,
+          lastName: surveyData.lastName,
+          age: Number(surveyData.age),
+          sex: surveyData.sex,
+          height: Number(surveyData.height),
+          weight: Number(surveyData.weight),
+          zipCode: surveyData.zipCode,
+          goal: surveyData.goal,
+          activityLevel: surveyData.activityLevel,
+          budgetTier: surveyData.budgetTier,
+          mealsOutPerWeek: Number(surveyData.mealsOutPerWeek),
+          distancePreference: surveyData.distancePreference,
+          dietPrefs: surveyData.dietPrefs,
+          preferredCuisines: surveyData.preferredCuisines,
+          preferredFoods: surveyData.preferredFoods,
+          workoutPreferences: surveyData.workoutPreferences,
           biomarkers,
-          source: formData.source,
+          source: surveyData.source,
         }),
       });
 
       const data = await res.json();
       if (!res.ok) throw new Error(data?.error || 'Server error');
-      
+
+      console.log('[Survey] Survey completed successfully!');
       setMessage({ ok: true });
-      
-      setTimeout(() => {
-        window.location.href = '/dashboard';
-      }, 1500);
+
+      // Don't redirect anywhere - show completion message
     } catch (error: unknown) {
       const errorMessage = error instanceof Error ? error.message : 'Failed to submit';
       setMessage({ error: errorMessage });
@@ -310,696 +924,112 @@ const SurveyPage: React.FC = () => {
     }
   };
 
-  const toggleDietPref = (pref: string) => {
-    setFormData(prev => ({
-      ...prev,
-      dietPrefs: prev.dietPrefs.includes(pref)
-        ? prev.dietPrefs.filter(p => p !== pref)
-        : [...prev.dietPrefs, pref]
-    }));
-  };
-
-  const toggleCuisine = (cuisine: string) => {
-    setFormData(prev => {
-      const newCuisines = prev.preferredCuisines.includes(cuisine)
-        ? prev.preferredCuisines.filter(c => c !== cuisine)
-        : [...prev.preferredCuisines, cuisine];
-      
-      // Remove foods that are no longer available when cuisines are deselected
-      const newAvailableFoods: string[] = [];
-      newCuisines.forEach(c => {
-        if (cuisineData[c as keyof typeof cuisineData]) {
-          newAvailableFoods.push(...cuisineData[c as keyof typeof cuisineData].foods);
-        }
-      });
-      
-      const filteredFoods = prev.preferredFoods.filter(food => newAvailableFoods.includes(food));
-      
-      return {
-        ...prev,
-        preferredCuisines: newCuisines,
-        preferredFoods: filteredFoods
-      };
-    });
-  };
-
-  const toggleFood = (food: string) => {
-    setFormData(prev => ({
-      ...prev,
-      preferredFoods: prev.preferredFoods.includes(food)
-        ? prev.preferredFoods.filter(f => f !== food)
-        : [...prev.preferredFoods, food]
-    }));
-  };
-
-  const isStepValid = () => {
-    switch (currentStep) {
-      case 0: 
-        return formData.email && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(formData.email) &&
-               formData.firstName && formData.lastName &&
-               formData.age && formData.sex && formData.height && formData.weight && formData.zipCode;
-      case 1: return formData.goal && formData.activityLevel;
-      case 2: return formData.budgetTier && formData.mealsOutPerWeek !== '';
-      case 3: return true; // Cuisine selection is optional
-      case 4: return true; // Food selection is optional
-      case 5: return true; // Biomarkers are optional
-      default: return false;
-    }
-  };
-
-  return (
-    <div className="min-h-screen bg-gradient-to-br from-[#F4F4F5] via-white to-[#FAFAFA] flex items-center justify-center p-4">
-      <div className="w-full max-w-4xl">
-        <div className="text-center mb-6">
-          <div className="flex justify-center mb-4">
-            <Image 
-              src="/fytr-icon.svg" 
-              alt="FYTR AI" 
-              width={56} 
-              height={56}
-              priority
-            />
-          </div>
-          
-          <div className="flex justify-center mb-3">
-            <Image 
-              src="/fytr-text-gradient.svg" 
-              alt="FYTR AI" 
-              width={140} 
-              height={40}
-              priority
-            />
-          </div>
-          
-          <h1 className="text-2xl font-bold text-[#0A0A0B] mb-1">Personalize Your Fitness Journey</h1>
-          <p className="text-[#52525B]">Step {currentStep + 1} of {totalSteps}</p>
-        </div>
-
-        <div className="mb-6">
-          <div className="h-2 bg-[#F4F4F5] rounded-full overflow-hidden">
-            <div 
-              className="h-full bg-gradient-to-r from-[#4338CA] to-[#DC2626] transition-all duration-500 ease-out"
-              style={{ width: `${((currentStep + 1) / totalSteps) * 100}%` }}
-            />
-          </div>
-        </div>
-
-        <div className="bg-white rounded-2xl shadow-xl p-8 border border-[#F4F4F5]">
-          {/* Step 1: Basic Information */}
-          {currentStep === 0 && (
-            <div className="space-y-5 animate-fadeIn">
-              <h2 className="text-2xl font-bold text-[#0A0A0B] mb-6">Basic Information</h2>
-              
-              <div className="grid md:grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-sm font-medium text-[#18181B] mb-2">First Name *</label>
-                  <input
-                    type="text"
-                    value={formData.firstName}
-                    onChange={(e) => setFormData({ ...formData, firstName: e.target.value })}
-                    className="w-full px-4 py-3 border border-[#A1A1AA] rounded-lg focus:ring-2 focus:ring-[#4338CA] focus:border-transparent transition-all"
-                    placeholder="John"
-                  />
-                </div>
-                
-                <div>
-                  <label className="block text-sm font-medium text-[#18181B] mb-2">Last Name *</label>
-                  <input
-                    type="text"
-                    value={formData.lastName}
-                    onChange={(e) => setFormData({ ...formData, lastName: e.target.value })}
-                    className="w-full px-4 py-3 border border-[#A1A1AA] rounded-lg focus:ring-2 focus:ring-[#4338CA] focus:border-transparent transition-all"
-                    placeholder="Doe"
-                  />
-                </div>
-              </div>
-              
-              <div className="grid md:grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-sm font-medium text-[#18181B] mb-2">Email *</label>
-                  <input
-                    type="email"
-                    value={formData.email}
-                    onChange={(e) => setFormData({ ...formData, email: e.target.value })}
-                    className="w-full px-4 py-3 border border-[#A1A1AA] rounded-lg focus:ring-2 focus:ring-[#4338CA] focus:border-transparent transition-all"
-                    placeholder="you@example.com"
-                  />
-                </div>
-                
-                <div>
-                  <label className="block text-sm font-medium text-[#18181B] mb-2">Age *</label>
-                  <select
-                    value={formData.age === '' ? '' : Number(formData.age)}
-                    onChange={(e) => setFormData({ ...formData, age: e.target.value ? Number(e.target.value) : '' })}
-                    className="w-full px-4 py-3 border border-[#A1A1AA] rounded-lg focus:ring-2 focus:ring-[#4338CA] focus:border-transparent transition-all bg-white"
-                  >
-                    <option value="">Select age</option>
-                    {ageOptions.map((age) => (
-                      <option key={age} value={age}>{age}</option>
-                    ))}
-                  </select>
-                </div>
-              </div>
-
-              <div>
-                <label className="block text-sm font-medium text-[#18181B] mb-2">Sex *</label>
-                <div className="grid grid-cols-3 gap-3">
-                  {['male', 'female', 'other'].map((option) => (
-                    <button
-                      key={option}
-                      type="button"
-                      onClick={() => setFormData({ ...formData, sex: option })}
-                      className={`py-3 rounded-lg border-2 font-medium capitalize transition-all ${
-                        formData.sex === option
-                          ? 'border-[#4338CA] bg-gradient-to-r from-[#4338CA]/10 to-[#DC2626]/10 text-[#4338CA]'
-                          : 'border-[#A1A1AA] hover:border-[#4338CA]/50 text-[#52525B]'
-                      }`}
-                    >
-                      {option}
-                    </button>
-                  ))}
-                </div>
-              </div>
-
-              <div className="grid md:grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-sm font-medium text-[#18181B] mb-2">Height *</label>
-                  <div className="grid grid-cols-2 gap-3">
-                    <select
-                      value={heightFeet === '' ? '' : Number(heightFeet)}
-                      onChange={(e) => {
-                        const newFeet = e.target.value ? Number(e.target.value) : '';
-                        setHeightFeet(newFeet);
-                        setFormData({
-                          ...formData,
-                          height: newFeet !== '' && heightInches !== '' ? `${newFeet}'${heightInches}"` : ''
-                        });
-                      }}
-                      className="w-full px-4 py-3 border border-[#A1A1AA] rounded-lg focus:ring-2 focus:ring-[#4338CA] focus:border-transparent bg-white"
-                    >
-                      <option value="">Feet</option>
-                      {[4,5,6,7].map((ft) => (
-                        <option key={ft} value={ft}>{ft} ft</option>
-                      ))}
-                    </select>
-                    <select
-                      value={heightInches === '' ? '' : Number(heightInches)}
-                      onChange={(e) => {
-                        const newInches = e.target.value ? Number(e.target.value) : '';
-                        setHeightInches(newInches);
-                        setFormData({
-                          ...formData,
-                          height: heightFeet !== '' && newInches !== '' ? `${heightFeet}'${newInches}"` : ''
-                        });
-                      }}
-                      className="w-full px-4 py-3 border border-[#A1A1AA] rounded-lg focus:ring-2 focus:ring-[#4338CA] focus:border-transparent bg-white"
-                    >
-                      <option value="">Inches</option>
-                      {Array.from({ length: 12 }, (_, i) => i).map((inch) => (
-                        <option key={inch} value={inch}>{inch} in</option>
-                      ))}
-                    </select>
-                  </div>
-                </div>
-                
-                <div>
-                  <label className="block text-sm font-medium text-[#18181B] mb-2">Weight *</label>
-                  <div className="relative">
-                    <select
-                      value={formData.weight === '' ? '' : Number(formData.weight)}
-                      onChange={(e) => setFormData({ ...formData, weight: e.target.value ? Number(e.target.value) : '' })}
-                      className="w-full pr-12 px-4 py-3 border border-[#A1A1AA] rounded-lg focus:ring-2 focus:ring-[#4338CA] focus:border-transparent transition-all bg-white appearance-none"
-                    >
-                      <option value="">Select weight</option>
-                      {weightOptions.map((w) => (
-                        <option key={w} value={w}>{w}</option>
-                      ))}
-                    </select>
-                    <span className="pointer-events-none absolute inset-y-0 right-3 flex items-center text-[#52525B] text-sm">lb</span>
-                  </div>
-                </div>
-              </div>
-
-              <div>
-                <label className="block text-sm font-medium text-[#18181B] mb-2">Zip Code *</label>
-                <input
-                  type="text"
-                  value={formData.zipCode}
-                  onChange={(e) => setFormData({ ...formData, zipCode: e.target.value })}
-                  className="w-full px-4 py-3 border border-[#A1A1AA] rounded-lg focus:ring-2 focus:ring-[#4338CA] focus:border-transparent transition-all"
-                  placeholder="94107"
-                />
-                <p className="text-xs text-[#52525B] mt-1">
-                  We&apos;ll find gyms and healthy restaurants near you
-                </p>
-              </div>
-            </div>
-          )}
-
-          {/* Step 2: Goals & Activity */}
-          {currentStep === 1 && (
-            <div className="space-y-6 animate-fadeIn">
-              <h2 className="text-2xl font-bold text-[#0A0A0B] mb-6">Fitness Goals & Activity</h2>
-              
-              <div>
-                <label className="block text-sm font-medium text-[#18181B] mb-3">What&apos;s your primary goal? *</label>
-                <div className="grid md:grid-cols-2 gap-3">
-                  {goals.map((goal) => (
-                    <button
-                      key={goal.value}
-                      onClick={() => setFormData({ ...formData, goal: goal.value })}
-                      className={`p-4 rounded-xl border-2 transition-all duration-200 hover:scale-[1.02] ${
-                        formData.goal === goal.value
-                          ? 'border-[#4338CA] bg-gradient-to-r from-[#4338CA]/5 to-[#DC2626]/5 shadow-md'
-                          : 'border-[#A1A1AA] hover:border-[#4338CA]/50 hover:shadow-sm'
-                      }`}
-                    >
-                      <div className="text-3xl mb-2">{goal.icon}</div>
-                      <div className="font-semibold text-[#0A0A0B]">{goal.label}</div>
-                      <div className="text-xs text-[#52525B] mt-1">{goal.description}</div>
-                    </button>
-                  ))}
-                </div>
-              </div>
-
-              <div>
-                <label className="block text-sm font-medium text-[#18181B] mb-3">How active are you? *</label>
-                <div className="space-y-2">
-                  {activityLevels.map((level) => (
-                    <button
-                      key={level.value}
-                      onClick={() => setFormData({ ...formData, activityLevel: level.value })}
-                      className={`w-full p-4 rounded-xl border-2 text-left transition-all duration-200 ${
-                        formData.activityLevel === level.value
-                          ? 'border-[#4338CA] bg-gradient-to-r from-[#4338CA]/5 to-[#DC2626]/5 shadow-md'
-                          : 'border-[#A1A1AA] hover:border-[#4338CA]/50 hover:shadow-sm'
-                      }`}
-                    >
-                      <div className="flex justify-between items-center">
-                        <div>
-                          <p className="font-semibold text-[#0A0A0B]">{level.label}</p>
-                          <p className="text-sm text-[#52525B]">{level.desc}</p>
-                        </div>
-                        {formData.activityLevel === level.value && (
-                          <div className="w-6 h-6 rounded-full bg-gradient-to-r from-[#4338CA] to-[#DC2626] flex items-center justify-center">
-                            <Check className="w-4 h-4 text-white" />
-                          </div>
-                        )}
-                      </div>
-                    </button>
-                  ))}
-                </div>
-              </div>
-            </div>
-          )}
-
-          {/* Step 3: Diet, Budget & Eating Preferences */}
-          {currentStep === 2 && (
-            <div className="space-y-6 animate-fadeIn">
-              <h2 className="text-2xl font-bold text-[#0A0A0B] mb-6">Nutrition & Budget</h2>
-              
-              <div>
-                <label className="block text-sm font-medium text-[#18181B] mb-3">Monthly Food Budget *</label>
-                <div className="grid md:grid-cols-2 gap-3">
-                  {budgetOptions.map((option) => (
-                    <button
-                      key={option.value}
-                      onClick={() => setFormData({ ...formData, budgetTier: option.value })}
-                      className={`p-5 rounded-xl border-2 text-left transition-all duration-200 hover:scale-[1.02] ${
-                        formData.budgetTier === option.value
-                          ? 'border-[#4338CA] bg-gradient-to-r from-[#4338CA]/5 to-[#DC2626]/5 shadow-md'
-                          : 'border-[#A1A1AA] hover:border-[#4338CA]/50 hover:shadow-sm'
-                      }`}
-                    >
-                      <p className="font-semibold text-[#0A0A0B]">{option.label}</p>
-                      <p className="text-sm text-[#52525B] mt-1">{option.desc}</p>
-                    </button>
-                  ))}
-                </div>
-              </div>
-              
-              <div>
-                <label className="block text-sm font-medium text-[#18181B] mb-3">Dietary Preferences (optional)</label>
-                <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
-                  {dietOptions.map((diet) => (
-                    <button
-                      key={diet.value}
-                      onClick={() => toggleDietPref(diet.value)}
-                      className={`p-4 rounded-xl border-2 transition-all duration-200 ${
-                        formData.dietPrefs.includes(diet.value)
-                          ? 'border-[#4338CA] bg-gradient-to-r from-[#4338CA] to-[#DC2626] text-white shadow-md'
-                          : 'border-[#A1A1AA] hover:border-[#4338CA]/50 hover:shadow-sm'
-                      }`}
-                    >
-                      <div className="flex items-center justify-center gap-2">
-                        <span className="text-xl">{diet.icon}</span>
-                        <span className="font-medium">{diet.label}</span>
-                      </div>
-                    </button>
-                  ))}
-                </div>
-              </div>
-              
-              <div>
-                <label className="block text-sm font-medium text-[#18181B] mb-3">How many meals per week would you like to eat out or order in? *</label>
-                <select
-                  value={formData.mealsOutPerWeek === '' ? '' : Number(formData.mealsOutPerWeek)}
-                  onChange={(e) => setFormData({ ...formData, mealsOutPerWeek: e.target.value ? Number(e.target.value) : '' })}
-                  className="w-full px-4 py-3 border border-[#A1A1AA] rounded-lg focus:ring-2 focus:ring-[#4338CA] focus:border-transparent transition-all bg-white"
-                >
-                  {mealsOutOptions.map((num) => (
-                    <option key={num} value={num}>{num} {num === 1 ? 'meal' : 'meals'} out of 14 total meals</option>
-                  ))}
-                </select>
-                <p className="text-xs text-[#52525B] mt-2">
-                  We'll suggest dining options or delivery services based on your preferences
-                </p>
-              </div>
-
-              <div>
-                <label className="block text-sm font-medium text-[#18181B] mb-3">How far are you willing to travel for restaurants?</label>
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-                  {distanceOptions.map((option) => (
-                    <button
-                      key={option.value}
-                      onClick={() => setFormData({ ...formData, distancePreference: option.value })}
-                      className={`p-4 rounded-xl border-2 transition-all duration-200 hover:scale-[1.02] ${
-                        formData.distancePreference === option.value
-                          ? 'border-[#4338CA] bg-gradient-to-r from-[#4338CA]/5 to-[#DC2626]/5 shadow-md'
-                          : 'border-[#A1A1AA] hover:border-[#4338CA]/50 hover:shadow-sm'
-                      }`}
-                    >
-                      <div className="text-center">
-                        <div className="text-3xl mb-2">{option.icon}</div>
-                        <div className="font-semibold text-[#0A0A0B]">{option.label}</div>
-                        <div className="text-sm text-[#52525B] mt-1">{option.desc}</div>
-                      </div>
-                      {formData.distancePreference === option.value && (
-                        <div className="mt-2 flex justify-center">
-                          <div className="w-6 h-6 rounded-full bg-gradient-to-r from-[#4338CA] to-[#DC2626] flex items-center justify-center">
-                            <Check className="w-4 h-4 text-white" />
-                          </div>
-                        </div>
-                      )}
-                    </button>
-                  ))}
-                </div>
-                <p className="text-xs text-[#52525B] mt-2">
-                  This helps us find restaurants and delivery options within your preferred travel distance
-                </p>
-              </div>
-            </div>
-          )}
-
-          {/* Step 4: Cuisine Preferences */}
-          {currentStep === 3 && (
-            <div className="space-y-6 animate-fadeIn">
-              <div className="text-center mb-8">
-                <h2 className="text-2xl font-bold text-[#0A0A0B] mb-2">Choose Your Favorite Cuisines</h2>
-                <p className="text-[#52525B]">Select the types of food you enjoy most (optional)</p>
-              </div>
-              
-              <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
-                {Object.entries(cuisineData).map(([key, cuisine]) => (
-                  <button
-                    key={key}
-                    onClick={() => toggleCuisine(key)}
-                    className={`p-6 rounded-2xl border-2 transition-all duration-200 hover:scale-[1.02] ${
-                      formData.preferredCuisines.includes(key)
-                        ? 'border-[#4338CA] bg-gradient-to-r from-[#4338CA]/10 to-[#DC2626]/10 shadow-lg scale-[1.02]'
-                        : 'border-[#A1A1AA] hover:border-[#4338CA]/50 hover:shadow-md'
-                    }`}
-                  >
-                    <div className="text-4xl mb-3">{cuisine.icon}</div>
-                    <div className="font-semibold text-[#0A0A0B] text-sm">{cuisine.label}</div>
-                    {formData.preferredCuisines.includes(key) && (
-                      <div className="mt-2">
-                        <div className="w-6 h-6 mx-auto rounded-full bg-gradient-to-r from-[#4338CA] to-[#DC2626] flex items-center justify-center">
-                          <Check className="w-4 h-4 text-white" />
-                        </div>
-                      </div>
-                    )}
-                  </button>
-                ))}
-              </div>
-              
-              {formData.preferredCuisines.length > 0 && (
-                <div className="mt-6 p-4 bg-gradient-to-r from-[#4338CA]/5 to-[#DC2626]/5 rounded-xl border border-[#4338CA]/20">
-                  <p className="text-sm text-[#18181B]">
-                    <span className="font-medium">{formData.preferredCuisines.length}</span> cuisine{formData.preferredCuisines.length !== 1 ? 's' : ''} selected. 
-                    Next, we'll help you pick specific foods you love!
-                  </p>
-                </div>
-              )}
-            </div>
-          )}
-
-          {/* Step 5: Specific Food Preferences */}
-          {currentStep === 4 && (
-            <div className="space-y-6 animate-fadeIn">
-              <div className="text-center mb-8">
-                <h2 className="text-2xl font-bold text-[#0A0A0B] mb-2">Pick Your Favorite Foods</h2>
-                <p className="text-[#52525B]">
-                  {formData.preferredCuisines.length > 0 
-                    ? `Select specific dishes from your chosen cuisines`
-                    : `Select any cuisines first to see food options, or skip this step`
-                  }
-                </p>
-              </div>
-              
-              {availableFoods.length > 0 ? (
-                <div className="space-y-8">
-                  {formData.preferredCuisines.map((cuisineKey) => {
-                    const cuisine = cuisineData[cuisineKey as keyof typeof cuisineData];
-                    if (!cuisine) return null;
-                    
-                    return (
-                      <div key={cuisineKey} className="space-y-4">
-                        <div className="flex items-center gap-3">
-                          <span className="text-2xl">{cuisine.icon}</span>
-                          <h3 className="text-lg font-semibold text-[#0A0A0B]">{cuisine.label}</h3>
-                          <div className="flex-1 h-px bg-gradient-to-r from-[#4338CA]/20 to-transparent"></div>
-                        </div>
-                        
-                        <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3">
-                          {cuisine.foods.map((food) => (
-                            <button
-                              key={food}
-                              onClick={() => toggleFood(food)}
-                              className={`p-4 rounded-xl border-2 transition-all duration-200 text-center relative ${
-                                formData.preferredFoods.includes(food)
-                                  ? 'border-[#4338CA] bg-gradient-to-r from-[#4338CA] to-[#DC2626] text-white shadow-md scale-[1.02]'
-                                  : 'border-[#4338CA]/30 hover:border-[#4338CA]/60 hover:shadow-sm text-[#0A0A0B] bg-[#4338CA]/5'
-                              }`}
-                            >
-                              <div className="font-medium text-sm">{foodLabels[food]}</div>
-                              <div className={`absolute -top-1 -right-1 w-3 h-3 rounded-full ${
-                                cuisineKey === 'mediterranean' ? 'bg-emerald-400' :
-                                cuisineKey === 'italian' ? 'bg-red-400' :
-                                cuisineKey === 'mexican' ? 'bg-orange-400' :
-                                cuisineKey === 'indian' ? 'bg-yellow-400' :
-                                cuisineKey === 'japanese' ? 'bg-pink-400' :
-                                cuisineKey === 'thai' ? 'bg-purple-400' :
-                                cuisineKey === 'middle_eastern' ? 'bg-amber-400' :
-                                cuisineKey === 'american' ? 'bg-blue-400' :
-                                cuisineKey === 'chinese' ? 'bg-red-500' :
-                                cuisineKey === 'korean' ? 'bg-indigo-400' :
-                                cuisineKey === 'french' ? 'bg-rose-400' :
-                                'bg-teal-400'
-                              }`}></div>
-                            </button>
-                          ))}
-                        </div>
-                      </div>
-                    );
-                  })}
-                </div>
-              ) : (
-                <div className="text-center py-12">
-                  <div className="text-6xl mb-4">🍽️</div>
-                  <h3 className="text-lg font-medium text-[#0A0A0B] mb-2">No cuisines selected yet</h3>
-                  <p className="text-[#52525B] mb-6">Go back to select some cuisines, or skip to continue</p>
-                  <button
-                    onClick={() => setCurrentStep(3)}
-                    className="px-6 py-3 rounded-lg border-2 border-[#4338CA] text-[#4338CA] font-medium hover:bg-[#4338CA]/5 transition-all"
-                  >
-                    Choose Cuisines
-                  </button>
-                </div>
-              )}
-              
-              {formData.preferredFoods.length > 0 && (
-                <div className="mt-6 p-4 bg-gradient-to-r from-[#4338CA]/5 to-[#DC2626]/5 rounded-xl border border-[#4338CA]/20">
-                  <p className="text-sm text-[#18181B]">
-                    <span className="font-medium">{formData.preferredFoods.length}</span> food{formData.preferredFoods.length !== 1 ? 's' : ''} selected. 
-                    We'll prioritize these in your meal plans!
-                  </p>
-                </div>
-              )}
-            </div>
-          )}
-
-          {/* Step 6: Optional Health Markers */}
-          {currentStep === 5 && (
-            <div className="space-y-6 animate-fadeIn">
-              <h2 className="text-2xl font-bold text-[#0A0A0B] mb-6">Optional Health Markers</h2>
-              <p className="text-[#52525B] -mt-4 mb-6">
-                If you have recent lab results, we can personalize your nutrition even further
-              </p>
-              
-              <div className="grid md:grid-cols-3 gap-4">
-                <div>
-                  <label className="block text-sm font-medium text-[#18181B] mb-2">Cholesterol (mg/dL)</label>
-                  <input
-                    type="number"
-                    value={formData.biomarkers.cholesterol || ''}
-                    onChange={(e) => setFormData({
-                      ...formData,
-                      biomarkers: { ...formData.biomarkers, cholesterol: Number(e.target.value) }
-                    })}
-                    className="w-full px-4 py-3 border border-[#A1A1AA] rounded-lg focus:ring-2 focus:ring-[#4338CA] focus:border-transparent"
-                    placeholder="e.g. 180"
-                    min="0"
-                    max="500"
-                  />
-                </div>
-                
-                <div>
-                  <label className="block text-sm font-medium text-[#18181B] mb-2">Vitamin D (ng/mL)</label>
-                  <input
-                    type="number"
-                    value={formData.biomarkers.vitaminD || ''}
-                    onChange={(e) => setFormData({
-                      ...formData,
-                      biomarkers: { ...formData.biomarkers, vitaminD: Number(e.target.value) }
-                    })}
-                    className="w-full px-4 py-3 border border-[#A1A1AA] rounded-lg focus:ring-2 focus:ring-[#4338CA] focus:border-transparent"
-                    placeholder="e.g. 30"
-                    min="0"
-                    max="200"
-                  />
-                </div>
-                
-                <div>
-                  <label className="block text-sm font-medium text-[#18181B] mb-2">Iron (μg/dL)</label>
-                  <input
-                    type="number"
-                    value={formData.biomarkers.iron || ''}
-                    onChange={(e) => setFormData({
-                      ...formData,
-                      biomarkers: { ...formData.biomarkers, iron: Number(e.target.value) }
-                    })}
-                    className="w-full px-4 py-3 border border-[#A1A1AA] rounded-lg focus:ring-2 focus:ring-[#4338CA] focus:border-transparent"
-                    placeholder="e.g. 70"
-                    min="0"
-                    max="300"
-                  />
-                </div>
-              </div>
-
-              <div className="p-4 bg-gradient-to-r from-[#4338CA]/5 to-[#DC2626]/5 rounded-xl border border-[#4338CA]/20">
-                <p className="text-sm text-[#18181B]">
-                  💡 <strong>Tip:</strong> You can skip this for now and add lab results later from your dashboard.
-                </p>
-              </div>
-              
-              <div className="p-4 bg-[#F9FAFB] rounded-xl border border-[#E5E7EB]">
-                <h3 className="font-medium text-[#0A0A0B] mb-2">What happens next?</h3>
-                <p className="text-sm text-[#52525B]">
-                  Once you submit, our AI will create a personalized plan including:
-                </p>
-                <ul className="text-sm text-[#52525B] mt-2 space-y-1">
-                  <li>• Custom meal plans based on your nutrition needs</li>
-                  <li>• Workout recommendations that fit your goals</li>
-                  <li>• Local gym & restaurant options in your area</li>
-                  <li>• One-tap ordering for meals and class bookings</li>
-                </ul>
-              </div>
-            </div>
-          )}
-
-          {message && (
-            <div className={`mt-6 p-4 rounded-xl ${
-              message.ok 
-                ? 'bg-green-50 text-green-800 border border-green-200' 
-                : 'bg-red-50 text-red-800 border border-red-200'
-            }`}>
-              {message.ok ? '✅ Success! Redirecting to your dashboard...' : `❌ ${message.error}`}
-            </div>
-          )}
-
-          <div className="flex justify-between mt-8">
-            {currentStep > 0 && (
-              <button
-                onClick={handleBack}
-                className="flex items-center px-6 py-3 rounded-lg border-2 border-[#A1A1AA] font-medium hover:bg-[#F4F4F5] transition-all text-[#52525B]"
-              >
-                <ChevronLeft className="w-5 h-5 mr-2" />
-                Back
-              </button>
-            )}
-
-            <div className={currentStep === 0 ? 'ml-auto' : ''}>
-              {currentStep < totalSteps - 1 ? (
-                <button
-                  onClick={handleNext}
-                  disabled={!isStepValid()}
-                  className={`flex items-center px-6 py-3 rounded-lg font-medium transition-all duration-200 ${
-                    isStepValid()
-                      ? 'bg-gradient-to-r from-[#4338CA] to-[#DC2626] text-white hover:shadow-lg transform hover:-translate-y-0.5'
-                      : 'bg-[#A1A1AA] text-[#F4F4F5] cursor-not-allowed'
-                  }`}
-                >
-                  Continue
-                  <ChevronRight className="w-5 h-5 ml-2" />
-                </button>
-              ) : (
-                <button
-                  onClick={handleSubmit}
-                  disabled={submitting}
-                  className="flex items-center px-8 py-3 rounded-lg bg-gradient-to-r from-[#4338CA] to-[#DC2626] text-white font-medium hover:shadow-lg transform hover:-translate-y-0.5 transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed"
-                >
-                  {submitting ? (
-                    <>
-                      <span className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin mr-2" />
-                      Creating your plan...
-                    </>
-                  ) : (
-                    <>
-                      Create My Plan 🚀
-                    </>
-                  )}
-                </button>
-              )}
+  // Show completion message if survey was submitted successfully
+  if (message?.ok) {
+    return (
+      <div className="min-h-screen bg-gray-50 p-6 flex flex-col">
+        <div className="flex-1 flex flex-col justify-center max-w-sm mx-auto w-full">
+          <div className="text-center mb-12">
+            <div className="mx-auto mb-6 flex items-center justify-center">
+              <Logo variant="full" width={200} height={50} href="" />
             </div>
           </div>
-        </div>
 
-        <div className="text-center mt-6">
-          <a href="/dashboard" className="text-sm text-[#52525B] hover:text-[#4338CA] transition-colors">
-            Skip for now →
-          </a>
+          <Card className="p-8 mb-8 border border-gray-200 bg-white">
+            <div className="text-center space-y-6">
+              <div className="w-16 h-16 bg-green-50 rounded-full flex items-center justify-center mx-auto border border-green-200">
+                <svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-green-600">
+                  <polyline points="20,6 9,17 4,12"></polyline>
+                </svg>
+              </div>
+
+              <div>
+                <h3 className="text-xl font-medium text-gray-900 mb-2">Survey Complete!</h3>
+                <p className="text-gray-600 leading-relaxed">
+                  Thank you for providing your information. Your personalized health and fitness plan is being generated in the background.
+                </p>
+              </div>
+
+              <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
+                <p className="text-sm text-blue-800">
+                  🚀 Your meal and workout plans are being created using AI and will be ready soon.
+                </p>
+              </div>
+            </div>
+          </Card>
+
+          <Button
+            onClick={() => router.push('/dashboard')}
+            className="w-full h-12 bg-red-600 hover:bg-red-700 text-white mb-4"
+          >
+            Go to Dashboard
+          </Button>
+
+          <p className="text-center text-sm text-gray-500">
+            Your personalized plans will be available in your dashboard
+          </p>
         </div>
       </div>
+    );
+  }
 
-      <style jsx>{`
-        @keyframes fadeIn {
-          from {
-            opacity: 0;
-            transform: translateY(10px);
-          }
-          to {
-            opacity: 1;
-            transform: translateY(0);
-          }
-        }
+  // Show error message if there was an error
+  if (message?.error) {
+    return (
+      <div className="min-h-screen bg-gray-50 p-6 flex flex-col">
+        <div className="flex-1 flex flex-col justify-center max-w-sm mx-auto w-full">
+          <div className="text-center mb-12">
+            <div className="mx-auto mb-6 flex items-center justify-center">
+              <Logo variant="full" width={200} height={50} href="" />
+            </div>
+          </div>
 
-        .animate-fadeIn {
-          animation: fadeIn 0.4s ease-out;
-        }
-      `}</style>
-    </div>
+          <Card className="p-8 mb-8 border border-red-200 bg-white">
+            <div className="text-center space-y-6">
+              <div className="w-16 h-16 bg-red-50 rounded-full flex items-center justify-center mx-auto border border-red-200">
+                <svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-red-600">
+                  <circle cx="12" cy="12" r="10"></circle>
+                  <line x1="15" y1="9" x2="9" y2="15"></line>
+                  <line x1="9" y1="9" x2="15" y2="15"></line>
+                </svg>
+              </div>
+
+              <div>
+                <h3 className="text-xl font-medium text-gray-900 mb-2">Submission Error</h3>
+                <p className="text-gray-600 leading-relaxed">
+                  {message.error}
+                </p>
+              </div>
+            </div>
+          </Card>
+
+          <Button
+            onClick={() => setMessage(null)}
+            className="w-full h-12 bg-red-600 hover:bg-red-700 text-white"
+          >
+            Try Again
+          </Button>
+        </div>
+      </div>
+    );
+  }
+
+  if (showSteps) {
+    return <OnboardingSteps onComplete={handleComplete} onBack={handleBack} />;
+  }
+
+  return <OnboardingWelcome onStart={handleStart} />;
+}
+
+export default function SurveyPage() {
+  return (
+    <Suspense fallback={<div className="min-h-screen bg-gray-900 flex items-center justify-center">
+      <div className="text-center">
+        <div className="w-8 h-8 border-2 border-red-600 border-t-transparent rounded-full animate-spin mx-auto mb-4"></div>
+        <p className="text-gray-600">Loading...</p>
+      </div>
+    </div>}>
+      <SurveyContent />
+    </Suspense>
   );
-};
-
-export default SurveyPage;
+}

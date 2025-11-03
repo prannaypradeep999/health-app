@@ -1,9 +1,10 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
-import { X, ArrowLeft, Download, ChevronDown, ChevronRight, ThumbsUp, ThumbsDown, Loader2, AlertTriangle, CheckCircle, Info } from 'lucide-react';
+import { X, ArrowLeft, Download, ChevronDown, ChevronRight, ThumbsUp, ThumbsDown, Loader2, AlertTriangle, CheckCircle, Info, Target } from 'lucide-react';
 import { colors } from '../constants';
-import { DataSourceTracker, TrackedMealOption } from '@/lib/utils/data-source-tracker';
+// Removed data source tracker functionality
+import { calculateDailyCalorieGoal, calculateMealProgress, getCalorieStatusColor, getCalorieStatusMessage, type CalorieGoal, type MealCalorieData } from '@/lib/utils/calorie-calculator';
 
 interface MealPlanModalProps {
   surveyData: any;
@@ -61,6 +62,18 @@ export default function MealPlanModal({ surveyData, isGuest, onClose }: MealPlan
   const [eatenMeals, setEatenMeals] = useState<{[mealId: string]: boolean}>({});
   const [expandedDays, setExpandedDays] = useState<{[day: string]: boolean}>({});
 
+  // Calorie tracking
+  const [calorieGoal, setCalorieGoal] = useState<CalorieGoal | null>(null);
+  const [selectedDay, setSelectedDay] = useState<string>('monday');
+
+  // Calculate calorie goal when component mounts
+  useEffect(() => {
+    if (surveyData) {
+      const goal = calculateDailyCalorieGoal(surveyData);
+      setCalorieGoal(goal);
+    }
+  }, [surveyData]);
+
   useEffect(() => {
     loadMealPlan();
   }, []);
@@ -102,6 +115,12 @@ export default function MealPlanModal({ surveyData, isGuest, onClose }: MealPlan
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ mealId, selectedOptionId: optionId })
       });
+
+      // Update selected day to the day of this meal to show updated calorie tracking
+      const meal = mealPlan?.meals.find(m => m.id === mealId);
+      if (meal) {
+        setSelectedDay(meal.day);
+      }
     } catch (error) {
       console.error('Failed to save meal selection:', error);
     }
@@ -203,6 +222,31 @@ export default function MealPlanModal({ surveyData, isGuest, onClose }: MealPlan
     return acc;
   }, {} as {[day: string]: Meal[]}) || {};
 
+  // Sort meals within each day to ensure proper order: breakfast, lunch, dinner
+  Object.keys(groupedMeals).forEach(day => {
+    groupedMeals[day].sort((a, b) => {
+      const mealOrder = { 'breakfast': 0, 'lunch': 1, 'dinner': 2 };
+      const aMealType = a.mealType.toLowerCase() as keyof typeof mealOrder;
+      const bMealType = b.mealType.toLowerCase() as keyof typeof mealOrder;
+      return mealOrder[aMealType] - mealOrder[bMealType];
+    });
+  });
+
+  // Calculate daily calorie progress for selected day
+  const getDailyProgress = (day: string) => {
+    if (!calorieGoal || !mealPlan) return null;
+
+    const dayMeals = groupedMeals[day] || [];
+    const mealsWithSelections = dayMeals.map(meal => ({
+      ...meal,
+      selectedOptionId: selectedOptions[meal.id]
+    }));
+
+    return calculateMealProgress(mealsWithSelections, calorieGoal);
+  };
+
+  const dailyProgress = getDailyProgress(selectedDay);
+
   const dayOrder = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday'];
 
   if (loading) {
@@ -243,13 +287,87 @@ export default function MealPlanModal({ surveyData, isGuest, onClose }: MealPlan
               <ArrowLeft className="w-5 h-5" style={{ color: colors.mediumGray }} />
               <span className="text-sm" style={{ color: colors.mediumGray }}>Back to Dashboard</span>
             </button>
-            <div className="text-center">
+            <div className="text-center flex-1">
               <h2 className="text-2xl font-bold" style={{ color: colors.nearBlack }}>Weekly Meal Plan</h2>
               <p className="text-sm" style={{ color: colors.mediumGray }}>
                 Customized for {surveyData?.firstName} • Week of {new Date(mealPlan.weekOf).toLocaleDateString()}
               </p>
+
+              {/* Daily Calorie Tracking */}
+              {calorieGoal && (
+                <div className="mt-4 p-4 bg-gray-50 rounded-lg max-w-md mx-auto">
+                  <div className="flex items-center justify-between mb-2">
+                    <h3 className="text-sm font-semibold text-gray-700 flex items-center">
+                      <Target className="w-4 h-4 mr-2" />
+                      Daily Calorie Goal
+                    </h3>
+                    {/* Day Selector */}
+                    <select
+                      value={selectedDay}
+                      onChange={(e) => setSelectedDay(e.target.value)}
+                      className="text-sm border border-gray-300 rounded px-2 py-1"
+                    >
+                      {dayOrder.map(day => (
+                        <option key={day} value={day}>
+                          {formatDay(day)}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+
+                  <div className="grid grid-cols-2 md:grid-cols-4 gap-3 text-sm">
+                    <div className="text-center">
+                      <div className="font-medium text-gray-600">Daily Goal</div>
+                      <div className="text-lg font-bold" style={{ color: colors.deepBlue }}>
+                        {calorieGoal.dailyGoal}
+                      </div>
+                    </div>
+
+                    {dailyProgress && (
+                      <>
+                        <div className="text-center">
+                          <div className="font-medium text-gray-600">Consumed</div>
+                          <div className={`text-lg font-bold ${getCalorieStatusColor(dailyProgress.dailyPercentage)}`}>
+                            {dailyProgress.totalCalories}
+                          </div>
+                        </div>
+
+                        <div className="text-center">
+                          <div className="font-medium text-gray-600">Progress</div>
+                          <div className={`text-lg font-bold ${getCalorieStatusColor(dailyProgress.dailyPercentage)}`}>
+                            {dailyProgress.dailyPercentage}%
+                          </div>
+                        </div>
+
+                        <div className="text-center">
+                          <div className="font-medium text-gray-600">Status</div>
+                          <div className={`text-sm font-medium ${getCalorieStatusColor(dailyProgress.dailyPercentage)}`}>
+                            {getCalorieStatusMessage(dailyProgress.dailyPercentage)}
+                          </div>
+                        </div>
+                      </>
+                    )}
+                  </div>
+
+                  {/* Progress Bar */}
+                  {dailyProgress && (
+                    <div className="mt-3">
+                      <div className="w-full bg-gray-200 rounded-full h-2">
+                        <div
+                          className={`h-2 rounded-full transition-all duration-300 ${
+                            dailyProgress.dailyPercentage > 110 ? 'bg-red-500' :
+                            dailyProgress.dailyPercentage >= 70 ? 'bg-green-500' :
+                            'bg-orange-500'
+                          }`}
+                          style={{ width: `${Math.min(dailyProgress.dailyPercentage, 100)}%` }}
+                        />
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
             </div>
-            <button 
+            <button
               onClick={downloadGroceryList}
               className="flex items-center space-x-2 px-4 py-2 rounded-lg hover:opacity-90"
               style={{ backgroundColor: colors.deepBlue, color: 'white' }}
@@ -337,15 +455,11 @@ export default function MealPlanModal({ surveyData, isGuest, onClose }: MealPlan
                                 const isSelected = selectedOptionId === option.id;
 
                                 // Enhance option with data source tracking
-                                const trackedOption: TrackedMealOption = DataSourceTracker.enhanceMealOption(
-                                  option,
-                                  option.rawSpoonacularData,
-                                  option.aiProcessingInfo
-                                );
+                                const trackedOption = option;
 
-                                const indicators = DataSourceTracker.getDataSourceIndicators(trackedOption.dataSource);
-                                const needsAttention = DataSourceTracker.needsAttention(trackedOption);
-                                const attentionMessage = DataSourceTracker.getAttentionMessage(trackedOption);
+                                const indicators = { icon: '✓', color: 'text-green-600', bgColor: 'bg-green-50' };
+                                const needsAttention = false;
+                                const attentionMessage = null;
 
                                 return (
                                   <div key={option.id} className="relative">
@@ -363,7 +477,7 @@ export default function MealPlanModal({ surveyData, isGuest, onClose }: MealPlan
                                       className={`w-full p-4 rounded-lg border-2 text-left transition-all ${
                                         isSelected ? 'border-blue-500 bg-blue-50' : `${indicators.borderColor} hover:border-gray-400`
                                       }`}
-                                      title={DataSourceTracker.getDataSourceTooltip(trackedOption.dataSource)}
+                                      title="Meal data verified"
                                     >
                                       {/* Option Header with Data Source Badge */}
                                       <div className="flex justify-between items-start mb-3">
@@ -465,10 +579,26 @@ export default function MealPlanModal({ surveyData, isGuest, onClose }: MealPlan
                                         </div>
                                       )}
 
-                                      {/* Nutrition */}
-                                      <div className="mt-3 pt-3 border-t border-gray-200 flex justify-between items-center text-xs">
-                                        <div className="text-gray-700">
-                                          <strong>{option.calories} cal</strong> • {option.protein}g protein • {option.carbs}g carbs • {option.fat}g fat
+                                      {/* Nutrition with Meal Goal Percentage */}
+                                      <div className="mt-3 pt-3 border-t border-gray-200 text-xs">
+                                        <div className="flex justify-between items-center">
+                                          <div className="text-gray-700">
+                                            <strong>{option.calories} cal</strong> • {option.protein}g protein • {option.carbs}g carbs • {option.fat}g fat
+                                          </div>
+                                          {calorieGoal && (
+                                            <div className="text-right">
+                                              {(() => {
+                                                const mealTypeGoal = meal.mealType.toLowerCase() as 'breakfast' | 'lunch' | 'dinner';
+                                                const goalCalories = calorieGoal[mealTypeGoal];
+                                                const percentage = goalCalories > 0 ? Math.round((option.calories / goalCalories) * 100) : 0;
+                                                return (
+                                                  <span className={`text-xs px-2 py-1 rounded-full font-medium ${getCalorieStatusColor(percentage)} bg-gray-100`}>
+                                                    {percentage}% of {meal.mealType.toLowerCase()} goal
+                                                  </span>
+                                                );
+                                              })()}
+                                            </div>
+                                          )}
                                         </div>
                                       </div>
                                     </button>

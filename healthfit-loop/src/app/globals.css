@@ -122,3 +122,49 @@ select:focus {
 html {
   scroll-behavior: smooth;
 }
+
+/* 3-dot loading animation */
+.loading-dots {
+  display: inline-flex;
+  gap: 6px;
+  align-items: center;
+  justify-content: center;
+}
+
+.loading-dots::before,
+.loading-dots::after {
+  content: '';
+  width: 8px;
+  height: 8px;
+  background-color: #DC2626; /* Red color to match FYTR brand */
+  border-radius: 50%;
+  animation: loadingDots 1.4s infinite ease-in-out;
+}
+
+.loading-dots {
+  width: 8px;
+  height: 8px;
+  background-color: #DC2626;
+  border-radius: 50%;
+  animation: loadingDots 1.4s infinite ease-in-out;
+  animation-delay: -0.16s;
+}
+
+.loading-dots::before {
+  animation-delay: -0.32s;
+}
+
+.loading-dots::after {
+  animation-delay: 0s;
+}
+
+@keyframes loadingDots {
+  0%, 80%, 100% {
+    transform: scale(0.6);
+    opacity: 0.4;
+  }
+  40% {
+    transform: scale(1);
+    opacity: 1;
+  }
+}
