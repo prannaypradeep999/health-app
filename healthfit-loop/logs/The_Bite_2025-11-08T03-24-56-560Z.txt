@@ -1,0 +1,1161 @@
+RESTAURANT: The Bite
+ADDRESS: 996 Mission St, San Francisco 94103
+CUISINE: mediterranean
+TIMESTAMP: 2025-11-08T03:24:56.563Z
+================================================================================
+
+SEARCH RESULTS SUMMARY:
+========================
+Strategy: doordash_precise
+Success: true
+URLs Found: 3
+Has Menu Content: true
+  - https://www.doordash.com/store/the-bite-san-francisco-2096733
+  - https://www.doordash.com/store/the-bite-san-francisco-2096733/
+  - https://www.doordash.com/store/mezza-gluten-free-bowls-san-francisco-24028349/
+
+Strategy: ubereats_precise
+Success: true
+URLs Found: 4
+Has Menu Content: true
+  - https://www.ubereats.com/store/the-bite-mission-st/MilyP8htRUKxkUp0qtD9Fw?srsltid=AfmBOor4VonG-hHg05enBbkkq8WG77IYJE8sweeJH2tKBNeFQwZF5i9O
+  - https://www.ubereats.com/store/the-bite-mission-st/MilyP8htRUKxkUp0qtD9Fw?srsltid=AfmBOoptzV1Ns9jnXY6sAr-MtwoG9EnBcph-Nk1VEkdM7VG5_HPvf5MD
+  - https://www.ubereats.com/store/heytea-downtown-metreon/jw7QZlfUVuqdoLltMTSpyA?srsltid=AfmBOoqXy1GieCktAtFpw_eSUVcd7hCJJ6jrdmf0yooNR2FZ3q0-GaeU
+  - https://www.ubereats.com/store/heytea-downtown-metreon/jw7QZlfUVuqdoLltMTSpyA?srsltid=AfmBOorEPOOK6f8_m1O9rCmXYmC9nm99u9Yp99KBMHXDdpyz6WrRSdYk
+
+Strategy: grubhub_precise
+Success: true
+URLs Found: 2
+Has Menu Content: true
+  - https://www.grubhub.com/restaurant/the-bite-996-mission-st-san-francisco/2854787
+  - https://www.grubhub.com/restaurant/meze-gluten-free-bowl-996-mission-street-san-francisco/8156624
+
+Strategy: menu_with_address
+Success: true
+URLs Found: 5
+Has Menu Content: true
+  - https://www.thebitesf.com/menu?menu=menu
+  - https://the-bite.restaurants-world.com/menu
+  - https://www.thebitesf.com/
+  - https://www.waiter.com/takeout-delivery/the-bite/san-francisco-ca/996-mission-st
+  - https://the-bite-4.wheree.com/
+
+Strategy: restaurant_website
+Success: true
+URLs Found: 5
+Has Menu Content: true
+  - https://www.tagvenue.com/us/rooms/san-francisco/32744/the-bite/the-bite
+  - https://www.thebitesf.com/our-story
+  - https://the-bite.restaurants-world.com/menu
+  - https://places.singleplatform.com/the-bite-9/menu?ref=Yahoo
+  - https://www.novacircle.com/spots/north-america/united-states/california/san-francisco-county/san-francisco/bite-8798c8/menu
+
+Strategy: zipcode_fallback
+Success: true
+URLs Found: 5
+Has Menu Content: true
+  - https://www.ubereats.com/store/the-bite-mission-st/MilyP8htRUKxkUp0qtD9Fw?srsltid=AfmBOopFZXG9_YSQSILNRcZNbQdqCoUpE8ZPhOnINxDQypPl9USmfd9z
+  - https://www.ubereats.com/store/the-bite-mission-st/MilyP8htRUKxkUp0qtD9Fw?srsltid=AfmBOoqU0Ufklcg0TFwZyu7DYanT8bY0Wjk0DLJlPa4afF_N6AKVNec5
+  - https://www.thebitesf.com/online-order
+  - https://places.singleplatform.com/the-bite-9/menu?ref=Yahoo
+  - https://www.thebitesf.com/menu?menu=menu
+
+
+ANALYZED CONTENT:
+=================
+
+SOURCE 1: https://www.doordash.com/store/the-bite-san-francisco-2096733/
+TITLE: DoorDash Order The Bite - San Francisco, CA Menu Delivery [Menu & Prices] | San Francisco - DoorDash
+STRATEGY: doordash_precise
+CONTENT LENGTH: 1351 characters
+MENU ITEMS FOUND: chicken, salad, beef, soup
+PRICES FOUND: $0, $20.99, $24.99, $19.99, $15.49
+============================================================
+FULL CONTENT:
+Local Expert • 27 contributions
+
+12/7/24
+
+• DoorDash order
+
+The food here is amazing. The chicken marinade is on point, and the chunks of chicken are very tender. The rice and salad are also quite good and balance out the bowl. This is definitely one of the best tasting fast casual bowls I've had.
+
+A
+
+Alex R
+
+2 contributions
+
+9/4/25
+
+• DoorDash order [...] ## Featured Items
+
+$0 delivery fee, first order
+
+pricing & fees
+
+to see delivery time
+
+## Featured Items
+
+Grilled Chicken Breast Rice Bowl
+
+$20.99
+
+•97% (158)
+
+Grilled Salmon Rice Bowl
+
+$24.99
+
+•98% (98)
+
+Lamb & Beef Gyro Rice Bowl
+
+$19.99
+
+•88% (232)
+
+500+ recent orders
+
+Lamb and Beef Gyro Wrap
+
+$15.49
+
+•94% (187)
+
+500+ recent orders
+
+Chicken Gyro Wrap
+
+$15.49
+
+•80% (243)
+
+500+ recent orders
+
+Chicken Gyro Rice Bowl
+
+$19.99
+
+•95% (40)
+
+Reviews4k+ ratings • 100+ public reviews
+
+4.7
+
+of 5 stars [...] Absolutely delicious! I ordered the beef kebab bowl, it was a great portion for the value, side salad was fresh, rice was very tasty as well as the tender meat. I also ordered the lentil soup, and it was fantastic! The mint lemonade was very refreshing, too. All the food traveled well, with no spills, the packaging was perfect! I recommend this place 100%. I'll try other stuff in the future. First time trying because a neighbor always recommends this place. Very satisfied!
+
+J
+
+Jade L
+
+============================================================
+
+SOURCE 2: https://www.ubereats.com/store/heytea-downtown-metreon/jw7QZlfUVuqdoLltMTSpyA?srsltid=AfmBOoqXy1GieCktAtFpw_eSUVcd7hCJJ6jrdmf0yooNR2FZ3q0-GaeU
+TITLE: Order HEYTEA (Downtown Metreon) - San Francisco
+STRATEGY: ubereats_precise
+CONTENT LENGTH: 154 characters
+MENU ITEMS FOUND: chicken
+PRICES FOUND: 
+============================================================
+FULL CONTENT:
+... The Bite (Mission St) deliveryKatana-ya deliveryChris's Chicken Tenders ... Mission St) deliveryLa Marcha Tapas Bar (60 Morris St) delivery · Create a
+
+============================================================
+
+SOURCE 3: https://www.thebitesf.com/menu?menu=menu
+TITLE: Menu | THE BITE
+STRATEGY: menu_with_address
+CONTENT LENGTH: 1417 characters
+MENU ITEMS FOUND: beef, chicken, salad
+PRICES FOUND: $9.99, $8.99, $15.99, $7.49, $749, $14.49, $9.49, $8.49
+============================================================
+FULL CONTENT:
+top of page
+
+996 Mission St, San Francisco, CA 94103  Tel 415-757-0414
+
+MenuFRESH FOOD AND GOOD MOODS AT THE BITE
+
+---
+
+Sautéed Eggplant, Dolma, Tzatziki, Chipotle Humus, Avocado Humus, Classic Hummus. All appetizers come with pita bread, but our pita bread is not gluten free.
+
+---
+
+Classic Hummus
+
+Gluten free
+
+---
+
+Avocado Hummus
+
+Gluten free
+
+Vegetarian
+
+Vegan
+
+---
+
+Chipotle Hummus
+
+$9.99
+
+Gluten free
+
+Vegetarian
+
+Vegan
+
+---
+
+$8.99
+
+Gluten free
+
+Vegetarian
+
+---
+
+Dolma [...] Red Kidney Beans, Pinto beans, Garbanzo, Red onions, Bell peppers, Corn, Sumac, House Dressing.
+
+$15.99
+
+Gluten free
+
+Vegetarian
+
+Vegan
+
+Add on Proteins
+
+Grilled Beef Kebab$7.49
+
+Grilled Chicken Breast$7.49
+
+Grilled Chicken Kebab$7.49
+
+---
+
+Soma Salad
+
+Spring Mix, Couscous, Parmesan Cheese, Avocado, Almonds, House Dressing.
+
+$15.99
+
+Vegetarian
+
+Add on Proteins
+
+Grilled Beef Kebab$749
+
+Grilled Chicken Breast$749
+
+Grilled Chicken Kebab$749
+
+---
+
+Mission Salad [...] Spring Mix, Persian Cucumbers, Cherry Tomatoes, Onions, Olives, Feta Cheese, House dressing. 
+
+$14.49
+
+Gluten free
+
+Vegetarian
+
+Add on Proteins
+
+Grilled Beef Kebab$9.49
+
+Grilled Chicken Breast$8.49
+
+Grilled Chicken Kebab$9.49
+
+---
+
+Mighty Kale
+
+Kale, Beets, Mandarin, Walnuts, Dried Apricots, House Dressing. 
+
+$15.99
+
+Gluten free
+
+Vegetarian
+
+Vegan
+
+Add on Proteins
+
+Grilled Beef Kebab$7.49
+
+Grilled Chicken Breast$7.49
+
+Grilled Chicken Kebab$7.49
+
+---
+
+Beans’ Family
+
+============================================================
+
+SOURCE 4: https://the-bite.restaurants-world.com/menu
+TITLE: The Bite Menu - Fresh Mediterranean Vegan Delights in San ...
+STRATEGY: menu_with_address
+CONTENT LENGTH: 1175 characters
+MENU ITEMS FOUND: salad, chicken, beef
+PRICES FOUND: $4.99, $14.99
+============================================================
+FULL CONTENT:
+### Homemade Lemonade
+
+### Homemade Mint Lemonade
+
+$4.99
+
+### Homemade Ginger Lemonade
+
+$4.99
+
+### Homemade Strawberry Lemonade
+
+$4.99
+
+## Homemade Juices
+
+The Bite
+
+Discover The Bite, your go-to spot for delicious Mediterranean vegan and gluten-free dishes in San Francisco. Enjoy delivery, takeout, and outdoor seating, all while indulging in a vibrant atmosphere perfect for groups. Visit us at 996 Mission St for a unique dining experience with modern amenities. [...] The Bite
+
+ Home
+ Menu
+ Locations
+ Reviews
+ About
+ Opening
+
+The Bite
+
+# The Bite Menu (Update 2025)
+
+1. Home
+2. Menu
+
+Welcome to The Bite, a Mediterranean haven nestled in the heart of San Francisco at 996 Mission St. This trendy eatery specializes in vegan and gluten-free dishes that are not only mouthwatering but also considerate of diverse dietary needs. [...] Vegetarian. Mix Spring, Couscous, Parmesan Cheese, Avocado, Almonds, House Dressing. You can add more protein to your salad Grilled Chicken Breast 7.49, Grilled Beef Kebab 7.49, Grilled Chicken Kebab 7.49, Grilled Salmon 9.49, Vegan Gyro 4.49, Falafels 4 Pieces 4.99, Lamb and Beef Gyro 5.99, Chicken Gyro 5.99
+
+$14.99
+
+### Mission Salad
+
+============================================================
+
+SOURCE 5: https://www.thebitesf.com/
+TITLE: The Bite | Mediterranean Restaurant, San Francisco
+STRATEGY: menu_with_address
+CONTENT LENGTH: 799 characters
+MENU ITEMS FOUND: soup, salad
+PRICES FOUND: 
+============================================================
+FULL CONTENT:
+top of page
+
+996 Mission St, San Francisco, CA 94103  Tel 415-757-0414
+
+# The Bite
+
+# The Best Mediterranean Restaurant In San Francisco
+
+MEnu
+
+Phone
+
+## SPECIALS OF THE BITE
+
+Appetizers
+
+Soup
+
+Salads
+
+Pita Wraps
+
+Rice Bowls
+
+#### Fresh food and Good moods  AT THE BITE [...] Looking for a good restaurant in the hottest area in San Francisco? We are all about salad bowls, rice bowls, wraps, and delicious drinks? We are a small local restaurant with healthy bites ready to serve you. Our promise is simple: healthy food and awesome service.
+
+#### openıng hours Sunday  11 am to 9 pm Monday and Tuesday 11 am to 10 pm  Wednesday to Saturday 11 am to MIDNIGHT
+
+## CONTACT & LOCATION
+
+TELL US WHAT YOU THINK AND HOW WE'RE DOING
+
+996 Mission St, San Francisco, CA 94103 [...] GO TO TOP
+
+bottom of page
+
+============================================================
+
+SOURCE 6: https://www.waiter.com/takeout-delivery/the-bite/san-francisco-ca/996-mission-st
+TITLE: Order The Bite Mediterranean Food for Delivery in San ...
+STRATEGY: menu_with_address
+CONTENT LENGTH: 1342 characters
+MENU ITEMS FOUND: soup, salad, beef
+PRICES FOUND: $9.50, $7.25, $14.25, $15.50, $15.99, $16.50, $10.50, $9.99
+============================================================
+FULL CONTENT:
+Image 19
+#### A6. Baba Ghanoush (GF, V)
+
+$9.50Add
+
+Image 20
+#### A7. Lentil Soup (V)
+
+$7.25Add
+
+ = Vegetarian, (GF) = Gluten-Free.
+
+Image 21
+#### B1. The Bite Salad
+
+Mix spring, Persian cucumbers, cherry tomatoes, onions, olives, feta cheese, house dressing.
+
+$14.25Add
+
+Image 22
+#### B2. Mighty Kale Salad
+
+Beets, mandarin, walnuts, dried apricots, house dressing.
+
+$15.50Add
+
+Image 23
+#### B3. Bean's Family Salad [...] Red kidney beans, pinto beans, garbanzo, red onions, bell peppers, corn, sumac, house dressing.
+
+$15.99Add
+
+Image 24
+#### B4. Soma Salad
+
+Mix spring, couscous, parmesan cheese, avocado, almonds, house dressing.
+
+$16.50Add
+
+Image 25
+#### B5. Mission Salad
+
+Spinach, boiled egg, cherry tomatoes, raisins, avocado, feta cheese, house dressing.
+
+$16.50Add
+
+ = Vegetarian, (GF) = Gluten-Free.
+
+Image 26
+#### C1. Grilled Beef Kebab Rice Bowl (GF) [...] Image 13
+#### A7. Lentil Soup (V)
+
+$7.25Add
+
+ = Vegetarian, (GF) = Gluten-Free. All appetizers come with pita bread, but our pita bread is not gluten-free.
+
+Image 14
+#### A1. Classic Hummus (Vegan)
+
+1
+
+$9.50Add
+
+Image 15
+#### A2. Avocado Hummus (Vegan)
+
+$10.50Add
+
+Image 16
+#### A3. Chipotle Hummus (Vegan)
+
+$10.50Add
+
+Image 17
+#### A4. Tzatziki (V)
+
+$9.50Add
+
+Image 18
+#### A5. Dolma (V)
+
+Dolma comes with tzatziki in a separate container. Tzatziki is not vegan.
+
+$9.99Add
+
+============================================================
+
+SOURCE 7: https://the-bite-4.wheree.com/
+TITLE: The Bite - Reviews, Photos & Phone Number - Updated ...
+STRATEGY: menu_with_address
+CONTENT LENGTH: 1095 characters
+MENU ITEMS FOUND: soup
+PRICES FOUND: 
+============================================================
+FULL CONTENT:
+English 
+       English
+       Tiếng Việt
+
+Log inSign up
+
+   Overview
+   Photos
+   Menu
+   Reviews
+
+The Bite
+
+Note:  The owner or a representative of this business has not yet completed the verification process
+
+See more Terms of Service
+
+Mediterranean Restaurants,Vegan Restaurants,Turkish Restaurants
+
+Closed 11:00 AM - 12:00 AM See Hours
+
+996 Mission St, San Francisco, CA 94103+4157570414 1415-757-0414.0Suggest an edit
+
+Image 28: The Bite [...] The Bite is a charming family-owned restaurant located in San Francisco, offering a delightful array of Turkish Mediterranean cuisine. Known for its delicious vegan options and generous portions, The Bite consistently impresses patrons with fresh ingredients and friendly service. Diners rave about the flavorful wraps, falafel bowls, and hearty lentil soup, making it a popular choice for healthy fast-casual dining. [...] Location: The Bite is situated at 996 Mission St in San Francisco's Mission District. While the neighborhood has been described as shady by some diners, they also emphasize that the restaurant itself feels clean and safe.
+
+============================================================
+
+SOURCE 8: https://www.tagvenue.com/us/rooms/san-francisco/32744/the-bite/the-bite
+TITLE: The Bite - The Bite - Event Venue Rental - Tagvenue.com
+STRATEGY: restaurant_website
+CONTENT LENGTH: 1499 characters
+MENU ITEMS FOUND: soup
+PRICES FOUND: $150
+============================================================
+FULL CONTENT:
+standing Venue offers catering External catering not allowed
+
+## About this space
+
+We're all about vegan-friendly, vegetarian, gluten-free, and healthy food & awesome service. The Bite is the hottest new healthy restaurant, located in the beautiful Soma District in San Francisco, CA.   
+   
+ The choices you can make on our menu are endless! Begin by appetizers you can choose your favorite hummus, tzatziki, dolma or sautéed eggplant. If you’re a soup lover you should try our Lentil Soup! [...] The Bite at The Bite
+
+Add to favourites
+
+Added to favourites
+
+Share
+
+Event Space in a Restaurant
+
+Semi-private area
+
+11 seats •18 standing
+
+In-house catering
+
+Space facilities
+
+Wi-Fi
+
+• Flatscreen TV
+
+• PA system / speakers
+
+• Air conditioning
+
+• Natural light
+
+• Paid parking facilities available nearby
+
+# The Bite at The Bite
+
+Event Space in a Restaurant
+
+·
+
+Semi-private area
+
+996 Mission Street, San Francisco, CA 94103  –
+
+South of Market (SOMA), San Francisco, CA
+
+Up to 11
+
+seats Up to 18 [...] No smoking in the building.
+
+## About The Bite
+
+The Bite is a Tagvenue Partner. This business has registered with Tagvenue and agreed to our venue partner standards.
+
+## Location
+
+## Meet your host
+
+Emre Sahin
+
+Member of Tagvenue since March 2022
+
+100% Response rate
+
+Contact venue managers directly on Tagvenue. Keep all event communication here for a secure, seamless booking.
+
+United States  >  San Francisco  >  The Bite  > The Bite
+
+## Similar spaces
+
+from $150  
+minimum spend / per afternoon
+
+============================================================
+
+SOURCE 9: https://www.thebitesf.com/our-story
+TITLE: OUR STORY - The Bite
+STRATEGY: restaurant_website
+CONTENT LENGTH: 952 characters
+MENU ITEMS FOUND: soup
+PRICES FOUND: 
+============================================================
+FULL CONTENT:
+996 Mission St, San Francisco, CA 94103  Tel 415-757-0414
+
+The Bite Restaurant
+The Bite San Francisco
+
+# FRESH FOOD AND GOOD MOODS AT THE BITE
+
+a74703f5-da49-43a0-8ec1-35aa047cf45a.jpg
+
+We're all about vegan-friendly, vegetarian, gluten-free, and healthy food & awesome service. The Bite is the hottest new healthy restaurant, located in the beautiful Soma District in San Francisco, CA. 
+
+​ [...] Our vegan and gluten-free friendly menu waiting for you to enjoy! The choices you can make on our menu are endless!
+
+Begin by appetizers you can choose your favorite hummus, tzatziki, dolma or sautéed eggplant. If you’re a soup lover you should try our Lentil Soup! 
+
+IMG_6176_edited.jpg [...] Toasting at 996 Mission St, our cozy space is open now. We're open Monday and Tuesday 11 am to 10 pm, Wednesday to Saturday 11 am to Midnight, Sunday 11 am to 9 pm. Come visit us when you feel like you need some real food.
+
+​
+
+​
+
+we cater!  
+info@thebitesf.com
+
+============================================================
+
+SOURCE 10: https://the-bite.restaurants-world.com/menu
+TITLE: The Bite Menu - Fresh Mediterranean Vegan Delights in San ...
+STRATEGY: restaurant_website
+CONTENT LENGTH: 1232 characters
+MENU ITEMS FOUND: 
+PRICES FOUND: $4.99
+============================================================
+FULL CONTENT:
+The Bite
+
+ Home
+ Menu
+ Locations
+ Reviews
+ About
+ Opening
+
+The Bite
+
+# The Bite Menu (Update 2025)
+
+1. Home
+2. Menu
+
+Welcome to The Bite, a Mediterranean haven nestled in the heart of San Francisco at 996 Mission St. This trendy eatery specializes in vegan and gluten-free dishes that are not only mouthwatering but also considerate of diverse dietary needs. [...] ### Homemade Lemonade
+
+### Homemade Mint Lemonade
+
+$4.99
+
+### Homemade Ginger Lemonade
+
+$4.99
+
+### Homemade Strawberry Lemonade
+
+$4.99
+
+## Homemade Juices
+
+The Bite
+
+Discover The Bite, your go-to spot for delicious Mediterranean vegan and gluten-free dishes in San Francisco. Enjoy delivery, takeout, and outdoor seating, all while indulging in a vibrant atmosphere perfect for groups. Visit us at 996 Mission St for a unique dining experience with modern amenities. [...] Address: 996 Mission St San Francisco, CA 94103 United States
+ Hotline: (415) 757-0414
+
+## Opening Hours
+
+ Monday
+
+  11:00 AM - 10:00 PM
+ Tuesday
+
+  11:00 AM - 10:00 PM
+ Wednesday
+
+  11:00 AM - 12:00 AM (Next day)
+ Thursday
+
+  11:00 AM - 12:00 AM (Next day)
+ Friday
+
+  11:00 AM - 12:00 AM (Next day)
+ Saturday
+
+  11:00 AM - 12:00 AM (Next day)
+ Sunday
+
+  11:00 AM - 9:00 PM
+
+## Recommended Menu
+
+============================================================
+
+SOURCE 11: https://places.singleplatform.com/the-bite-9/menu?ref=Yahoo
+TITLE: Menus for The Bite - San Francisco - SinglePlatform
+STRATEGY: restaurant_website
+CONTENT LENGTH: 1460 characters
+MENU ITEMS FOUND: salad, chicken, beef
+PRICES FOUND: $8.75, $9.75, $13.25, $13.75, $4.75, $8.00, $15.00, $19.50
+============================================================
+FULL CONTENT:
+What's wrong with this menu?
+
+Successfully reported!
+
+# The Bite
+
+Call   Menu   Info
+
+996 Mission St
+
+San Francisco, CA 94103
+
+Uber
+
+MORE PHOTOS
+
+## Menu
+
+### Appetizers
+
+#### Classic Hummus
+
+ $8.75
+
+All appetizers come with pita bread, but our pita bread is not gluten free
+
+vegetarian, vegan
+
+gluten-free
+
+#### Avocado Hummus
+
+ $9.75
+
+All appetizers come with pita bread, but our pita bread is not gluten free
+
+vegetarian, vegan
+
+gluten-free
+
+### Salads
+
+#### The Bite Salad
+
+ $13.25 [...] House marinated chicken breast with healthy herbs & spices, rice, house salad, Feta cheese, orange sauce, yogurt sauce
+
+gluten-free
+
+### Pita Wraps
+
+#### Lamb & Beef Gyro Wrap
+
+ $13.75
+
+Hummus, tzatziki, mixed spring, lamb & beef gyro, Feta, orange sauce
+
+#### Chicken Gyro Wrap
+
+ $13.75
+
+Hummus, tzatziki, mixed spring, chicken gyro, Feta, orange sauce
+
+### Sides
+
+#### French Fries
+
+ $4.75
+
+vegetarian, vegan
+
+gluten-free
+
+#### Parmesan Truffle Fries
+
+ $8.00
+
+vegetarian
+
+gluten-free [...] Mix spring, Persian cucumbers, cherry tomatoes, onions, olives, Feta cheese, house dressing
+
+vegetarian
+
+gluten-free
+
+#### Mighty Kale Salad
+
+ $15.00
+
+Beets, mandarin, walnuts, dried apricots, house dressing
+
+vegetarian, vegan
+
+gluten-free
+
+### Rice Bowls
+
+#### Organic Beef Kebab Rice Bowl
+
+ $19.50
+
+House marinated organic beef kebab with healthy herbs & spices, rice, house salad, Feta cheese, orange sauce, yogurt sauce
+
+gluten-free
+
+#### Chicken Breast Rice Bowl
+
+ $19.50
+
+============================================================
+
+SOURCE 12: https://www.ubereats.com/store/the-bite-mission-st/MilyP8htRUKxkUp0qtD9Fw?srsltid=AfmBOopFZXG9_YSQSILNRcZNbQdqCoUpE8ZPhOnINxDQypPl9USmfd9z
+TITLE: Order The Bite (Mission St) - Menu & Prices - San Francisco Delivery
+STRATEGY: zipcode_fallback
+CONTENT LENGTH: 1223 characters
+MENU ITEMS FOUND: 
+PRICES FOUND: $3.14, $4.99, $7.99, $6.99, $3.99, $5.99, $5.49
+============================================================
+FULL CONTENT:
+Skip to content
+
+Enter delivery address
+
+Log inSign up
+
+# The Bite (Mission St)
+
+4.8 x (2,000+) • Mediterranean • Greek • Vegetarian • Group Friendly • Vegan • Healthy • Info
+
+996 Mission Street, San Francisco, CA 94103
+
+(415) 757-0414
+
+Group order
+
+### Rating and reviews
+
+# 4.8
+
+2000+ Ratings [...] Fermented tea drink with a zesty ginger and lemon twist.
+  + Coke Can
+
+    $3.14 •  100% (5)
+  + Diet Coke Can
+
+    $3.14 •  90% (10)
+  + Organic Olipop Strawberry Vanilla 12oz
+
+    $4.99
+  + Organic Harmless Harvest Coconut Water
+
+    $7.99
+  + Organic Olipop Classic Root Beer 12oz
+
+    $4.99
+  + Organic Olipop Orange Squeeze 12oz
+
+    $4.99
+  + Organic Health-Ade Kombucha Pomegranate & Blueberry 16oz
+
+    $6.99
+  + Sparkling Water
+
+    $3.99 •  100% (4) [...] Refreshing and bubbly water.
+  + Homemade Ayran (Salted Yogurt Drink) 16oz
+
+    $5.99
+
+    Traditional Turkish-style yogurt drink with a touch of salt.
+  + Turkish Coffee
+
+    $5.99
+
+    Finely ground coffee beans brewed in a traditional Turkish style.
+  + Coke Zero
+
+    $3.14 •  100% (3)
+ ### Juices
+
+  + Homemade Mint Lemonade
+
+    $5.49 •  80% (10)
+
+    Refreshing drink made with mint and lemon.
+  + Homemade Strawberry Lemonade
+
+    $5.49 •  100% (6)
+
+============================================================
+
+SOURCE 13: https://www.ubereats.com/store/the-bite-mission-st/MilyP8htRUKxkUp0qtD9Fw?srsltid=AfmBOoqU0Ufklcg0TFwZyu7DYanT8bY0Wjk0DLJlPa4afF_N6AKVNec5
+TITLE: Order The Bite (Mission St) - Menu & Prices - San Francisco Delivery
+STRATEGY: zipcode_fallback
+CONTENT LENGTH: 1223 characters
+MENU ITEMS FOUND: 
+PRICES FOUND: $3.14, $4.99, $7.99, $6.99, $3.99, $5.99, $5.49
+============================================================
+FULL CONTENT:
+Skip to content
+
+Enter delivery address
+
+Log inSign up
+
+# The Bite (Mission St)
+
+4.8 x (2,000+) • Mediterranean • Greek • Vegetarian • Group Friendly • Vegan • Healthy • Info
+
+996 Mission Street, San Francisco, CA 94103
+
+(415) 757-0414
+
+Group order
+
+### Rating and reviews
+
+# 4.8
+
+2000+ Ratings [...] Fermented tea drink with a zesty ginger and lemon twist.
+  + Coke Can
+
+    $3.14 •  100% (5)
+  + Diet Coke Can
+
+    $3.14 •  90% (10)
+  + Organic Olipop Strawberry Vanilla 12oz
+
+    $4.99
+  + Organic Harmless Harvest Coconut Water
+
+    $7.99
+  + Organic Olipop Classic Root Beer 12oz
+
+    $4.99
+  + Organic Olipop Orange Squeeze 12oz
+
+    $4.99
+  + Organic Health-Ade Kombucha Pomegranate & Blueberry 16oz
+
+    $6.99
+  + Sparkling Water
+
+    $3.99 •  100% (4) [...] Refreshing and bubbly water.
+  + Homemade Ayran (Salted Yogurt Drink) 16oz
+
+    $5.99
+
+    Traditional Turkish-style yogurt drink with a touch of salt.
+  + Turkish Coffee
+
+    $5.99
+
+    Finely ground coffee beans brewed in a traditional Turkish style.
+  + Coke Zero
+
+    $3.14 •  100% (3)
+ ### Juices
+
+  + Homemade Mint Lemonade
+
+    $5.49 •  80% (10)
+
+    Refreshing drink made with mint and lemon.
+  + Homemade Strawberry Lemonade
+
+    $5.49 •  100% (6)
+
+============================================================
+
+SOURCE 14: https://places.singleplatform.com/the-bite-9/menu?ref=Yahoo
+TITLE: Menus for The Bite - San Francisco - SinglePlatform
+STRATEGY: zipcode_fallback
+CONTENT LENGTH: 1190 characters
+MENU ITEMS FOUND: salad, chicken, beef
+PRICES FOUND: $8.75, $9.75, $13.25, $13.75, $4.75, $8.00
+============================================================
+FULL CONTENT:
+What's wrong with this menu?
+
+Successfully reported!
+
+# The Bite
+
+Call   Menu   Info
+
+996 Mission St
+
+San Francisco, CA 94103
+
+Uber
+
+MORE PHOTOS
+
+## Menu
+
+### Appetizers
+
+#### Classic Hummus
+
+ $8.75
+
+All appetizers come with pita bread, but our pita bread is not gluten free
+
+vegetarian, vegan
+
+gluten-free
+
+#### Avocado Hummus
+
+ $9.75
+
+All appetizers come with pita bread, but our pita bread is not gluten free
+
+vegetarian, vegan
+
+gluten-free
+
+### Salads
+
+#### The Bite Salad
+
+ $13.25 [...] House marinated chicken breast with healthy herbs & spices, rice, house salad, Feta cheese, orange sauce, yogurt sauce
+
+gluten-free
+
+### Pita Wraps
+
+#### Lamb & Beef Gyro Wrap
+
+ $13.75
+
+Hummus, tzatziki, mixed spring, lamb & beef gyro, Feta, orange sauce
+
+#### Chicken Gyro Wrap
+
+ $13.75
+
+Hummus, tzatziki, mixed spring, chicken gyro, Feta, orange sauce
+
+### Sides
+
+#### French Fries
+
+ $4.75
+
+vegetarian, vegan
+
+gluten-free
+
+#### Parmesan Truffle Fries
+
+ $8.00
+
+vegetarian
+
+gluten-free [...] claim this menu  
+
+disclaimer: pricing and availability subject to change.
+
+Terms of Service | Privacy Policy
+
+## Browse Nearby
+
+## General Info
+
+996 Mission St
+
+San Francisco, CA 94103
+
+Claim this business
+
+============================================================
+
+SOURCE 15: https://www.thebitesf.com/menu?menu=menu
+TITLE: Menu | THE BITE
+STRATEGY: zipcode_fallback
+CONTENT LENGTH: 474 characters
+MENU ITEMS FOUND: 
+PRICES FOUND: $9.99, $8.99
+============================================================
+FULL CONTENT:
+top of page
+
+996 Mission St, San Francisco, CA 94103  Tel 415-757-0414
+
+MenuFRESH FOOD AND GOOD MOODS AT THE BITE
+
+---
+
+Sautéed Eggplant, Dolma, Tzatziki, Chipotle Humus, Avocado Humus, Classic Hummus. All appetizers come with pita bread, but our pita bread is not gluten free.
+
+---
+
+Classic Hummus
+
+Gluten free
+
+---
+
+Avocado Hummus
+
+Gluten free
+
+Vegetarian
+
+Vegan
+
+---
+
+Chipotle Hummus
+
+$9.99
+
+Gluten free
+
+Vegetarian
+
+Vegan
+
+---
+
+$8.99
+
+Gluten free
+
+Vegetarian
+
+---
+
+Dolma
+
+============================================================
+

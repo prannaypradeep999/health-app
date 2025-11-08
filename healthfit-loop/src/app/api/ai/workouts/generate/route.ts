@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { cookies } from 'next/headers';
 import { prisma } from '@/lib/db';
+import { pexelsClient } from '@/lib/external/pexels-client';
 
 export const runtime = 'nodejs';
 
@@ -25,6 +26,10 @@ interface WorkoutDay {
       advanced: string;
     };
     muscleTargets: string[];
+    imageUrl?: string;
+    imageSource?: string;
+    imageSearchQuery?: string;
+    imageCached?: boolean;
   }>;
 }
 
@@ -52,7 +57,10 @@ export async function POST(req: NextRequest) {
     } catch (error) {
       console.log(`[WORKOUT-GENERATION] 📄 Empty request body, using defaults`);
     }
-    const { backgroundGeneration, testSurveyData } = requestData;
+    const { backgroundGeneration, testSurveyData } = requestData as {
+      backgroundGeneration?: boolean;
+      testSurveyData?: any;
+    };
     const cookieStore = await cookies();
     const userId = cookieStore.get('user_id')?.value;
     const sessionId = cookieStore.get('guest_session')?.value;
@@ -104,6 +112,13 @@ export async function POST(req: NextRequest) {
     const generationTime = Date.now() - generationStartTime;
     console.log(`[WORKOUT-GENERATION] ✅ Generation completed in ${generationTime}ms`);
 
+    // Enhance workout plan with exercise images
+    console.log('[WORKOUT-GENERATION] Enhancing workout plan with exercise images...');
+    const imageStartTime = Date.now();
+    const enhancedWorkoutPlan = await enhanceWorkoutPlanWithImages(workoutPlan, surveyData);
+    const imageTime = Date.now() - imageStartTime;
+    console.log(`[WORKOUT-GENERATION] Image enhancement completed in ${imageTime}ms`);
+
     const totalTime = Date.now() - startTime;
     console.log(`[WORKOUT-GENERATION] 🏁 Total generation time: ${totalTime}ms (${(totalTime/1000).toFixed(2)}s)`);
 
@@ -118,7 +133,7 @@ export async function POST(req: NextRequest) {
           surveyId: surveyData.id,
           userId: userId || null,
           weekOf: weekOfDate,
-          planData: workoutPlan,
+          planData: enhancedWorkoutPlan as any,
           status: 'active'
         }
       });
@@ -130,9 +145,10 @@ export async function POST(req: NextRequest) {
 
     return NextResponse.json({
       success: true,
-      workoutPlan: workoutPlan,
+      workoutPlan: enhancedWorkoutPlan,
       timings: {
         generationTime: `${generationTime}ms`,
+        imageTime: `${imageTime}ms`,
         totalTime: `${totalTime}ms`
       },
       generatedAt: new Date().toISOString()
@@ -151,6 +167,32 @@ export async function POST(req: NextRequest) {
 async function generateWorkoutPlan(surveyData: any): Promise<WorkoutPlan> {
   // Parse workout preferences if available
   const workoutPrefs = surveyData.workoutPreferencesJson || {};
+
+  // Get current day info for proper day ordering
+  const getCurrentDayInfo = () => {
+    const today = new Date();
+    const dayNames = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'];
+    const todayIndex = today.getDay(); // 0 = Sunday, 1 = Monday, etc.
+
+    const orderedDays = [
+      ...dayNames.slice(todayIndex),    // Days from today to end of week
+      ...dayNames.slice(0, todayIndex)  // Days from start of week to yesterday
+    ];
+
+    return {
+      currentDay: dayNames[todayIndex],
+      orderedDays,
+      dayIndex: todayIndex
+    };
+  };
+
+  const dayInfo = getCurrentDayInfo();
+  const currentDate = new Date().toLocaleDateString('en-US', {
+    weekday: 'long',
+    year: 'numeric',
+    month: 'long',
+    day: 'numeric'
+  });
 
   const systemPrompt = `You are an expert fitness trainer with decades of experience in exercise science, biomechanics, and program design. You create science-based workout programs following established methodologies from top fitness professionals and research institutions.
 
@@ -196,8 +238,11 @@ USER PROFILE:
 - Age: ${surveyData.age}, Sex: ${surveyData.sex}
 - Primary Goal: ${surveyData.goal}
 - Activity Level: ${surveyData.activityLevel}
+- Sports Interests: ${surveyData.sportsInterests || 'none specified'}
+- Fitness Timeline: ${surveyData.fitnessTimeline || 'no specific timeline'}
+- Monthly Fitness Budget: $${surveyData.monthlyFitnessBudget || 50}
 - Workout Experience: ${workoutPrefs.fitnessExperience || 'intermediate'}
-- Available Equipment: ${workoutPrefs.equipmentAccess?.join(', ') || 'bodyweight, basic equipment'}
+- Gym Access: ${workoutPrefs.gymAccess || 'no_gym'}
 - Preferred Workout Types: ${workoutPrefs.workoutTypes?.join(', ') || 'varied'}
 - Available Days: ${workoutPrefs.availableDays?.length || 5} days per week
 - Session Duration: ${workoutPrefs.preferredDuration || 45} minutes
@@ -284,7 +329,7 @@ RETURN EXACTLY THIS JSON STRUCTURE:
 CRITICAL REQUIREMENTS:
 1. Create ALL 7 days (monday through sunday) - 5 training days + 2 rest days
 2. Rest days: restDay: true, empty exercises array
-3. Each training day: 3-4 exercises maximum (to fit token limit)
+3. Each training day: 4-5 exercises (complete workout structure)
 4. Keep descriptions concise but motivating
 5. Include beginner/intermediate/advanced modifications
 6. Focus on established exercises and proper form
@@ -310,7 +355,7 @@ CRITICAL: Return PURE JSON only. No markdown, no text before/after. Must start w
       ],
       response_format: { type: 'json_object' },
       temperature: 0.2,
-      max_tokens: 4000
+      max_tokens: 8000
     })
   });
 
@@ -328,6 +373,99 @@ CRITICAL: Return PURE JSON only. No markdown, no text before/after. Must start w
     return workoutPlan;
   } catch (parseError) {
     console.error('[GPT-WORKOUT] ❌ JSON parse error:', parseError);
+    console.error('[GPT-WORKOUT] ❌ Raw content length:', workoutContent?.length);
+    console.error('[GPT-WORKOUT] ❌ Raw content preview:', workoutContent?.substring(0, 200));
+    console.error('[GPT-WORKOUT] ❌ Raw content ending:', workoutContent?.substring(workoutContent.length - 200));
     throw new Error('Failed to parse workout plan JSON');
   }
+}
+
+// Enhanced workout plan with exercise images
+async function enhanceWorkoutPlanWithImages(workoutPlan: WorkoutPlan, surveyData: any): Promise<WorkoutPlan> {
+  const enhanceStartTime = Date.now();
+  console.log(`[WORKOUT-IMAGES] Starting image enhancement for ${workoutPlan.weeklyPlan?.length || 0} days...`);
+
+  if (!workoutPlan.weeklyPlan || !Array.isArray(workoutPlan.weeklyPlan)) {
+    console.log(`[WORKOUT-IMAGES] No days found in workout plan, returning original`);
+    return workoutPlan;
+  }
+
+  // Get workout preferences for context
+  const workoutPrefs = surveyData.workoutPreferencesJson || {};
+  const equipmentContext = workoutPrefs.gymAccess || 'bodyweight';
+
+  // Process each day's exercises in parallel for speed
+  const enhancedDays = await Promise.all(
+    workoutPlan.weeklyPlan.map(async (day: any, dayIndex: number) => {
+      const dayStartTime = Date.now();
+      console.log(`[WORKOUT-IMAGES] Processing ${day.day} (${day.focus})...`);
+
+      // Skip rest days
+      if (day.restDay || !day.exercises || day.exercises.length === 0) {
+        console.log(`[WORKOUT-IMAGES] Skipping rest day: ${day.day}`);
+        return day;
+      }
+
+      // Enhance each exercise with images
+      const enhancedExercises = await Promise.all(
+        day.exercises.map(async (exercise: any) => {
+          try {
+            const exerciseName = exercise.name;
+            if (!exerciseName) {
+              console.log(`[WORKOUT-IMAGES] No exercise name for exercise on ${day.day}`);
+              return exercise;
+            }
+
+            // Determine muscle group from targetMuscles or day focus
+            const primaryMuscleGroup = day.targetMuscles?.[0] ||
+              exercise.muscleTargets?.[0] ||
+              day.focus.toLowerCase().includes('chest') ? 'chest' :
+              day.focus.toLowerCase().includes('back') ? 'back' :
+              day.focus.toLowerCase().includes('legs') ? 'legs' :
+              day.focus.toLowerCase().includes('shoulders') ? 'shoulders' :
+              day.focus.toLowerCase().includes('arms') ? 'arms' :
+              'full body';
+
+            // Get image from Pexels with smart caching
+            const imageResult = await pexelsClient.getWorkoutImage(exerciseName, {
+              muscleGroup: primaryMuscleGroup,
+              equipmentType: equipmentContext,
+              searchTerms: exercise.description
+            });
+
+            console.log(`[WORKOUT-IMAGES] ${imageResult.cached ? 'cached' : 'fetched'} ${exerciseName} → ${imageResult.imageSource} (${imageResult.searchQuery})`);
+
+            // Add image data to exercise
+            return {
+              ...exercise,
+              imageUrl: imageResult.imageUrl,
+              imageSource: imageResult.imageSource,
+              imageSearchQuery: imageResult.searchQuery,
+              imageCached: imageResult.cached
+            };
+
+          } catch (error) {
+            console.error(`[WORKOUT-IMAGES] Error getting image for ${exercise.name}:`, error);
+            return exercise; // Return original exercise if image fetch fails
+          }
+        })
+      );
+
+      const dayTime = Date.now() - dayStartTime;
+      console.log(`[WORKOUT-IMAGES] ${day.day} enhanced in ${dayTime}ms`);
+
+      return {
+        ...day,
+        exercises: enhancedExercises
+      };
+    })
+  );
+
+  const enhanceTime = Date.now() - enhanceStartTime;
+  console.log(`[WORKOUT-IMAGES] All workout images enhanced in ${enhanceTime}ms (${(enhanceTime/1000).toFixed(2)}s)`);
+
+  return {
+    ...workoutPlan,
+    weeklyPlan: enhancedDays
+  };
 }

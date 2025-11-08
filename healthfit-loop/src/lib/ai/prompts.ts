@@ -1,6 +1,34 @@
 // LLM prompts with dynamic reasoning and minimal hardcoding
 import { SurveyResponse } from '@prisma/client';
 
+// Helper function to get days starting from current day
+function getDaysStartingFromToday(): string[] {
+  const today = new Date();
+  const dayNames = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'];
+  const todayIndex = today.getDay(); // 0 = Sunday, 1 = Monday, etc.
+
+  // Create array starting from today
+  const orderedDays = [
+    ...dayNames.slice(todayIndex),    // Days from today to end of week
+    ...dayNames.slice(0, todayIndex)  // Days from start of week to yesterday
+  ];
+
+  return orderedDays;
+}
+
+function getCurrentDayInfo() {
+  const today = new Date();
+  const dayNames = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+  const currentDay = dayNames[today.getDay()];
+  const orderedDays = getDaysStartingFromToday();
+
+  return {
+    currentDay,
+    orderedDays,
+    dayIndex: today.getDay()
+  };
+}
+
 export interface UserContext {
   surveyData: SurveyResponse;
   weekOf: string;
@@ -16,6 +44,61 @@ export interface UserContext {
   };
 }
 
+// Smart meal distribution based on user's eating out preference
+function getMealDistributionStrategy(mealsOutPerWeek: number, homeMealsPerWeek: number): string {
+  const totalMeals = 21; // 7 days × 3 meals
+
+  if (mealsOutPerWeek <= 0) {
+    return "FULL HOME COOKING MODE: Generate all 21 meals as home recipes with variety across breakfast, lunch, and dinner.";
+  }
+
+  if (mealsOutPerWeek >= 21) {
+    return "FULL RESTAURANT MODE: Generate all 21 meals as restaurant options. Focus on variety across different cuisines and price points.";
+  }
+
+  // Strategic distribution for partial eating out
+  let strategy = `STRATEGIC DISTRIBUTION (${mealsOutPerWeek} restaurant, ${homeMealsPerWeek} home):
+`;
+
+  // Low restaurant meals (1-7): Focus on dinner primarily, some lunches
+  if (mealsOutPerWeek <= 7) {
+    strategy += `• PRIORITY: Dinners first (most social meal type)
+• SECONDARY: Lunches (convenience during work)
+• AVOID: Restaurant breakfasts (usually rushed/simple)
+• PATTERN: Spread across ${Math.min(mealsOutPerWeek, 7)} different days
+• GOAL: One restaurant meal per day max, prioritize weekends for special dinners`;
+  }
+  // Medium restaurant meals (8-14): Cover most dinners + some lunches
+  else if (mealsOutPerWeek <= 14) {
+    strategy += `• PRIORITY: All 7 dinners as restaurant options (social + variety)
+• SECONDARY: ${mealsOutPerWeek - 7} lunches for workday convenience
+• PATTERN: 2 meals on ${Math.ceil((mealsOutPerWeek - 7) / 1)} days (lunch + dinner)
+• GOAL: Balanced mix with dinners always covered, strategic lunch coverage`;
+  }
+  // High restaurant meals (15-20): Nearly full coverage except strategic home meals
+  else {
+    const homeBreakfasts = Math.max(7 - Math.floor((mealsOutPerWeek - 14) / 3), 0);
+    const homeLunches = Math.max(7 - Math.floor((mealsOutPerWeek - 14) / 3), 0);
+
+    strategy += `• PATTERN: Restaurant-heavy with strategic home cooking
+• BREAKFASTS: Mix of ${7 - homeBreakfasts} restaurant + ${homeBreakfasts} home (quick/healthy starts)
+• LUNCHES: Mostly restaurant for convenience
+• DINNERS: Mostly restaurant for variety + social
+• HOME FOCUS: Keep ${homeMealsPerWeek} easiest/healthiest home meals for balance`;
+  }
+
+  strategy += `
+
+EXECUTION RULES:
+• Ensure EXACTLY ${mealsOutPerWeek} restaurant options (option 1) across the week
+• Ensure EXACTLY ${homeMealsPerWeek} home recipes (option 2) across the week
+• When a meal has restaurant option 1, make option 2 a complementary home recipe
+• When a meal has home option 1, make option 2 a restaurant alternative
+• Distribute restaurant meals across different days when possible (avoid 3 restaurant meals on same day)`;
+
+  return strategy;
+}
+
 export function buildMealPlannerPrompt(userContext: UserContext): string {
   const { surveyData, weekOf, weekNumber, targetCalories, weeklyBudgetCents, mealsOutPerWeek, homeMealsPerWeek } = userContext;
   const weeklyBudgetDollars = (weeklyBudgetCents / 100).toFixed(2);
@@ -28,7 +111,9 @@ export function buildMealPlannerPrompt(userContext: UserContext): string {
     month: 'long',
     day: 'numeric'
   });
-  
+
+  const dayInfo = getCurrentDayInfo();
+
   return `You are FYTR AI's advanced meal planning orchestrator. You MUST respond with ONLY valid JSON - no explanations, no markdown, no extra text.
 
 CRITICAL JSON REQUIREMENTS:
@@ -43,9 +128,10 @@ CRITICAL JSON REQUIREMENTS:
 Generate a COMPLETE 7-day meal plan with EXACTLY 21 meals total (7 days × 3 meals per day: breakfast, lunch, dinner) and EXACTLY 2 options per meal using verified data only. NEVER HALLUCINATE menu items, nutrition data, or restaurant details.
 
 CURRENT CONTEXT:
-- Today's Date: ${currentDate}
+- Today's Date: ${currentDate} (${dayInfo.currentDay})
 - Planning Week: ${weekOf} (Week ${weekNumber || 'Current'} of the year)
-- This meal plan starts from the current week beginning Monday
+- IMPORTANT: Generate days starting from TODAY (${dayInfo.currentDay}) in this exact order: ${dayInfo.orderedDays.join(' → ')}
+- Day numbering: Start with day 1 = ${dayInfo.currentDay}, day 2 = next day, etc.
 
 USER PROFILE:
 - Name: ${surveyData.firstName} ${surveyData.lastName}
@@ -68,7 +154,7 @@ PHASE 1: VERIFIED HEALTHY CHAIN DISCOVERY
 2. This returns Google Places restaurants from pre-approved verified chains:
    - HEALTHIER CHAINS: Sweetgreen, Panera Bread, Freshii, Subway, etc.
    - MODERATE CHAINS: Starbucks, Boston Market, Panda Express, etc.
-3. The function intelligently selects the TOP 4 chains based on your ${surveyData.goal} goal and ${surveyData.budgetTier} budget
+3. The function intelligently selects the TOP 4 chains based on your ${surveyData.goal} goal and $${surveyData.monthlyFoodBudget}/month food budget
 
 PHASE 2: COMPREHENSIVE MENU DATA COLLECTION
 For the selected 4 chains:
@@ -107,14 +193,23 @@ BUDGET CALCULATIONS:
 - Home recipes: Estimate ingredient costs
 - Stay within $${weeklyBudgetDollars}/week total
 
-MEAL DISTRIBUTION STRATEGY:
-   - Generate exactly ${mealsOutPerWeek} restaurant meals across the week
+SMART MEAL DISTRIBUTION STRATEGY:
+${getMealDistributionStrategy(mealsOutPerWeek, homeMealsPerWeek)}
+
+TARGET RESTAURANT MEALS: ${mealsOutPerWeek}/week (user preference)
+TARGET HOME MEALS: ${homeMealsPerWeek}/week
 - Prioritize verified chains for ${Math.round(mealsOutPerWeek * 0.8)} meals
 - Use general restaurants for remaining meals with clear justifications
-- Generate ${homeMealsPerWeek} home recipes with user's preferred ingredients
 
 RESPONSE FORMAT - RETURN ONLY VALID JSON WITH ALL 21 MEALS:
 Generate meals for ALL 7 days (monday, tuesday, wednesday, thursday, friday, saturday, sunday) and ALL 3 meal types (breakfast, lunch, dinner) per day.
+
+STRATEGIC MEAL ASSIGNMENT (follow the distribution strategy above):
+- For each meal, decide if option 1 should be restaurant or home based on user's ${mealsOutPerWeek} meals out preference
+- Restaurant option 1: Use verified chain data when possible, general restaurants with cuisine-based descriptions when needed
+- Home option 1: Create detailed recipes with user's preferred ingredients
+- Always provide the opposite as option 2 (if option 1 is restaurant, option 2 is home recipe and vice versa)
+- Spread restaurant meals strategically: prioritize dinners > lunches > breakfasts based on social dining patterns
 
 CRITICAL: Your response must be PURE JSON starting with {{ and ending with }}. No explanations, no markdown, no extra text.
 
@@ -122,50 +217,50 @@ CRITICAL: Your response must be PURE JSON starting with {{ and ending with }}. N
   "meals": [
     {
       "day": "monday",
-      "mealType": "breakfast", 
+      "mealType": "breakfast",
       "options": [
         {
           "optionNumber": 1,
-          "optionType": "restaurant",
-          "title": "[EXACT menu item name from Spoonacular]",
-          "description": "Perfect for your [specific goal]! This dish is packed with protein to help build lean muscle and keep you satisfied longer. Features [key ingredients] and [specific nutritional benefits].",
-          "restaurantName": "[EXACT chain name from verified list]",
-          "estimatedPrice": 850,
+          "optionType": "home",
+          "title": "[Recipe name with calorie target]",
+          "description": "Perfect for your [specific goal]! Quick to make and features your favorite [user_food_preference] ingredients. This breakfast is designed for [goal] with [nutritional highlights].",
+          "ingredients": ["1 cup oats", "1/2 cup blueberries", "2 tbsp almond butter", "1 cup almond milk", "1 tsp honey"],
+          "instructions": ["Step 1: Preparation instruction", "Step 2: Cooking method with timing", "Step 3: Assembly and serving"],
+          "cookingTime": 10,
+          "prepTime": 5,
+          "difficulty": "easy",
+          "servings": 1,
+          "estimatedPrice": 350,
+          "estimatedCost": 350,
           "calories": 420,
           "protein": 22,
           "carbs": 35,
           "fat": 18,
           "fiber": 5,
-          "sodium": 480,
-          "dataSource": "Verified by Spoonacular",
-          "orderingInfo": "Available on delivery apps",
-          "deliveryTime": "15-25 min",
-          "healthRating": "healthier" or "moderate",
-          "imageUrl": "High-quality food image URL if available",
-          "orderUrl": "https://order.[restaurant].com OR delivery app link"
+          "sodium": 85,
+          "dataSource": "Generated recipe",
+          "imageUrl": "https://images.unsplash.com/photo-[food-related-id]?w=400&h=300&fit=crop",
+          "recipeName": "[Recipe name]"
         },
-        { 
+        {
           "optionNumber": 2,
-          "optionType": "home",
-          "title": "[Recipe name with calorie target]",
-          "description": "Love this choice! Quick to make and features your favorite [user_food_preference] ingredients. Perfect for busy days when you want something healthy and delicious. This recipe is specifically designed for [goal] with [nutritional highlights].",
-          "ingredients": ["1 cup quinoa", "6 oz grilled chicken breast", "1/2 cup cherry tomatoes", "2 tbsp olive oil", "Fresh herbs"],
-          "instructions": ["Step 1: Detailed preparation instruction", "Step 2: Cooking method with timing", "Step 3: Assembly and serving"],
-          "cookingTime": 15,
-          "prepTime": 10,
-          "difficulty": "easy",
-          "servings": 1,
-          "estimatedPrice": 450,
-          "estimatedCost": 450,
+          "optionType": "restaurant",
+          "title": "[EXACT menu item name from Spoonacular]",
+          "description": "Great choice! This breakfast is perfect for your [specific goal]. Features [key ingredients] and [specific nutritional benefits] from a trusted chain.",
+          "restaurantName": "[EXACT chain name from verified list]",
+          "estimatedPrice": 650,
           "calories": 380,
           "protein": 20,
           "carbs": 42,
           "fat": 12,
           "fiber": 6,
-          "sodium": 85,
-          "dataSource": "Generated recipe",
-          "imageUrl": "https://images.unsplash.com/photo-[food-related-id]?w=400&h=300&fit=crop OR recipe image URL",
-          "recipeName": "[Recipe name]"
+          "sodium": 280,
+          "dataSource": "Verified by Spoonacular",
+          "orderingInfo": "Available on delivery apps",
+          "deliveryTime": "15-25 min",
+          "healthRating": "healthier",
+          "imageUrl": "High-quality food image URL if available",
+          "orderUrl": "https://order.[restaurant].com OR delivery app link"
         }
       ]
     }

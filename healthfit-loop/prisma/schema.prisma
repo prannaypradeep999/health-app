@@ -7,199 +7,162 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
-enum HealthGoal {
-  WEIGHT_LOSS
-  MUSCLE_GAIN
-  ENDURANCE
-  GENERAL_WELLNESS
-}
-
 model User {
-  id              String           @id @default(cuid())
-  email           String           @unique
-  password        String
-  firstName       String
-  lastName        String
-  createdAt       DateTime         @default(now())
-  updatedAt       DateTime         @updatedAt
-
-  surveys         SurveyResponse[]
-  activeSurveyId  String?          @unique
-  activeSurvey    SurveyResponse?  @relation("ActiveSurvey", fields: [activeSurveyId], references: [id])
-
-  mealPlans       MealPlan[]
-  mealFeedback    MealFeedback[]
-  userPreferences UserFoodPreferences?
+  id                  String               @id @default(cuid())
+  email               String               @unique
+  password            String
+  firstName           String
+  lastName            String
+  createdAt           DateTime             @default(now())
+  updatedAt           DateTime             @updatedAt
+  activeSurveyId      String?              @unique
   mealConsumptionLogs MealConsumptionLog[]
-
-  // Workout relations
-  workoutPlans    WorkoutPlan[]
-  workoutLogs     WorkoutLog[]
-  workoutProgress WorkoutProgress[]
+  mealFeedback        MealFeedback[]
+  mealPlans           MealPlan[]
+  surveys             SurveyResponse[]
+  activeSurvey        SurveyResponse?      @relation("ActiveSurvey", fields: [activeSurveyId], references: [id])
+  userPreferences     UserFoodPreferences?
+  workoutLogs         WorkoutLog[]
+  workoutPlans        WorkoutPlan[]
+  workoutProgress     WorkoutProgress[]
 }
 
 model SurveyResponse {
-  id              String     @id @default(cuid())
-  
-  userId          String?
-  user            User?      @relation(fields: [userId], references: [id])
-  activeForUser   User?      @relation("ActiveSurvey")
-  
-  email           String
-  firstName       String
-  lastName        String
-  age             Int
-  sex             String
-  height          Int
-  weight          Int
-
-  // Full address fields
-  streetAddress   String    @default("")
-  city            String    @default("")
-  state           String    @default("")
-  zipCode         String
-  country         String    @default("United States")
-  goal            HealthGoal
-  activityLevel   String
-  budgetTier      String
-  dietPrefs       String[]
-  mealsOutPerWeek Int
-  distancePreference String @default("medium")
-  
-  // New cuisine and food preferences
-  preferredCuisines String[] @default([])
-  preferredFoods    String[] @default([])
-
-  // Enhanced workout preferences
+  id                     String     @id @default(cuid())
+  userId                 String?
+  email                  String
+  firstName              String
+  lastName               String
+  age                    Int
+  sex                    String
+  height                 Int
+  weight                 Int
+  streetAddress          String     @default("")
+  city                   String     @default("")
+  state                  String     @default("")
+  zipCode                String
+  country                String     @default("United States")
+  goal                   HealthGoal
+  activityLevel          String
+  sportsInterests        String     @default("")
+  fitnessTimeline        String     @default("")
+  monthlyFoodBudget      Int        @default(200)
+  monthlyFitnessBudget   Int        @default(50)
+  dietPrefs              String[]
+  mealsOutPerWeek        Int
+  distancePreference     String     @default("medium")
+  preferredCuisines      String[]   @default([])
+  preferredFoods         String[]   @default([])
   workoutPreferencesJson Json?
+  biomarkerJson          Json?
+  uploadedFiles          String[]   @default([])
+  preferredNutrients     String[]   @default([])
+  source                 String     @default("web")
+  isGuest                Boolean    @default(true)
+  sessionId              String?
+  createdAt              DateTime   @default(now())
+  updatedAt              DateTime   @updatedAt
+  user                   User?      @relation(fields: [userId], references: [id])
+  activeForUser          User?      @relation("ActiveSurvey")
 
-  biomarkerJson   Json?
-  source          String     @default("web")
-  
-  isGuest         Boolean    @default(true)
-  sessionId       String?
-  
-  createdAt       DateTime   @default(now())
-  updatedAt       DateTime   @updatedAt
-  
   @@index([userId])
   @@index([sessionId])
   @@index([email])
 }
 
 model MealPlan {
-  id                String   @id @default(cuid())
+  id                String    @id @default(cuid())
   userId            String?
-  user              User?    @relation(fields: [userId], references: [id])
   surveyId          String
-  
   weekOf            DateTime
-  weekNumber        Int      @default(1)
-  status            String   @default("active")
-  
-  generatedAt       DateTime @default(now())
-  generationStarted DateTime @default(now())
+  weekNumber        Int       @default(1)
+  status            String    @default("active")
+  generatedAt       DateTime  @default(now())
+  generationStarted DateTime  @default(now())
   generationEnded   DateTime?
-  regenerationCount Int      @default(0)
-  
+  regenerationCount Int       @default(0)
   userContext       Json
-  
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
   meals             Meal[]
-  
-  createdAt         DateTime @default(now())
-  updatedAt         DateTime @updatedAt
-  
+  user              User?     @relation(fields: [userId], references: [id])
+
   @@index([userId])
   @@index([surveyId])
   @@index([weekOf])
 }
 
 model Meal {
-  id         String   @id @default(cuid())
-  mealPlanId String
-  mealPlan   MealPlan @relation(fields: [mealPlanId], references: [id], onDelete: Cascade)
-  
-  day        String
-  mealType   String
-  
-  options    MealOption[]
-  
+  id               String       @id @default(cuid())
+  mealPlanId       String
+  day              String
+  mealType         String
   selectedOptionId String?
-  selectedOption   MealOption? @relation("SelectedOption", fields: [selectedOptionId], references: [id])
-  
-  createdAt  DateTime @default(now())
-  updatedAt  DateTime @updatedAt
-  
+  createdAt        DateTime     @default(now())
+  updatedAt        DateTime     @updatedAt
+  mealPlan         MealPlan     @relation(fields: [mealPlanId], references: [id], onDelete: Cascade)
+  selectedOption   MealOption?  @relation("SelectedOption", fields: [selectedOptionId], references: [id])
+  options          MealOption[]
+
   @@unique([mealPlanId, day, mealType])
 }
 
 model MealOption {
-  id       String @id @default(cuid())
-  mealId   String
-  meal     Meal   @relation(fields: [mealId], references: [id], onDelete: Cascade)
-  
-  optionNumber Int
-  optionType   String
-  
-  restaurantName String?
-  dishName       String?
-  description    String?
-  estimatedPrice Int?
-  orderingUrl    String?
-  deliveryTime   String?
-  
-  recipeName     String?
-  ingredients    String[]
-  cookingTime    Int?
-  instructions   String?
-  difficulty     String?
-  
-  calories       Int
-  protein        Float
-  carbs          Float
-  fat            Float
-  fiber          Float?
-  sodium         Int?
-  
-  wasEaten       Boolean @default(false)
-  userRating     Int?
-  
-  feedback       MealFeedback[]
-  selectedForMeal Meal[] @relation("SelectedOption")
-  
-  createdAt      DateTime @default(now())
-  updatedAt      DateTime @updatedAt
-  
+  id              String         @id @default(cuid())
+  mealId          String
+  optionNumber    Int
+  optionType      String
+  restaurantName  String?
+  dishName        String?
+  description     String?
+  estimatedPrice  Int?
+  orderingUrl     String?
+  deliveryTime    String?
+  recipeName      String?
+  ingredients     String[]
+  cookingTime     Int?
+  instructions    String?
+  difficulty      String?
+  calories        Int
+  protein         Float
+  carbs           Float
+  fat             Float
+  fiber           Float?
+  sodium          Int?
+  wasEaten        Boolean        @default(false)
+  userRating      Int?
+  createdAt       DateTime       @default(now())
+  updatedAt       DateTime       @updatedAt
+  selectedForMeal Meal[]         @relation("SelectedOption")
+  feedback        MealFeedback[]
+  meal            Meal           @relation(fields: [mealId], references: [id], onDelete: Cascade)
+
   @@unique([mealId, optionNumber])
 }
 
 model MealFeedback {
   id           String     @id @default(cuid())
   userId       String?
-  user         User?      @relation(fields: [userId], references: [id])
   mealOptionId String
-  mealOption   MealOption @relation(fields: [mealOptionId], references: [id], onDelete: Cascade)
-
   feedbackType String
   notes        String?
-
   createdAt    DateTime   @default(now())
+  mealOption   MealOption @relation(fields: [mealOptionId], references: [id], onDelete: Cascade)
+  user         User?      @relation(fields: [userId], references: [id])
 
   @@index([userId])
 }
 
 model MealConsumptionLog {
-  id              String    @id @default(cuid())
-  userId          String?
-  user            User?     @relation(fields: [userId], references: [id])
-  sessionId       String?
-
-  mealId          String
-  day             String
-  calories        Int
-  wasEaten        Boolean   @default(false)
-
-  loggedAt        DateTime  @default(now())
+  id        String   @id @default(cuid())
+  userId    String?
+  sessionId String?
+  mealId    String
+  day       String
+  calories  Int
+  wasEaten  Boolean  @default(false)
+  loggedAt  DateTime @default(now())
+  user      User?    @relation(fields: [userId], references: [id])
 
   @@index([userId])
   @@index([sessionId])
@@ -208,79 +171,120 @@ model MealConsumptionLog {
 }
 
 model UserFoodPreferences {
-  id     String @id @default(cuid())
-  userId String @unique
-  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
-  
+  id                    String   @id @default(cuid())
+  userId                String   @unique
   preferredCuisines     String[] @default([])
   avoidedFoods          String[] @default([])
   portionSizeMultiplier Float    @default(1.0)
-  
   averageMealCost       Int?
   budgetFlexibility     Float    @default(1.0)
-  
   cookingDays           String[] @default([])
   restaurantDays        String[] @default([])
-  
   createdAt             DateTime @default(now())
   updatedAt             DateTime @updatedAt
+  user                  User     @relation(fields: [userId], references: [id], onDelete: Cascade)
 }
 
 model RestaurantCache {
   id          String   @id @default(cuid())
   zipcode     String
   cuisineType String?
-  
   restaurants Json
-  
   createdAt   DateTime @default(now())
   expiresAt   DateTime
-  
+
   @@unique([zipcode, cuisineType])
 }
 
 model MenuCache {
-  id            String   @id @default(cuid())
+  id             String   @id @default(cuid())
   restaurantName String
   location       String
-
   menuData       Json
-
   createdAt      DateTime @default(now())
   expiresAt      DateTime
 
   @@unique([restaurantName, location])
 }
 
-// Enhanced Workout Models
+model FoodImage {
+  id               String   @id @default(cuid())
+  normalizedKey    String   @unique
+  originalDishName String
+  searchQuery      String
+  imageUrl         String
+  imageSource      String   @default("pexels")
+  cuisineType      String?
+  mealType         String?
+  dishCategory     String?
+  hitCount         Int      @default(1)
+  lastUsed         DateTime @default(now())
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  @@index([normalizedKey])
+  @@index([cuisineType, mealType])
+  @@index([lastUsed])
+}
+
+model WorkoutImage {
+  id                   String   @id @default(cuid())
+  normalizedKey        String   @unique
+  originalExerciseName String
+  searchQuery          String
+  imageUrl             String
+  imageSource          String   @default("pexels")
+  muscleGroup          String?
+  equipmentType        String?
+  exerciseCategory     String?
+  hitCount             Int      @default(1)
+  lastUsed             DateTime @default(now())
+  createdAt            DateTime @default(now())
+  updatedAt            DateTime @updatedAt
+
+  @@index([normalizedKey])
+  @@index([muscleGroup, equipmentType])
+  @@index([lastUsed])
+}
+
+model Recipe {
+  id               String   @id @default(cuid())
+  dishName         String   @unique
+  originalDishName String
+  mealType         String?
+  description      String?
+  recipeData       Json
+  hitCount         Int      @default(1)
+  lastUsed         DateTime @default(now())
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  @@index([dishName])
+  @@index([mealType])
+  @@index([lastUsed])
+}
+
 model WorkoutPlan {
-  id            String   @id @default(cuid())
-  userId        String?
-  user          User?    @relation(fields: [userId], references: [id])
-  surveyId      String
-
-  weekOf        DateTime
-  weekNumber    Int      @default(1)
-  status        String   @default("active")
-
-  generatedAt   DateTime @default(now())
-  planData      Json     // Complete workout plan JSON
-
-  // User workout preferences
-  preferredDuration    Int      @default(45) // minutes
-  availableDays        String[] @default([]) // ["monday", "tuesday", ...]
-  workoutTypes         String[] @default([]) // ["strength", "cardio", "flexibility"]
-  equipmentAccess      String[] @default([]) // ["bodyweight", "dumbbells", "gym"]
-  fitnessExperience    String   @default("intermediate") // beginner, intermediate, advanced
-  injuryConsiderations String[] @default([]) // ["knee", "back", "shoulder"]
-  timePreferences      String[] @default([]) // ["morning", "afternoon", "evening"]
-
-  // Tracking
-  workoutLogs   WorkoutLog[]
-  progressStats WorkoutProgress[]
-
-  createdAt     DateTime @default(now())
-  updatedAt     DateTime @updatedAt
+  id                   String            @id @default(cuid())
+  userId               String?
+  surveyId             String
+  weekOf               DateTime
+  weekNumber           Int               @default(1)
+  status               String            @default("active")
+  generatedAt          DateTime          @default(now())
+  planData             Json
+  preferredDuration    Int               @default(45)
+  availableDays        String[]          @default([])
+  workoutTypes         String[]          @default([])
+  equipmentAccess      String[]          @default([])
+  fitnessExperience    String            @default("intermediate")
+  injuryConsiderations String[]          @default([])
+  timePreferences      String[]          @default([])
+  createdAt            DateTime          @default(now())
+  updatedAt            DateTime          @updatedAt
+  workoutLogs          WorkoutLog[]
+  user                 User?             @relation(fields: [userId], references: [id])
+  progressStats        WorkoutProgress[]
 
   @@index([userId])
   @@index([surveyId])
@@ -288,29 +292,22 @@ model WorkoutPlan {
 }
 
 model WorkoutLog {
-  id            String      @id @default(cuid())
-  userId        String?
-  user          User?       @relation(fields: [userId], references: [id])
-  workoutPlanId String
-  workoutPlan   WorkoutPlan @relation(fields: [workoutPlanId], references: [id], onDelete: Cascade)
-
-  // Workout session details
-  day           String      // "monday", "tuesday", etc.
-  date          DateTime
-  duration      Int?        // actual duration in minutes
-  completed     Boolean     @default(false)
-
-  // Exercise tracking
-  exercises     WorkoutExerciseLog[]
-
-  // Session metrics
+  id                  String               @id @default(cuid())
+  userId              String?
+  workoutPlanId       String
+  day                 String
+  date                DateTime
+  duration            Int?
+  completed           Boolean              @default(false)
   totalCaloriesBurned Int?
   averageHeartRate    Int?
-  perceivedExertion   Int?     // 1-10 scale
+  perceivedExertion   Int?
   notes               String?
-
-  createdAt     DateTime @default(now())
-  updatedAt     DateTime @updatedAt
+  createdAt           DateTime             @default(now())
+  updatedAt           DateTime             @updatedAt
+  exercises           WorkoutExerciseLog[]
+  user                User?                @relation(fields: [userId], references: [id])
+  workoutPlan         WorkoutPlan          @relation(fields: [workoutPlanId], references: [id], onDelete: Cascade)
 
   @@index([userId])
   @@index([workoutPlanId])
@@ -318,60 +315,52 @@ model WorkoutLog {
 }
 
 model WorkoutExerciseLog {
-  id            String     @id @default(cuid())
-  workoutLogId  String
-  workoutLog    WorkoutLog @relation(fields: [workoutLogId], references: [id], onDelete: Cascade)
-
-  exerciseName  String
-  setsCompleted Int        @default(0)
-  repsCompleted Int[]      @default([])  // [12, 10, 8] for 3 sets
-  weightUsed    Float[]    @default([])  // [20, 25, 25] for 3 sets in lbs
-  duration      Int?       // for timed exercises
-  distance      Float?     // for cardio exercises
-
-  // Performance tracking
-  formRating    Int?       // 1-5 scale
-  difficultyRating Int?    // 1-5 scale
-  notes         String?
-
-  createdAt     DateTime   @default(now())
+  id               String     @id @default(cuid())
+  workoutLogId     String
+  exerciseName     String
+  setsCompleted    Int        @default(0)
+  repsCompleted    Int[]      @default([])
+  weightUsed       Float[]    @default([])
+  duration         Int?
+  distance         Float?
+  formRating       Int?
+  difficultyRating Int?
+  notes            String?
+  createdAt        DateTime   @default(now())
+  workoutLog       WorkoutLog @relation(fields: [workoutLogId], references: [id], onDelete: Cascade)
 
   @@index([workoutLogId])
 }
 
 model WorkoutProgress {
-  id            String      @id @default(cuid())
-  userId        String?
-  user          User?       @relation(fields: [userId], references: [id])
-  workoutPlanId String
-  workoutPlan   WorkoutPlan @relation(fields: [workoutPlanId], references: [id], onDelete: Cascade)
-
-  // Weekly progress metrics
-  weekOf        DateTime
-  weekNumber    Int
-
-  // Completion stats
-  workoutsCompleted    Int @default(0)
-  workoutsPlanned      Int @default(0)
-  totalDuration        Int @default(0) // minutes
-
-  // Performance improvements
-  strengthGains        Json? // exercise -> improvement tracking
-  enduranceGains       Json? // cardio improvements
-  flexibilityGains     Json? // mobility improvements
-
-  // Body metrics (optional)
-  weight               Float?
-  bodyFatPercentage    Float?
-  measurements         Json? // {"chest": 40, "waist": 32, ...}
-
-  // Goals progress
-  goalProgress         Json? // goal-specific metrics
-
-  createdAt            DateTime @default(now())
-  updatedAt            DateTime @updatedAt
+  id                String      @id @default(cuid())
+  userId            String?
+  workoutPlanId     String
+  weekOf            DateTime
+  weekNumber        Int
+  workoutsCompleted Int         @default(0)
+  workoutsPlanned   Int         @default(0)
+  totalDuration     Int         @default(0)
+  strengthGains     Json?
+  enduranceGains    Json?
+  flexibilityGains  Json?
+  weight            Float?
+  bodyFatPercentage Float?
+  measurements      Json?
+  goalProgress      Json?
+  createdAt         DateTime    @default(now())
+  updatedAt         DateTime    @updatedAt
+  user              User?       @relation(fields: [userId], references: [id])
+  workoutPlan       WorkoutPlan @relation(fields: [workoutPlanId], references: [id], onDelete: Cascade)
 
   @@index([userId])
   @@index([workoutPlanId])
   @@index([weekOf])
+}
+
+enum HealthGoal {
+  WEIGHT_LOSS
+  MUSCLE_GAIN
+  ENDURANCE
+  GENERAL_WELLNESS
 }

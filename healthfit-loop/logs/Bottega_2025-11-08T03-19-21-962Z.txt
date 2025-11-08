@@ -1,0 +1,96 @@
+RESTAURANT: Bottega
+ADDRESS: 1132 Valencia St, San Francisco 94110
+CUISINE: italian
+TIMESTAMP: 2025-11-08T03:19:21.971Z
+================================================================================
+
+SEARCH RESULTS SUMMARY:
+========================
+Strategy: menu_pdf_search
+Success: true
+URLs Found: 5
+Has Menu Content: true
+  - https://caff.org/wp-content/uploads/2010/07/CAFF_BA.pdf
+  - https://carmelpinecone.com/100409PC.pdf
+  - https://www.amazon-noir.com/BOOKS/3_%20Steal_This_Book_Abbie_Hoffman.pdf
+  - https://cms.rungisinternational.com/uploads/Carnet_d_Adresses_Generique_2023_BD_37d97b8d64.pdf
+  - https://d1e1jt2fj4r8r.cloudfront.net/ae012f85-efc0-4f3e-84dc-0976e27963ef/1hood9Ixk/bb695ede761777a353f198972f367a2bb3818211.1.pdf
+
+Strategy: doordash_ordering
+Success: true
+URLs Found: 5
+Has Menu Content: true
+  - https://www.doordash.com/en-US/store/la-bottega-long-beach-194412/
+  - https://doordash.com/en/store/bottega-pizzeria-montréal-714282
+  - https://www.doordash.com/store/exotic-bottega-ottawa-2500201/
+  - https://www.doordash.com/store/bottega-pizzeria-chicago-28126764
+  - https://www.doordash.com/store/handle-park-city-617161,827438/
+
+Strategy: ubereats_ordering
+Success: true
+URLs Found: 1
+Has Menu Content: true
+  - https://www.ubereats.com/store/bottega/nLSGyGdQR3WjYo3XC3W5Xg?srsltid=AfmBOorYypDRScRVi3FOYlFxhBNvb7RtGHQh15OQQ6hr-vj1BIwTIoWh
+
+Strategy: restaurant_website
+Success: false
+URLs Found: 0
+Has Menu Content: false
+
+Strategy: comprehensive_menu
+Success: true
+URLs Found: 5
+Has Menu Content: true
+  - https://evendo.com/locations/california/san-francisco/mission-district/restaurant/bottega
+  - https://belotti-bottega-1.wheree.com/
+  - https://www.sfstation.com/restaurants/business-directory/italian-restaurant/san-francisco/mission
+  - https://abmparking.com/locations/san-francisco-parking/parking-for-bottega/
+  - https://trustthecrowd.com/food/us/sf/bottega-170213
+
+Strategy: grubhub_ordering
+Success: true
+URLs Found: 2
+Has Menu Content: false
+  - https://www.grubhub.com/restaurant/bottega90-1132-valencia-st-san-francisco/2875369/reviews
+  - https://www.grubhub.com/restaurant/bottega90-1132-valencia-st-san-francisco/2875369
+
+
+ANALYZED CONTENT:
+=================
+
+SOURCE 1: https://doordash.com/en/store/bottega-pizzeria-montréal-714282
+TITLE: DoorDash Order Bottega Pizzeria - Montréal, QC Menu Delivery [Menu & Prices] ...
+STRATEGY: doordash_ordering
+CONTENT LENGTH: 241 characters
+MENU ITEMS FOUND: pizza
+PRICES FOUND: 
+============================================================
+FULL CONTENT:
+Bottega Pizzeria is not active · This restaurant you are trying to reach is not available on DoorDash right now.Ok · 4.5(60+ ratings)• · DashPass•Italian, Pizza · • · See More · Store Info · DashPass · 4.5(60+ ratings)• · $$•Italian, Pizza ·
+
+============================================================
+
+SOURCE 2: https://www.ubereats.com/store/bottega/nLSGyGdQR3WjYo3XC3W5Xg?srsltid=AfmBOorYypDRScRVi3FOYlFxhBNvb7RtGHQh15OQQ6hr-vj1BIwTIoWh
+TITLE: Order Bottega - Delivered in as Little as 25 Minutes in San ...
+STRATEGY: ubereats_ordering
+CONTENT LENGTH: 724 characters
+MENU ITEMS FOUND: pasta, ravioli
+PRICES FOUND: 
+============================================================
+FULL CONTENT:
+Fresh burrata cheese with a unique creamy heart on a bed of arugula, cherry tomatoes and garlic bread (Vegetarian) Here we are serving one homemade toasted bread slice with fresh chopped cherry tomatoes, garlic and basil leaves. Homemade fettucine pasta with our signature Alfredo sauce topped with parmigiana Reggiano. Homemade Ravioli stuffed with porcini mushrooms and cheese, served in a tasty and creamy black truffle sauce with a touch of white truffle oil. + ### Can I order Bottega delivery in San Francisco with Uber Eats? + ### How do I order Bottega delivery online in San Francisco? + ### How do I get free delivery on my Bottega order? + ### What’s the best thing to order for Bottega delivery in San Francisco?
+
+============================================================
+
+SOURCE 3: https://www.grubhub.com/restaurant/bottega90-1132-valencia-st-san-francisco/2875369
+TITLE: Bottega90 Delivery Menu - 1132 Valencia St San Francisco
+STRATEGY: grubhub_ordering
+CONTENT LENGTH: 914 characters
+MENU ITEMS FOUND: caesar
+PRICES FOUND: 
+============================================================
+FULL CONTENT:
+Our loved Roman lettuce, shaved salty parmigiano Reggiano, our homemade bread transformed in crispy croutons all topped with our homemade (and perfectionated) creamy Caesar dressing. Our loved Roman lettuce, shaved salty parmigiano Reggiano, our homemade bread transformed in crispy croutons all topped with our homemade (and perfectionated) creamy Caesar dressing. Our loved Roman lettuce, shaved salty parmigiano Reggiano, our homemade bread transformed in crispy croutons all topped with our homemade (and perfectionated) creamy Caesar dressing. Our loved Roman lettuce, shaved salty parmigiano Reggiano, our homemade bread transformed in crispy croutons all topped with our homemade (and perfectionated) creamy Caesar dressing. Our loved Roman lettuce, shaved salty parmigiano Reggiano, our homemade bread transformed in crispy croutons all topped with our homemade (and perfectionated) creamy Caesar dressing.
+
+============================================================
+

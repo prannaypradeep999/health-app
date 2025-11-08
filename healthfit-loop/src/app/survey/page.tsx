@@ -10,7 +10,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 import { Slider } from '@/components/ui/slider';
 import { Progress } from '@/components/ui/progress';
-import { ArrowRight, Target, Activity, DollarSign, Utensils, Apple, Dumbbell, FlaskConical, ChevronLeft, ChevronRight } from 'lucide-react';
+import { ArrowRight, Target, Activity, DollarSign, Utensils, Apple, Dumbbell, FlaskConical, ChevronLeft, ChevronRight, Upload } from 'lucide-react';
 import Logo from '@/components/logo';
 
 // Survey data interface from existing survey
@@ -31,12 +31,17 @@ interface SurveyData {
   country: string;
   goal: string;
   activityLevel: string;
-  budgetTier: string;
+  sportsInterests: string;
+  fitnessTimeline: string;
+  monthlyFoodBudget: number | '';
+  monthlyFitnessBudget: number | '';
   mealsOutPerWeek: number | '';
   distancePreference: string;
   dietPrefs: string[];
   preferredCuisines: string[];
   preferredFoods: string[];
+  uploadedFiles: string[];
+  preferredNutrients: string[];
   biomarkers: {
     cholesterol?: number;
     vitaminD?: number;
@@ -46,7 +51,7 @@ interface SurveyData {
     preferredDuration: number;
     availableDays: string[];
     workoutTypes: string[];
-    equipmentAccess: string[];
+    gymAccess: string;
     fitnessExperience: string;
     injuryConsiderations: string[];
     timePreferences: string[];
@@ -144,6 +149,16 @@ interface OnboardingStepsProps {
 function OnboardingSteps({ onComplete, onBack }: OnboardingStepsProps) {
   const [currentStep, setCurrentStep] = useState(1);
   const [isGeneratingMeals, setIsGeneratingMeals] = useState(false);
+
+  // Define all food options at the top
+  const allFoodOptions = [
+    'Fruits', 'Rice', 'Eggs', 'Vegetables', 'Nuts', 'Chicken', 'Fish', 'Beef',
+    'Pork', 'Tofu', 'Beans', 'Pasta', 'Quinoa', 'Yogurt', 'Cheese', 'Salmon',
+    'Tuna', 'Shrimp', 'Turkey', 'Lamb', 'Lentils', 'Chickpeas', 'Oats',
+    'Potatoes', 'Sweet Potatoes', 'Avocado', 'Spinach', 'Broccoli', 'Kale',
+    'Berries', 'Bananas', 'Apples', 'Oranges', 'Brown Rice', 'Whole Wheat Bread', 'Almonds'
+  ];
+
   const [formData, setFormData] = useState<SurveyData>({
     email: '',
     firstName: '',
@@ -161,18 +176,23 @@ function OnboardingSteps({ onComplete, onBack }: OnboardingStepsProps) {
     country: 'United States',
     goal: '',
     activityLevel: '',
-    budgetTier: '',
+    sportsInterests: '',
+    fitnessTimeline: '',
+    monthlyFoodBudget: 200,
+    monthlyFitnessBudget: 50,
     mealsOutPerWeek: 7,
     distancePreference: 'medium',
     dietPrefs: [],
     preferredCuisines: [],
-    preferredFoods: [],
+    preferredFoods: [], // Start with no foods selected
+    uploadedFiles: [],
+    preferredNutrients: [],
     biomarkers: {},
     workoutPreferences: {
       preferredDuration: 45,
       availableDays: [],
       workoutTypes: [],
-      equipmentAccess: ['bodyweight'],
+      gymAccess: 'no_gym',
       fitnessExperience: 'intermediate',
       injuryConsiderations: [],
       timePreferences: []
@@ -219,8 +239,12 @@ function OnboardingSteps({ onComplete, onBack }: OnboardingStepsProps) {
   const cuisineOptions = [
     'Mediterranean', 'Italian', 'Mexican', 'Chinese',
     'Japanese', 'Thai', 'Indian', 'Middle Eastern',
-    'American', 'Korean', 'French', 'Greek'
+    'American', 'Healthy Bowls', 'Korean', 'Vietnamese',
+    'Greek', 'French', 'Spanish', 'Caribbean',
+    'Brazilian', 'Turkish', 'Ethiopian', 'Moroccan',
+    'German', 'British', 'Fusion', 'Vegan'
   ];
+
 
   const foodOptionsByCategory = {
     'Proteins': ['Chicken', 'Salmon', 'Tuna', 'Beef', 'Pork', 'Turkey', 'Eggs', 'Tofu', 'Tempeh', 'Beans', 'Lentils', 'Greek Yogurt'],
@@ -230,9 +254,6 @@ function OnboardingSteps({ onComplete, onBack }: OnboardingStepsProps) {
     'Healthy Fats': ['Nuts', 'Seeds', 'Olive Oil', 'Coconut Oil', 'Nut Butters', 'Cheese', 'Dark Chocolate']
   };
 
-  const equipmentOptions = [
-    'Dumbbells', 'Resistance Bands', 'Yoga Mat', 'Pull-up Bar', 'Kettlebell', 'None'
-  ];
 
   const updateFormData = (field: string, value: any) => {
     setFormData(prev => ({ ...prev, [field]: value }));
@@ -262,27 +283,20 @@ function OnboardingSteps({ onComplete, onBack }: OnboardingStepsProps) {
           country: formData.country || 'United States',
           goal: formData.goal || 'GENERAL_WELLNESS',
           activityLevel: formData.activityLevel || 'MODERATELY_ACTIVE',
-          budgetTier: formData.budgetTier || 'under_200',
+          sportsInterests: formData.sportsInterests || '',
+          fitnessTimeline: formData.fitnessTimeline || '',
+          monthlyFoodBudget: Number(formData.monthlyFoodBudget) || 200,
+          monthlyFitnessBudget: Number(formData.monthlyFitnessBudget) || 50,
           dietPrefs: [],
           mealsOutPerWeek: formData.mealsOutPerWeek || 7,
           distancePreference: formData.distancePreference || 'medium',
           preferredCuisines: formData.preferredCuisines || [],
-          preferredFoods: formData.preferredFoods || []
+          preferredFoods: formData.preferredFoods,
+          uploadedFiles: formData.uploadedFiles,
+          preferredNutrients: formData.preferredNutrients
         };
 
-        // Start meal generation with Google Places API in background
-        fetch('/api/ai/meals/generate', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            backgroundGeneration: true,
-            partialSurveyData: progressiveData
-          })
-        }).catch(error => {
-          console.error('Meal generation failed:', error);
-        });
-
-        // Show loading animation for 5 seconds, then continue
+        // Show loading animation for 5 seconds to simulate meal generation
         await new Promise(resolve => setTimeout(resolve, 5000));
 
       } catch (error) {
@@ -318,8 +332,8 @@ function OnboardingSteps({ onComplete, onBack }: OnboardingStepsProps) {
       const updated = currentArray.filter(i => i !== item);
       updateFormData(field, updated);
     } else {
-      // Add item, but limit cuisines to 5 max
-      if (field === 'preferredCuisines' && currentArray.length >= 5) {
+      // Add item, but limit cuisines to 7 max
+      if (field === 'preferredCuisines' && currentArray.length >= 7) {
         return; // Don't add if already at max
       }
       const updated = [...currentArray, item];
@@ -524,6 +538,24 @@ function OnboardingSteps({ onComplete, onBack }: OnboardingStepsProps) {
                 </div>
               </RadioGroup>
             </div>
+            <div>
+              <Label className="text-neutral-700 mb-2 block">Do you regularly play or want to incorporate sports in your fitness plan?</Label>
+              <Input
+                value={formData.sportsInterests}
+                onChange={(e) => updateFormData("sportsInterests", e.target.value)}
+                placeholder="Ex. basketball, running, tennis, etc."
+                className="border-gray-300 focus:border-red-500 bg-white text-gray-900 placeholder:text-gray-500"
+              />
+            </div>
+            <div>
+              <Label className="text-neutral-700 mb-2 block">Additional fitness goals or timelines</Label>
+              <Input
+                value={formData.fitnessTimeline}
+                onChange={(e) => updateFormData("fitnessTimeline", e.target.value)}
+                placeholder="Ex. Lose 20 lbs in 6 months, run a 5K, etc."
+                className="border-gray-300 focus:border-red-500 bg-white text-gray-900 placeholder:text-gray-500"
+              />
+            </div>
           </div>
         );
 
@@ -536,22 +568,33 @@ function OnboardingSteps({ onComplete, onBack }: OnboardingStepsProps) {
               <p className="text-gray-600">Help us recommend options within your range</p>
             </div>
             <div>
-              <Label className="text-neutral-700 mb-4 block">Monthly food budget</Label>
-              <div className="grid grid-cols-2 gap-3">
-                {budgetOptions.map((option) => (
-                  <Button
-                    key={option.value}
-                    variant={formData.budgetTier === option.value ? "default" : "outline"}
-                    className={`p-4 transition-all duration-200 ${
-                      formData.budgetTier === option.value
-                        ? "bg-red-600 text-white"
-                        : "border-gray-300 hover:border-gray-400 bg-white text-gray-900 hover:bg-gray-50"
-                    }`}
-                    onClick={() => updateFormData("budgetTier", option.value)}
-                  >
-                    {option.label}
-                  </Button>
-                ))}
+              <Label className="text-neutral-700 mb-4 block">Monthly food budget: ${Array.isArray(formData.monthlyFoodBudget) ? formData.monthlyFoodBudget[0] : formData.monthlyFoodBudget}</Label>
+              <Slider
+                value={Array.isArray(formData.monthlyFoodBudget) ? formData.monthlyFoodBudget : [formData.monthlyFoodBudget as number]}
+                onValueChange={(value) => updateFormData("monthlyFoodBudget", value[0])}
+                max={1000}
+                min={0}
+                step={25}
+                className="mb-6"
+              />
+              <div className="flex justify-between text-sm text-neutral-500">
+                <span>$0</span>
+                <span>$1000</span>
+              </div>
+            </div>
+            <div>
+              <Label className="text-neutral-700 mb-4 block">Monthly fitness budget: ${Array.isArray(formData.monthlyFitnessBudget) ? formData.monthlyFitnessBudget[0] : formData.monthlyFitnessBudget}</Label>
+              <Slider
+                value={Array.isArray(formData.monthlyFitnessBudget) ? formData.monthlyFitnessBudget : [formData.monthlyFitnessBudget as number]}
+                onValueChange={(value) => updateFormData("monthlyFitnessBudget", value[0])}
+                max={500}
+                min={0}
+                step={10}
+                className="mb-6"
+              />
+              <div className="flex justify-between text-sm text-neutral-500">
+                <span>$0</span>
+                <span>$500</span>
               </div>
             </div>
             <div>
@@ -569,7 +612,58 @@ function OnboardingSteps({ onComplete, onBack }: OnboardingStepsProps) {
                 <span>21</span>
               </div>
             </div>
+          </div>
+        );
+
+      case 4:
+        return (
+          <div className="space-y-6">
+            <div className="text-center mb-8">
+              <Utensils className="w-12 h-12 text-red-600 mx-auto mb-4" />
+              <h2 className="text-2xl font-medium text-gray-900 mb-2">Cuisine Preferences</h2>
+              <p className="text-gray-600">Select up to 7 cuisines you enjoy</p>
+            </div>
+
+            {/* Selected Cuisines Section */}
+            {formData.preferredCuisines.length > 0 && (
+              <div className="mb-6">
+                <Label className="text-neutral-700 mb-3 block">Selected ({formData.preferredCuisines.length}):</Label>
+                <div className="flex flex-wrap gap-2">
+                  {formData.preferredCuisines.map((cuisine) => (
+                    <button
+                      key={`selected-${cuisine}`}
+                      onClick={() => toggleArrayItem("preferredCuisines", cuisine)}
+                      className="inline-flex items-center px-3 py-1.5 rounded-full text-sm font-medium bg-red-600 text-white hover:bg-red-700 transition-all duration-200 transform hover:scale-105"
+                    >
+                      {cuisine}
+                      <svg className="w-4 h-4 ml-1.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                      </svg>
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* Available Cuisines Section */}
             <div>
+              <Label className="text-neutral-700 mb-3 block">Available cuisines:</Label>
+              <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-2">
+                {cuisineOptions
+                  .filter(cuisine => !formData.preferredCuisines.includes(cuisine))
+                  .map((cuisine) => (
+                    <button
+                      key={`available-${cuisine}`}
+                      onClick={() => toggleArrayItem("preferredCuisines", cuisine)}
+                      className="px-3 py-2 text-sm rounded-lg border border-gray-300 bg-white text-gray-900 hover:border-gray-400 hover:bg-gray-50 transition-all duration-200 transform hover:scale-105 focus:outline-none focus:ring-2 focus:ring-red-500 focus:ring-offset-2 text-center min-h-[44px] flex items-center justify-center"
+                    >
+                      {cuisine}
+                    </button>
+                  ))}
+              </div>
+            </div>
+
+            <div className="mt-8">
               <Label className="text-neutral-700 mb-4 block">How far are you willing to travel for restaurants?</Label>
               <div className="grid grid-cols-1 gap-3">
                 {[
@@ -598,63 +692,52 @@ function OnboardingSteps({ onComplete, onBack }: OnboardingStepsProps) {
           </div>
         );
 
-      case 4:
-        return (
-          <div className="space-y-6">
-            <div className="text-center mb-8">
-              <Utensils className="w-12 h-12 text-red-600 mx-auto mb-4" />
-              <h2 className="text-2xl font-medium text-gray-900 mb-2">Cuisine Preferences</h2>
-              <p className="text-gray-600">Select up to 5 cuisines you enjoy ({formData.preferredCuisines.length}/5)</p>
-            </div>
-            <div className="grid grid-cols-2 gap-3">
-              {cuisineOptions.map((cuisine) => (
-                <Button
-                  key={cuisine}
-                  variant={formData.preferredCuisines.includes(cuisine) ? "default" : "outline"}
-                  className={`h-12 transition-all duration-200 ${
-                    formData.preferredCuisines.includes(cuisine)
-                      ? "bg-red-600 text-white"
-                      : "border-gray-300 hover:border-gray-400 bg-white text-gray-900 hover:bg-gray-50"
-                  }`}
-                  onClick={() => toggleArrayItem("preferredCuisines", cuisine)}
-                >
-                  {cuisine}
-                </Button>
-              ))}
-            </div>
-          </div>
-        );
-
       case 5:
         return (
           <div className="space-y-6">
             <div className="text-center mb-8">
               <Apple className="w-12 h-12 text-red-600 mx-auto mb-4" />
               <h2 className="text-2xl font-medium text-gray-900 mb-2">Food Preferences</h2>
-              <p className="text-gray-600">Select foods you enjoy from each category</p>
+              <p className="text-gray-600">Select foods you enjoy - more options will appear as you choose</p>
             </div>
-            <div className="space-y-6">
-              {Object.entries(foodOptionsByCategory).map(([category, foods]) => (
-                <div key={category} className="space-y-3">
-                  <h3 className="font-medium text-gray-800 text-sm">{category}</h3>
-                  <div className="grid grid-cols-3 gap-2">
-                    {foods.map((food) => (
-                      <Button
-                        key={food}
-                        variant={formData.preferredFoods.includes(food) ? "default" : "outline"}
-                        className={`h-10 text-xs transition-all duration-200 ${
-                          formData.preferredFoods.includes(food)
-                            ? "bg-red-600 text-white"
-                            : "border-gray-300 hover:border-gray-400 bg-white text-gray-900 hover:bg-gray-50"
-                        }`}
-                        onClick={() => toggleArrayItem("preferredFoods", food)}
-                      >
-                        {food}
-                      </Button>
-                    ))}
-                  </div>
+
+            {/* Selected Foods Section */}
+            {formData.preferredFoods.length > 0 && (
+              <div className="mb-6">
+                <Label className="text-neutral-700 mb-3 block">Selected ({formData.preferredFoods.length}):</Label>
+                <div className="flex flex-wrap gap-2">
+                  {formData.preferredFoods.map((food) => (
+                    <button
+                      key={`selected-food-${food}`}
+                      onClick={() => toggleArrayItem("preferredFoods", food)}
+                      className="inline-flex items-center px-3 py-1.5 rounded-full text-sm font-medium bg-red-600 text-white hover:bg-red-700 transition-all duration-200 transform hover:scale-105"
+                    >
+                      {food}
+                      <svg className="w-4 h-4 ml-1.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                      </svg>
+                    </button>
+                  ))}
                 </div>
-              ))}
+              </div>
+            )}
+
+            {/* Available Foods Section */}
+            <div>
+              <Label className="text-neutral-700 mb-3 block">Available foods:</Label>
+              <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-2">
+                {allFoodOptions
+                  .filter(food => !formData.preferredFoods.includes(food))
+                  .map((food) => (
+                    <button
+                      key={`available-food-${food}`}
+                      onClick={() => toggleArrayItem("preferredFoods", food)}
+                      className="px-3 py-2 text-sm rounded-lg border border-gray-300 bg-white text-gray-900 hover:border-gray-400 hover:bg-gray-50 transition-all duration-200 transform hover:scale-105 focus:outline-none focus:ring-2 focus:ring-red-500 focus:ring-offset-2 text-center min-h-[44px] flex items-center justify-center"
+                    >
+                      {food}
+                    </button>
+                  ))}
+              </div>
             </div>
           </div>
         );
@@ -694,12 +777,34 @@ function OnboardingSteps({ onComplete, onBack }: OnboardingStepsProps) {
             </div>
             <div>
               <Label className="text-neutral-700 mb-4 block">Available days</Label>
-              <div className="grid grid-cols-4 gap-2">
+
+              {/* Flexible Option */}
+              <div className="mb-4">
+                <Button
+                  variant={formData.workoutPreferences.availableDays.length === 7 ? "default" : "outline"}
+                  className={`w-full h-12 transition-all duration-200 ${
+                    formData.workoutPreferences.availableDays.length === 7
+                      ? "bg-red-600 text-white"
+                      : "border-gray-300 hover:border-gray-400 bg-white text-gray-900 hover:bg-gray-50"
+                  }`}
+                  onClick={() => {
+                    const allDays = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
+                    const isFlexible = formData.workoutPreferences.availableDays.length === 7;
+                    const updated = isFlexible ? [] : allDays;
+                    updateFormData("workoutPreferences", { ...formData.workoutPreferences, availableDays: updated });
+                  }}
+                >
+                  I'm flexible (any day works)
+                </Button>
+              </div>
+
+              {/* Individual Days */}
+              <div className="grid grid-cols-4 sm:grid-cols-7 gap-2">
                 {["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"].map((day) => (
                   <Button
                     key={day}
                     variant={formData.workoutPreferences.availableDays.includes(day) ? "default" : "outline"}
-                    className={`h-12 transition-all duration-200 ${
+                    className={`h-12 transition-all duration-200 text-xs sm:text-sm ${
                       formData.workoutPreferences.availableDays.includes(day)
                         ? "bg-red-600 text-white"
                         : "border-gray-300 hover:border-gray-400 bg-white text-gray-900 hover:bg-gray-50"
@@ -718,27 +823,35 @@ function OnboardingSteps({ onComplete, onBack }: OnboardingStepsProps) {
               </div>
             </div>
             <div>
-              <Label className="text-neutral-700 mb-4 block">Available equipment</Label>
-              <div className="grid grid-cols-2 gap-3">
-                {equipmentOptions.map((equipment) => (
-                  <Button
-                    key={equipment}
-                    variant={formData.workoutPreferences.equipmentAccess.includes(equipment) ? "default" : "outline"}
-                    className={`h-12 transition-all duration-200 ${
-                      formData.workoutPreferences.equipmentAccess.includes(equipment)
-                        ? "bg-red-600 text-white"
+              <Label className="text-neutral-700 mb-4 block">Do you have access to a full functional gym?</Label>
+              <div className="space-y-3">
+                {[
+                  { value: 'full_gym', label: 'Yes', description: 'I have access to a full gym with all equipment' },
+                  { value: 'no_gym', label: 'No', description: 'I want to do more cardio and workouts without a gym' },
+                  { value: 'free_weights', label: 'I have free weights', description: 'I have dumbbells, barbells, or similar equipment' },
+                  { value: 'calisthenics', label: 'I prefer to do Calisthenics', description: 'Bodyweight exercises only' },
+                  { value: 'recommend_gym', label: 'Recommend a gym near me', description: 'Help me find a gym in my area' }
+                ].map((option) => (
+                  <button
+                    key={option.value}
+                    className={`w-full p-4 text-left transition-all duration-200 rounded-lg border focus:outline-none focus:ring-2 focus:ring-red-500 focus:ring-offset-2 ${
+                      formData.workoutPreferences.gymAccess === option.value
+                        ? "bg-red-600 text-white border-red-600"
                         : "border-gray-300 hover:border-gray-400 bg-white text-gray-900 hover:bg-gray-50"
                     }`}
                     onClick={() => {
-                      const currentEquipment = formData.workoutPreferences.equipmentAccess;
-                      const updated = currentEquipment.includes(equipment)
-                        ? currentEquipment.filter(e => e !== equipment)
-                        : [...currentEquipment, equipment];
-                      updateFormData("workoutPreferences", { ...formData.workoutPreferences, equipmentAccess: updated });
+                      updateFormData("workoutPreferences", { ...formData.workoutPreferences, gymAccess: option.value });
                     }}
                   >
-                    {equipment}
-                  </Button>
+                    <div className="space-y-1">
+                      <div className="font-medium text-sm sm:text-base">{option.label}</div>
+                      <div className={`text-xs sm:text-sm leading-relaxed ${
+                        formData.workoutPreferences.gymAccess === option.value ? "text-white/90" : "text-gray-600"
+                      }`}>
+                        {option.description}
+                      </div>
+                    </div>
+                  </button>
                 ))}
               </div>
             </div>
@@ -747,42 +860,83 @@ function OnboardingSteps({ onComplete, onBack }: OnboardingStepsProps) {
 
       case 7:
         return (
-          <div className="space-y-6">
+          <div className="space-y-8">
             <div className="text-center mb-8">
-              <FlaskConical className="w-12 h-12 text-red-600 mx-auto mb-4" />
+              <FlaskConical className="w-12 h-12 text-purple-600 mx-auto mb-4" />
               <h2 className="text-2xl font-medium text-gray-900 mb-2">Health Metrics</h2>
               <p className="text-gray-600">Optional data to enhance your plan (skip if unavailable)</p>
             </div>
+
+            {/* Section 1 - File Upload */}
             <div className="space-y-4">
               <div>
-                <Label className="text-gray-700 mb-2 block">Cholesterol (mg/dL)</Label>
-                <Input
-                  type="number"
-                  value={formData.biomarkers.cholesterol || ''}
-                  onChange={(e) => updateFormData("biomarkers", { ...formData.biomarkers, cholesterol: e.target.value ? Number(e.target.value) : undefined })}
-                  placeholder="e.g. 180"
-                  className="border-gray-300 focus:border-red-500 bg-white text-gray-900 placeholder:text-gray-500"
-                />
+                <Label className="text-neutral-700 mb-2 block">Upload reports (optional)</Label>
+                <p className="text-sm text-gray-500 mb-3">Upload bloodwork, biomarkers, or any health reports</p>
+
+                <label className="block cursor-pointer">
+                  <div className="border-2 border-dashed border-gray-300 rounded-lg p-6 text-center hover:border-gray-400 transition-colors">
+                    <Upload className="w-8 h-8 text-gray-400 mx-auto mb-3" />
+                    <p className="text-sm font-medium text-gray-900">Click to upload or drag and drop</p>
+                    <p className="text-xs text-gray-500 mt-1">PDF, JPG, JPEG or PNG</p>
+                  </div>
+                  <input
+                    type="file"
+                    multiple
+                    accept=".pdf,.jpg,.jpeg,.png"
+                    className="hidden"
+                    onChange={(e) => {
+                      if (e.target.files) {
+                        const fileNames = Array.from(e.target.files).map(file => file.name);
+                        updateFormData("uploadedFiles", [...formData.uploadedFiles, ...fileNames]);
+                      }
+                    }}
+                  />
+                </label>
+
+                {/* File Preview */}
+                {formData.uploadedFiles.length > 0 && (
+                  <div className="mt-3">
+                    <p className="text-sm text-gray-700 mb-2">Uploaded files:</p>
+                    <div className="space-y-1">
+                      {formData.uploadedFiles.map((fileName, index) => (
+                        <div key={index} className="flex items-center justify-between bg-gray-50 rounded-md px-3 py-2 text-sm">
+                          <span className="text-gray-700">{fileName}</span>
+                          <button
+                            onClick={() => {
+                              const updated = formData.uploadedFiles.filter((_, i) => i !== index);
+                              updateFormData("uploadedFiles", updated);
+                            }}
+                            className="text-red-500 hover:text-red-700 ml-2"
+                          >
+                            ×
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
               </div>
+            </div>
+
+            {/* Section 2 - Nutrient Selection */}
+            <div className="space-y-4">
               <div>
-                <Label className="text-gray-700 mb-2 block">Vitamin D (ng/mL)</Label>
-                <Input
-                  type="number"
-                  value={formData.biomarkers.vitaminD || ''}
-                  onChange={(e) => updateFormData("biomarkers", { ...formData.biomarkers, vitaminD: e.target.value ? Number(e.target.value) : undefined })}
-                  placeholder="e.g. 30"
-                  className="border-gray-300 focus:border-red-500 bg-white text-gray-900 placeholder:text-gray-500"
-                />
-              </div>
-              <div>
-                <Label className="text-gray-700 mb-2 block">Iron levels (μg/dL)</Label>
-                <Input
-                  type="number"
-                  value={formData.biomarkers.iron || ''}
-                  onChange={(e) => updateFormData("biomarkers", { ...formData.biomarkers, iron: e.target.value ? Number(e.target.value) : undefined })}
-                  placeholder="e.g. 100"
-                  className="border-gray-300 focus:border-red-500 bg-white text-gray-900 placeholder:text-gray-500"
-                />
+                <Label className="text-neutral-700 mb-3 block">Do you prefer foods rich in any of these nutrients?</Label>
+                <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
+                  {['Biotin', 'Iron', 'Vitamin B12', 'Vitamin D', 'Vitamin C', 'Calcium'].map((nutrient) => (
+                    <button
+                      key={nutrient}
+                      onClick={() => toggleArrayItem("preferredNutrients", nutrient)}
+                      className={`px-4 py-3 text-sm rounded-lg border transition-all duration-200 transform hover:scale-105 focus:outline-none focus:ring-2 focus:ring-red-500 focus:ring-offset-2 min-h-[48px] flex items-center justify-center text-center ${
+                        formData.preferredNutrients.includes(nutrient)
+                          ? "bg-red-600 text-white border-red-600"
+                          : "border-gray-300 bg-white text-gray-900 hover:border-gray-400 hover:bg-gray-50"
+                      }`}
+                    >
+                      {nutrient}
+                    </button>
+                  ))}
+                </div>
               </div>
             </div>
           </div>
@@ -894,10 +1048,20 @@ function SurveyContent() {
           sex: surveyData.sex,
           height: Number(surveyData.height),
           weight: Number(surveyData.weight),
+
+          // Full address fields
+          streetAddress: surveyData.streetAddress,
+          city: surveyData.city,
+          state: surveyData.state,
           zipCode: surveyData.zipCode,
+          country: surveyData.country,
+
           goal: surveyData.goal,
           activityLevel: surveyData.activityLevel,
-          budgetTier: surveyData.budgetTier,
+          sportsInterests: surveyData.sportsInterests,
+          fitnessTimeline: surveyData.fitnessTimeline,
+          monthlyFoodBudget: Number(surveyData.monthlyFoodBudget),
+          monthlyFitnessBudget: Number(surveyData.monthlyFitnessBudget),
           mealsOutPerWeek: Number(surveyData.mealsOutPerWeek),
           distancePreference: surveyData.distancePreference,
           dietPrefs: surveyData.dietPrefs,

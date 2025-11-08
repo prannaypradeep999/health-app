@@ -1,0 +1,144 @@
+RESTAURANT: Kitava
+ADDRESS: 1700 Fillmore St, San Francisco 94115
+CUISINE: healthy
+TIMESTAMP: 2025-11-08T03:20:43.977Z
+================================================================================
+
+SEARCH RESULTS SUMMARY:
+========================
+Strategy: menu_pdf_search
+Success: true
+URLs Found: 5
+Has Menu Content: true
+  - https://www.kitava.com/kitava-mission-district-menus/
+  - https://www.kitava.com/about-us/
+  - https://www.kitava.com/
+  - https://www.kitava.com/location/kitava-oakland-temescal/
+  - https://zaubee.com/biz/kitava-cbde0xz7
+
+Strategy: doordash_ordering
+Success: true
+URLs Found: 5
+Has Menu Content: true
+  - https://www.doordash.com/en-US/store/kitava-daly-city-1367955
+  - https://www.doordash.com/store/kitava-denver-24783618/
+  - https://www.doordash.com/en/store/kitava,-llc-san-francisco-1478984/
+  - https://www.doordash.com/store/kitava-los-angeles-24360481/
+  - https://www.doordash.com/es-US/store/kitava-san-francisco-32001/
+
+Strategy: ubereats_ordering
+Success: true
+URLs Found: 5
+Has Menu Content: false
+  - https://www.ubereats.com/store/kitava-oakland/25Hf4K7-V7yZXcxtNCEgpQ
+  - https://www.ubereats.com/store/kitava-to-go/KsiXYO2CRCCyJnqYiFD0PA
+  - https://www.ubereats.com/store/kitava-to-go/C340TK7nSzS-aV_YvGLozw
+  - https://www.ubereats.com/store/kitava/LBcIOnLrWG-B_3FP8s3mWw
+  - https://www.ubereats.com/store/kitava/xbNOy-YeRdq0h1yY1Z6Wwg?diningMode=DELIVERY
+
+Strategy: restaurant_website
+Success: true
+URLs Found: 5
+Has Menu Content: true
+  - https://play.google.com/store/apps/details?id=com.openai.chatgpt&hl=en-US
+  - https://en.wikipedia.org/wiki/ChatGPT
+  - https://openai.com/index/gpt-4/
+  - https://www.techtarget.com/whatis/definition/ChatGPT
+  - https://builtin.com/artificial-intelligence/what-is-chatgpt
+
+Strategy: comprehensive_menu
+Success: true
+URLs Found: 5
+Has Menu Content: true
+  - https://www.indeed.com/q-lead-cook-l-contra-costa-county,-ca-jobs.html
+  - https://glutendude.app/safe-gluten-free-restaurants/california/?_page=6&num=100&sort=post_title
+  - https://m.yelp.com/search?find_desc=Things+to+Do&find_near=kitava-san-francisco
+  - https://www.indeed.com/q-assistant-general-manager-l-pleasanton,-ca-jobs.html
+  - https://www.yelp.com/search?find_desc=Parking&find_near=kitava-san-francisco
+
+Strategy: grubhub_ordering
+Success: true
+URLs Found: 5
+Has Menu Content: true
+  - https://get.grubhub.com/resources/restaurant-leadership-council/
+  - https://work.grubhub.com/restaurant-menu-105325/kitava/i2238022
+  - https://www.grubhub.com/restaurant/kitava-mission-st-2011-mission-st-san-francisco/354238/reviews
+  - https://work.grubhub.com/restaurant-menu-105325/kitava/i2200490
+  - https://www.grubhub.com/restaurant/kitava-375-40th-street-oakland/5616592
+
+
+ANALYZED CONTENT:
+=================
+
+SOURCE 1: https://www.kitava.com/kitava-mission-district-menus/
+TITLE: Kitava Menu Mission District | Kitava Healthy Real Food in SF, CA
+STRATEGY: menu_pdf_search
+CONTENT LENGTH: 880 characters
+MENU ITEMS FOUND: chicken
+PRICES FOUND: 
+============================================================
+FULL CONTENT:
+Free-range Mary’s chicken thigh, charred broccoli, jasmine rice, avocado goddess Jasmine rice, crispy chicken with cassava flour breading, charred broccoli, sesame togarashi, scallions, ginger ponzu sauce Wild rice blend from Lundberg Farms, farmer’s greens, hummus, sweet potatoes, avocado, pickled onions, almond slivers, green goddess dressing. Jasmine rice, paprika chicken, cumin beans, chimichurri mushrooms & sautéd spinach, double guac, jalapeño lime dressing Farmer's greens, grilled Mary's free-range chicken breast (cold), avocado, diced cucumber, pickled onions, avocado goddess. Creamy chickpea hummus made with garlic, extra virgin olive oil, and lemon juice Creamy avocado-based dressing made with parsley, cilantro, tahini, ginger root, and extra virgin olive oil Roasted bell pepper sauce made with sunflower seeds, garlic, lemon juice, and extra virgin olive oil
+
+============================================================
+
+SOURCE 2: https://builtin.com/artificial-intelligence/what-is-chatgpt
+TITLE: What Is ChatGPT ? Key Facts About OpenAI’s Chatbot. | Built In
+STRATEGY: restaurant_website
+CONTENT LENGTH: 807 characters
+MENU ITEMS FOUND: 
+PRICES FOUND: $200
+============================================================
+FULL CONTENT:
+ChatGPT is a generative AI chatbot developed by OpenAI that creates human-like text, writes code, summarizes content and answers questions. ChatGPT is a generative AI chatbot developed by OpenAI that creates human-like text, writes code, summarizes content and answers questions. Released by artificial intelligence company OpenAI in 2022, ChatGPT is a chatbot capable of communicating with users in a human-like way. The GPT in ChatGPT stands for “general pre-trained transformer,” which is a language model that uses deep learning and natural language processing to generate natural, human-like text based on a given text input. In addition, OpenAI has released another plan called ChatGPT Pro. At $200 per month, the plan is intended to give users access to OpenAI’s latest offering, the o1 model family.
+
+============================================================
+
+SOURCE 3: https://www.indeed.com/q-lead-cook-l-contra-costa-county,-ca-jobs.html
+TITLE: Lead Cook jobs in Contra Costa County, Ca - Indeed
+STRATEGY: comprehensive_menu
+CONTENT LENGTH: 163 characters
+MENU ITEMS FOUND: 
+PRICES FOUND: $19., $30.
+============================================================
+FULL CONTENT:
+... Kitava. Albany, CA 94706. From $19. an hour. Full-time. Monday to Friday +7. Paid ... 94115. From $30. an hour. Full-time. Weekends as needed +1. Easily apply.
+
+============================================================
+
+SOURCE 4: https://www.indeed.com/q-assistant-general-manager-l-pleasanton,-ca-jobs.html
+TITLE: Assistant General Manager jobs in Pleasanton, Ca - Indeed
+STRATEGY: comprehensive_menu
+CONTENT LENGTH: 161 characters
+MENU ITEMS FOUND: 
+PRICES FOUND: $19.
+============================================================
+FULL CONTENT:
+O Review of hours worked. QSR General Manager. Confidential. San Francisco, CA 94115 ... Kitava. Albany, CA 94706. From $19. an hour. Full-time. Monday to Friday
+
+============================================================
+
+SOURCE 5: https://www.grubhub.com/restaurant/kitava-mission-st-2011-mission-st-san-francisco/354238/reviews
+TITLE: Kitava (Mission St) Reviews - 2011 Mission St, San ... - Grubhub Kitava (Mission St) Delivery Menu | Order Online | 2011 ... Kitava Delivery Menu | Order Online | 375 40th Street Oakland ... Kitava Reviews - 375 40th Street, Oakland, CA, 94609 | Grubhub Daeho Kalbijjim and Beef Soup Delivery Menu - Grubhub Tsing Tao Delivery Menu | Order Online | 1117 ... - Grubhub Hikari Sushi Delivery Menu | Order Online | 1734 Post St San ...
+STRATEGY: grubhub_ordering
+CONTENT LENGTH: 1177 characters
+MENU ITEMS FOUND: beef, soup
+PRICES FOUND: 
+============================================================
+FULL CONTENT:
+Jul 14, 2025 · View 674 reviews of Kitava (Mission St) 2011 Mission St, San Francisco, CA, 94110. Explore the Kitava (Mission St) menu and order food delivery or pickup right now from Grubhub May 2, 2023 · Order delivery or pickup from Kitava (Mission St) in San Francisco! View Kitava (Mission St)'s September 2025 deals and menus. Support your local restaurants with Grubhub ! Order delivery or pickup from Kitava in Oakland! View Kitava 's October 2025 deals and menus. Support your local restaurants with Grubhub ! View 54 reviews of Kitava 375 40th Street, Oakland, CA, 94609. Explore the Kitava menu and order food delivery or pickup right now from Grubhub Mar 10, 2024 · Order delivery or pickup from Daeho Kalbijjim and Beef Soup in San Francisco! View Daeho Kalbijjim and Beef Soup's August 2025 deals and menus. Support your local restaurants with Grubhub ! Order delivery or pickup from Tsing Tao in San Francisco! View Tsing Tao's October 2025 deals and menus. Support your local restaurants with Grubhub ! Order delivery or pickup from Hikari Sushi in San Francisco! View Hikari Sushi's September 2025 deals and menus. Support your local restaurants with Grubhub !
+
+============================================================
+
+SOURCE 6: https://www.grubhub.com/restaurant/kitava-375-40th-street-oakland/5616592
+TITLE: Kitava Delivery Menu | Order Online | 375 40th Street Oakland ... Kitava Reviews - 375 40th Street, Oakland, CA, 94609 | Grubhub Daeho Kalbijjim and Beef Soup Delivery Menu - Grubhub Tsing Tao Delivery Menu | Order Online | 1117 ... - Grubhub Hikari Sushi Delivery Menu | Order Online | 1734 Post St San ...
+STRATEGY: grubhub_ordering
+CONTENT LENGTH: 798 characters
+MENU ITEMS FOUND: beef, soup
+PRICES FOUND: 
+============================================================
+FULL CONTENT:
+Order delivery or pickup from Kitava in Oakland! View Kitava 's October 2025 deals and menus. Support your local restaurants with Grubhub ! View 54 reviews of Kitava 375 40th Street, Oakland, CA, 94609. Explore the Kitava menu and order food delivery or pickup right now from Grubhub Mar 10, 2024 · Order delivery or pickup from Daeho Kalbijjim and Beef Soup in San Francisco! View Daeho Kalbijjim and Beef Soup's August 2025 deals and menus. Support your local restaurants with Grubhub ! Order delivery or pickup from Tsing Tao in San Francisco! View Tsing Tao's October 2025 deals and menus. Support your local restaurants with Grubhub ! Order delivery or pickup from Hikari Sushi in San Francisco! View Hikari Sushi's September 2025 deals and menus. Support your local restaurants with Grubhub !
+
+============================================================
+

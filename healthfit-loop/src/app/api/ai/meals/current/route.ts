@@ -19,10 +19,6 @@ export async function GET() {
       );
     }
 
-    // Get current week's meal plan
-    const startOfWeek = getStartOfWeek(new Date());
-    console.log(`[MealCurrent] Looking for meal plan - weekOf: ${startOfWeek.toISOString()}`);
-
     // If we have a sessionId, find the survey first
     let surveyFromSession = null;
     if (sessionId && !surveyId) {
@@ -32,6 +28,7 @@ export async function GET() {
       console.log(`[MealCurrent] Found survey from session: ${surveyFromSession?.id}`);
     }
 
+    // Find the most recent meal plan (simplified to match workout query)
     const mealPlan = await prisma.mealPlan.findFirst({
       where: {
         OR: [
@@ -55,7 +52,8 @@ export async function GET() {
       }
     });
 
-    console.log(`[MealCurrent] Query result: ${mealPlan ? 'Found meal plan with ' + mealPlan.meals.length + ' meals' : 'No meal plan found'}`);
+    const typedMealPlan = mealPlan as any; // Type assertion for JsonValue
+    console.log(`[MealCurrent] Query result: ${mealPlan ? 'Found meal plan with ' + (typedMealPlan.userContext?.meals?.length || 0) + ' meals' : 'No meal plan found'}`);
 
     if (!mealPlan) {
       // Also check if there are ANY meal plans for debugging
@@ -77,23 +75,23 @@ export async function GET() {
       );
     }
 
-    console.log(`[MealCurrent] Found meal plan with ${mealPlan.meals.length} meals`);
+    console.log(`[MealCurrent] Found meal plan with ${(typedMealPlan.userContext?.meals?.length || 0)} meals`);
 
     // Format the response - handle both old structure (meals table) and new structure (userContext JSON)
     let formattedMealPlan;
 
-    if (mealPlan.meals && mealPlan.meals.length > 0) {
+    if (typedMealPlan.userContext?.meals && typedMealPlan.userContext.meals.length > 0) {
       // Old structure with meals table
       formattedMealPlan = {
         id: mealPlan.id,
         weekOf: mealPlan.weekOf.toISOString().split('T')[0],
         regenerationCount: mealPlan.regenerationCount,
-        meals: mealPlan.meals.map(meal => ({
+        meals: typedMealPlan.userContext.meals.map((meal: any) => ({
           id: meal.id,
           day: meal.day,
           mealType: meal.mealType,
           selectedOptionId: meal.selectedOptionId,
-          options: meal.options.map(option => ({
+          options: meal.options.map((option: any) => ({
             id: option.id,
             optionNumber: option.optionNumber,
             optionType: option.optionType,

@@ -7,7 +7,7 @@ export const SurveySchema = z.object({
   age: z.number().int().min(13, "Must be at least 13 years old").max(120, "Invalid age"),
   sex: z.enum(['male', 'female', 'other'], { errorMap: () => ({ message: "Please select your sex" }) }),
   height: z.number().int().min(36, "Height must be at least 36 inches").max(96, "Height must be less than 96 inches"),
-  weight: z.number().int().min(50, "Weight must be at least 50 lbs").max(600, "Weight must be less than 600 lbs"),
+  weight: z.number().int().min(50, "Weight must be at least 50 lbs").max(1000, "Weight must be less than 1000 lbs"),
 
   // Full address fields
   streetAddress: z.string().min(1, "Street address is required"),
@@ -17,7 +17,10 @@ export const SurveySchema = z.object({
   country: z.string().default("United States"),
   goal: z.enum(['WEIGHT_LOSS', 'MUSCLE_GAIN', 'ENDURANCE', 'GENERAL_WELLNESS'], { errorMap: () => ({ message: "Please select a goal" }) }),
   activityLevel: z.enum(['SEDENTARY', 'LIGHTLY_ACTIVE', 'MODERATELY_ACTIVE', 'VERY_ACTIVE'], { errorMap: () => ({ message: "Please select your activity level" }) }),
-  budgetTier: z.enum(['under_200', '200_400', '400_600', '600_plus'], { errorMap: () => ({ message: "Please select a budget tier" }) }),
+  sportsInterests: z.string().default(""),
+  fitnessTimeline: z.string().default(""),
+  monthlyFoodBudget: z.number().int().min(0).max(1000).default(200),
+  monthlyFitnessBudget: z.number().int().min(0).max(500).default(50),
   dietPrefs: z.array(z.string()).default([]),
   mealsOutPerWeek: z.number().int().min(0).max(21).default(7),
   distancePreference: z.enum(['close', 'medium', 'far']).default('medium'),
@@ -26,13 +29,17 @@ export const SurveySchema = z.object({
   preferredCuisines: z.array(z.string()).default([]),
   preferredFoods: z.array(z.string()).default([]),
 
+  // Health metrics (optional)
+  uploadedFiles: z.array(z.string()).default([]),
+  preferredNutrients: z.array(z.string()).default([]),
+
   // Enhanced workout preferences
   workoutPreferences: z
     .object({
       preferredDuration: z.number().int().min(15).max(120).default(45),
       availableDays: z.array(z.string()).default([]),
       workoutTypes: z.array(z.string()).default([]),
-      equipmentAccess: z.array(z.string()).default(['bodyweight']),
+      gymAccess: z.enum(['full_gym', 'no_gym', 'free_weights', 'calisthenics', 'recommend_gym']).default('no_gym'),
       fitnessExperience: z.enum(['beginner', 'intermediate', 'advanced']).default('intermediate'),
       injuryConsiderations: z.array(z.string()).default([]),
       timePreferences: z.array(z.string()).default([]),

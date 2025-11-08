@@ -1,0 +1,223 @@
+{
+  "success": true,
+  "message": "Working meal plan with all fixes",
+  "mealPlan": {
+    "weeklyMealPlan": {
+      "days": [
+        {
+          "day": 1,
+          "day_name": "Friday",
+          "breakfast": {
+            "primary": {
+              "source": "home",
+              "name": "Greek Yogurt Parfait Bowl",
+              "description": "Layers of Greek yogurt with honey, nuts, and fresh berries",
+              "why_perfect_for_goal": "High in protein from Greek yogurt, essential for muscle repair and growth. The nuts provide healthy fats to support hormone production.",
+              "imageUrl": "https://images.pexels.com/photos/8743829/pexels-photo-8743829.jpeg?auto=compress&cs=tinysrgb&h=650&w=940",
+              "imageSource": "pexels",
+              "calories": 320
+            },
+            "alternatives": [
+              {
+                "source": "restaurant",
+                "restaurant": "The Bite",
+                "dish": "Falafel Rice Bowl",
+                "price": 12,
+                "orderingUrl": "https://www.doordash.com/store/the-bite-san-francisco-2820370/",
+                "menuSourceUrl": "https://www.thebitesf.com/menu",
+                "menuSourceName": "Restaurant Website",
+                "why_perfect_for_goal": "Plant-based protein from falafel supports muscle gain while providing complex carbohydrates for energy",
+                "imageUrl": "https://images.pexels.com/photos/7129403/pexels-photo-7129403.jpeg?auto=compress&cs=tinysrgb&h=650&w=940",
+                "calories": 485
+              }
+            ],
+            "extraRestaurantOptions": [
+              {
+                "restaurant": "Piccolo Forno",
+                "dish": "Mediterranean Egg Scramble",
+                "description": "Scrambled eggs with spinach, tomatoes, and feta cheese",
+                "orderingUrl": "https://piccolo-forno.res-menu.com/menu",
+                "menuSourceName": "Restaurant Website",
+                "why_perfect_for_goal": "High-quality protein from eggs and calcium from feta support muscle development"
+              }
+            ]
+          },
+          "lunch": {
+            "primary": {
+              "source": "restaurant",
+              "restaurant": "The Bite",
+              "restaurant_description": "Mediterranean restaurant with fresh, healthy options",
+              "dish": "Organic Beef Kebab Rice Bowl",
+              "dish_description": "House marinated organic beef kebab served over rice with vegetables",
+              "price": 19.5,
+              "orderingUrl": "https://www.doordash.com/store/the-bite-san-francisco-2820370/",
+              "menuSourceUrl": "https://places.singleplatform.com/the-bite-9/menu",
+              "menuSourceName": "DoorDash",
+              "why_perfect_for_goal": "Rich in complete protein from organic beef, essential for muscle repair and growth. Rice provides energy for workouts.",
+              "imageUrl": "https://images.pexels.com/photos/6129294/pexels-photo-6129294.jpeg?auto=compress&cs=tinysrgb&h=650&w=940",
+              "calories": 650
+            },
+            "alternatives": [
+              {
+                "source": "home",
+                "name": "Chickpea and Spinach Salad Bowl",
+                "description": "Fresh spinach salad with chickpeas, quinoa, and tahini dressing",
+                "why_perfect_for_goal": "Plant-based protein from chickpeas and complete amino acids from quinoa support muscle synthesis",
+                "imageUrl": "https://images.pexels.com/photos/18363397/pexels-photo-18363397.jpeg?auto=compress&cs=tinysrgb&h=650&w=940",
+                "calories": 420
+              }
+            ],
+            "extraRestaurantOptions": [
+              {
+                "restaurant": "Kitava",
+                "dish": "Ahi Tuna Poke Bowl",
+                "description": "Wild-caught ahi tuna marinated with ginger ponzu sauce over jasmine rice",
+                "orderingUrl": "https://kitava.res-menu.com/menu",
+                "menuSourceName": "Restaurant Website",
+                "why_perfect_for_goal": "High-quality lean protein from tuna with omega-3 fatty acids for muscle recovery"
+              }
+            ]
+          },
+          "dinner": {
+            "primary": {
+              "source": "home",
+              "name": "Grilled Chicken and Veggie Skewers",
+              "description": "Marinated chicken breast skewers with bell peppers and zucchini, grilled to perfection",
+              "why_perfect_for_goal": "Lean protein from chicken breast is ideal for muscle building, while vegetables provide essential nutrients for recovery",
+              "imageUrl": "https://images.pexels.com/photos/7301037/pexels-photo-7301037.jpeg?auto=compress&cs=tinysrgb&h=650&w=940",
+              "calories": 450
+            },
+            "alternatives": [
+              {
+                "source": "restaurant",
+                "restaurant": "Piccolo Forno",
+                "dish": "Bresaola, Mozzarella, and Arugula Pizza",
+                "price": 18,
+                "orderingUrl": "https://piccolo-forno.res-menu.com/menu",
+                "menuSourceUrl": "https://piccolo-forno.res-menu.com/menu",
+                "menuSourceName": "Restaurant Website",
+                "why_perfect_for_goal": "Bresaola is a lean cured meat high in protein, while mozzarella provides calcium for muscle function",
+                "imageUrl": "https://images.pexels.com/photos/5903177/pexels-photo-5903177.jpeg?auto=compress&cs=tinysrgb&h=650&w=940",
+                "calories": 580
+              }
+            ],
+            "extraRestaurantOptions": [
+              {
+                "restaurant": "a Mano",
+                "dish": "Braised Calamari",
+                "description": "Tender calamari braised in rich tomato sauce with herbs",
+                "orderingUrl": "https://www.doordash.com/store/a-mano-san-francisco-981995/",
+                "menuSourceName": "DoorDash",
+                "why_perfect_for_goal": "Calamari provides lean protein and omega-3 fatty acids that support muscle recovery and reduce inflammation"
+              }
+            ]
+          }
+        },
+        {
+          "day": 2,
+          "day_name": "Saturday",
+          "breakfast": {
+            "primary": {
+              "source": "home",
+              "name": "Protein Smoothie Bowl",
+              "description": "Thick protein smoothie base topped with granola, berries, and nuts",
+              "why_perfect_for_goal": "High protein content from protein powder kickstarts muscle protein synthesis for the day",
+              "imageUrl": "https://images.pexels.com/photos/7937336/pexels-photo-7937336.jpeg?auto=compress&cs=tinysrgb&h=650&w=940",
+              "calories": 380
+            },
+            "alternatives": [
+              {
+                "source": "home",
+                "name": "Avocado Toast with Poached Eggs",
+                "description": "Whole grain toast with mashed avocado topped with perfectly poached eggs",
+                "why_perfect_for_goal": "Complete protein from eggs and healthy fats from avocado provide sustained energy and muscle-building nutrients",
+                "imageUrl": "https://images.pexels.com/photos/1603463/pexels-photo-1603463.jpeg?auto=compress&cs=tinysrgb&h=650&w=940",
+                "calories": 420
+              }
+            ],
+            "extraRestaurantOptions": [
+              {
+                "restaurant": "The Bite",
+                "dish": "Mediterranean Breakfast Bowl",
+                "description": "Quinoa bowl with feta, olives, tomatoes, and a soft-boiled egg",
+                "orderingUrl": "https://www.doordash.com/store/the-bite-san-francisco-2820370/",
+                "menuSourceName": "DoorDash",
+                "why_perfect_for_goal": "Complete protein from eggs and quinoa provides all essential amino acids for muscle growth"
+              }
+            ]
+          },
+          "lunch": {
+            "primary": {
+              "source": "restaurant",
+              "restaurant": "Kitava",
+              "restaurant_description": "Healthy restaurant focusing on gluten-free, nutritious meals",
+              "dish": "Grass-Fed Beef Bowl",
+              "dish_description": "Grass-fed beef with sweet potato, quinoa, and seasonal vegetables",
+              "price": 16,
+              "orderingUrl": "https://kitava.res-menu.com/menu",
+              "menuSourceUrl": "https://kitava.res-menu.com/menu",
+              "menuSourceName": "Restaurant Website",
+              "why_perfect_for_goal": "Grass-fed beef provides high-quality protein and creatine for muscle building, while sweet potato offers complex carbohydrates",
+              "imageUrl": "https://images.pexels.com/photos/14775660/pexels-photo-14775660.jpeg?auto=compress&cs=tinysrgb&h=650&w=940",
+              "calories": 620
+            },
+            "alternatives": [
+              {
+                "source": "home",
+                "name": "Mediterranean Quinoa Power Bowl",
+                "description": "Quinoa with grilled vegetables, chickpeas, feta, and olive oil dressing",
+                "why_perfect_for_goal": "Complete protein from quinoa and chickpeas supports muscle protein synthesis",
+                "imageUrl": "https://images.pexels.com/photos/14775660/pexels-photo-14775660.jpeg?auto=compress&cs=tinysrgb&h=650&w=940",
+                "calories": 480
+              }
+            ],
+            "extraRestaurantOptions": [
+              {
+                "restaurant": "Piccolo Forno",
+                "dish": "Salmon and Arugula Salad",
+                "description": "Grilled salmon over arugula with lemon vinaigrette",
+                "orderingUrl": "https://piccolo-forno.res-menu.com/menu",
+                "menuSourceName": "Restaurant Website",
+                "why_perfect_for_goal": "Salmon provides complete protein and omega-3 fatty acids that reduce inflammation and support muscle recovery"
+              }
+            ]
+          },
+          "dinner": {
+            "primary": {
+              "source": "home",
+              "name": "Turkey Meatballs with Zucchini Noodles",
+              "description": "Lean turkey meatballs served over spiralized zucchini with marinara sauce",
+              "why_perfect_for_goal": "Lean turkey provides high-quality protein while zucchini noodles keep the meal light but satisfying",
+              "imageUrl": "https://images.pexels.com/photos/14343072/pexels-photo-14343072.jpeg?auto=compress&cs=tinysrgb&h=650&w=940",
+              "calories": 420
+            },
+            "alternatives": [
+              {
+                "source": "restaurant",
+                "restaurant": "a Mano",
+                "dish": "Grilled Branzino",
+                "price": 28,
+                "orderingUrl": "https://www.doordash.com/store/a-mano-san-francisco-981995/",
+                "menuSourceUrl": "https://www.amanosf.com/menu",
+                "menuSourceName": "DoorDash",
+                "why_perfect_for_goal": "Branzino is a lean fish high in protein and omega-3 fatty acids, perfect for muscle building and recovery",
+                "imageUrl": "https://images.pexels.com/photos/1618943/pexels-photo-1618943.jpeg?auto=compress&cs=tinysrgb&h=650&w=940",
+                "calories": 380
+              }
+            ],
+            "extraRestaurantOptions": [
+              {
+                "restaurant": "The Bite",
+                "dish": "Grilled Chicken Shawarma Bowl",
+                "description": "Marinated grilled chicken with rice, vegetables, and tahini sauce",
+                "orderingUrl": "https://www.doordash.com/store/the-bite-san-francisco-2820370/",
+                "menuSourceName": "DoorDash",
+                "why_perfect_for_goal": "Lean chicken breast provides complete protein essential for muscle growth and repair"
+              }
+            ]
+          }
+        }
+      ]
+    }
+  }
+}

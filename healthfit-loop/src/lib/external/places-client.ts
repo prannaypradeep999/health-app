@@ -7,6 +7,7 @@ export interface Restaurant {
   phoneNumber?: string;
   isOpen?: boolean;
   placeId: string;
+  chainCategory?: 'healthier' | 'moderate' | 'unhealthy';
   // Business status tracking
   businessStatus?: 'OPERATIONAL' | 'CLOSED_TEMPORARILY' | 'CLOSED_PERMANENTLY' | 'UNKNOWN';
   isPermClosed?: boolean;
@@ -44,8 +45,28 @@ export class GooglePlacesClient {
   }
 
   async filterOpenRestaurants(restaurants: Restaurant[]): Promise<Restaurant[]> {
-    // Simple filter - in production you might want to check opening hours
-    return restaurants.filter(restaurant => restaurant.businessStatus !== 'CLOSED_PERMANENTLY');
+    // Enhanced filter to ensure restaurants are operational and have good ratings
+    return restaurants.filter(restaurant => {
+      // Must be operational
+      if (restaurant.businessStatus === 'CLOSED_PERMANENTLY') {
+        console.log(`[GooglePlaces] Filtering out permanently closed: ${restaurant.name}`);
+        return false;
+      }
+
+      // Must have reasonable rating (at least 3.5 out of 5)
+      if (restaurant.rating < 3.5) {
+        console.log(`[GooglePlaces] Filtering out low-rated restaurant: ${restaurant.name} (${restaurant.rating})`);
+        return false;
+      }
+
+      // Avoid very expensive restaurants (price level 4)
+      if (restaurant.priceLevel >= 4) {
+        console.log(`[GooglePlaces] Filtering out expensive restaurant: ${restaurant.name} (price level ${restaurant.priceLevel})`);
+        return false;
+      }
+
+      return true;
+    });
   }
 
   private async geocodeZipcode(zipcode: string): Promise<{ lat: number; lng: number }> {
@@ -69,12 +90,14 @@ export class GooglePlacesClient {
     radiusMiles?: number
   ): Promise<Restaurant[]> {
     try {
-      // Build search query with distance preference
+      // Build search query with distance preference - include both local and chain restaurants
       const dietaryString = dietaryRestrictions.length > 0 ? dietaryRestrictions.join(' ') + ' ' : '';
       const distanceString = radiusMiles ? `within ${radiusMiles} miles ` : '';
-      const query = `healthy ${dietaryString}${cuisine} ${distanceString}near ${fullAddress}`;
 
-      console.log(`[GooglePlaces] Searching: "${query}" (radius: ${radiusMiles || 'default'} miles)`);
+      // Use simple, inclusive search that finds both local and chain restaurants
+      const query = `healthy ${dietaryString}${cuisine} restaurant ${distanceString}near ${fullAddress}`;
+
+      console.log(`[GooglePlaces] Searching for restaurants: "${query}" (radius: ${radiusMiles || 'default'} miles)`);
 
       // Convert miles to meters for Google Places API (1 mile = 1609.34 meters)
       const radiusMeters = radiusMiles ? Math.round(radiusMiles * 1609.34) : undefined;
@@ -125,10 +148,19 @@ export class GooglePlacesClient {
             // Extract useful description from reviews
             const description = this.extractRestaurantDescription(details);
 
+            // Extract city and zipCode from address
+            const address = place.formatted_address || details?.formatted_address || 'Address not available';
+            const addressParts = address.split(', ');
+            const city = addressParts.find(part => !part.match(/^\d/) && !part.includes('St') && !part.includes('Ave') && !part.includes('Blvd')) || 'San Francisco';
+            const zipMatch = address.match(/\b\d{5}\b/);
+            const zipCode = zipMatch ? zipMatch[0] : '94109';
+
             return {
               // Keep minimal structure but include all Google Places data
               name: place.name,
-              address: place.formatted_address || details?.formatted_address || 'Address not available',
+              address: address,
+              city: city,
+              zipCode: zipCode,
               rating: place.rating || 0,
               priceLevel: place.price_level || details?.price_level || 2,
               cuisine: cuisine.toLowerCase(),
@@ -147,9 +179,17 @@ export class GooglePlacesClient {
             };
           } catch (error) {
             console.warn(`[GooglePlaces] Error getting details for ${place.name}:`, error);
+            const address = place.formatted_address || 'Address not available';
+            const addressParts = address.split(', ');
+            const city = addressParts.find(part => !part.match(/^\d/) && !part.includes('St') && !part.includes('Ave') && !part.includes('Blvd')) || 'San Francisco';
+            const zipMatch = address.match(/\b\d{5}\b/);
+            const zipCode = zipMatch ? zipMatch[0] : '94109';
+
             return {
               name: place.name,
-              address: place.formatted_address || 'Address not available',
+              address: address,
+              city: city,
+              zipCode: zipCode,
               rating: place.rating || 0,
               priceLevel: place.price_level || 2,
               cuisine: cuisine.toLowerCase(),
@@ -160,8 +200,11 @@ export class GooglePlacesClient {
         })
       );
 
-      console.log(`[GooglePlaces] Found ${restaurants.length} restaurants for "${cuisine}" cuisine`);
-      return restaurants;
+      // Apply additional filtering to ensure quality and operational status
+      const filteredRestaurants = await this.filterOpenRestaurants(restaurants);
+
+      console.log(`[GooglePlaces] Found ${restaurants.length} restaurants, filtered to ${filteredRestaurants.length} operational restaurants for "${cuisine}" cuisine`);
+      return filteredRestaurants;
 
     } catch (error) {
       console.error('[GooglePlaces] Error in searchRestaurantsByCuisine:', error);

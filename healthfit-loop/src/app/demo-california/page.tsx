@@ -14,9 +14,9 @@ export default function DemoCaliforniaPage() {
         document.cookie = 'guest_session=; path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT';
         document.cookie = 'survey_id=; path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT';
 
-        // Set the demo session cookie using document.cookie
-        document.cookie = 'guest_session=BerGri3LR66SZTrmym7sZ; path=/; max-age=' + (60 * 60 * 24 * 7); // 7 days
-        document.cookie = 'survey_id=cmhibxaqs00059kdgys1p8t1y; path=/; max-age=' + (60 * 60 * 24 * 7); // 7 days
+        // Set the demo session cookie using document.cookie for Bob Builder with Pexels images
+        document.cookie = 'guest_session=CBzXVISzsTQ8P7IwIIDHl; path=/; max-age=' + (60 * 60 * 24 * 7); // 7 days
+        document.cookie = 'survey_id=cmhp4ciq500019k4sk6vgwyg9; path=/; max-age=' + (60 * 60 * 24 * 7); // 7 days
 
         // Small delay to ensure cookie is set
         setTimeout(() => {
@@ -36,8 +36,8 @@ export default function DemoCaliforniaPage() {
     <div className="min-h-screen bg-gray-50 flex items-center justify-center">
       <div className="text-center">
         <div className="w-8 h-8 border-2 border-red-600 border-t-transparent rounded-full animate-spin mx-auto mb-4"></div>
-        <h2 className="text-lg font-medium text-gray-900 mb-2">Setting up your demo...</h2>
-        <p className="text-sm text-gray-600">Redirecting to your personalized dashboard</p>
+        <h2 className="text-lg font-medium text-gray-900 mb-2">Setting up Bob Builder's demo...</h2>
+        <p className="text-sm text-gray-600">Loading personalized muscle gain plan with real restaurant links for 1244 California St, SF</p>
       </div>
     </div>
   );

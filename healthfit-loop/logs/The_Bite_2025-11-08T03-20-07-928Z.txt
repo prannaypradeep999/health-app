@@ -1,0 +1,122 @@
+RESTAURANT: The Bite
+ADDRESS: 996 Mission St, San Francisco 94103
+CUISINE: mediterranean
+TIMESTAMP: 2025-11-08T03:20:07.929Z
+================================================================================
+
+SEARCH RESULTS SUMMARY:
+========================
+Strategy: menu_pdf_search
+Success: true
+URLs Found: 5
+Has Menu Content: true
+  - https://socalfolkdance.org/scene/scene_1976_09.pdf
+  - https://soar.kennesaw.edu/bitstream/handle/11360/4062/gkj_sovo_sovo-vol07no19.pdf?sequence=1&isAllowed=y
+  - https://www.danvillesanramon.com/wp-content/uploads/2006/10/2006_10_27.dvw_.section1.pdf
+  - https://studycenter.org/wp-content/uploads/2019/04/ccx.66-all.pdf
+  - https://files.eric.ed.gov/fulltext/ED318433.pdf
+
+Strategy: doordash_ordering
+Success: true
+URLs Found: 5
+Has Menu Content: true
+  - https://www.doordash.com/en/store/the-bite-bar-&-bistro-northbridge-959080/
+  - https://www.doordash.com/en-US/store/bite-bistro-llc-woodstock-29770896/
+  - https://www.doordash.com/store/the-bite-club-harrison-2381944/
+  - https://www.doordash.com/en-US/store/a-bite-of-jersey-garden-grove-56113/
+  - https://www.doordash.com/en-US/store/bites-express-morton-grove-24750397/
+
+Strategy: ubereats_ordering
+Success: true
+URLs Found: 3
+Has Menu Content: true
+  - https://www.ubereats.com/store/yo-kai-express-metreon/JQliQ1o2QIm3CXK6so71Wg?srsltid=AfmBOooYPFT6eE7ywkyvNkSyn1g7EOHPjmISqK8dv-WXIJJezSsaSSHL
+  - https://www.ubereats.com/store/heytea-downtown-metreon/jw7QZlfUVuqdoLltMTSpyA?srsltid=AfmBOoocUqCZ_qhaCfOGzEF_fuJgoNcjlvdc3Rjbi2ahzX1hHTKJc26m
+  - https://www.ubereats.com/store/the-bite-mission-st/MilyP8htRUKxkUp0qtD9Fw?srsltid=AfmBOoocsxbQihhTU7vtnA-eqLhQxpfMlSJCkN0K_Vo1e-mo3zh2mdEs
+
+Strategy: restaurant_website
+Success: false
+URLs Found: 0
+Has Menu Content: false
+
+Strategy: comprehensive_menu
+Success: true
+URLs Found: 5
+Has Menu Content: false
+  - https://beit-rima-1.wheree.com/menu
+  - https://rakwa.com/index.php/listting/the-bite
+  - https://www.instagram.com/p/CVlbl8LPyFi/
+  - https://issuu.com/tlk.com/docs/tlk_issue_7
+  - https://www.tagvenue.com/us/rooms/san-francisco/32744/the-bite/the-bite
+
+Strategy: grubhub_ordering
+Success: true
+URLs Found: 2
+Has Menu Content: false
+  - https://www.grubhub.com/restaurant/meze-gluten-free-bowl-996-mission-street-san-francisco/8156624
+  - https://www.grubhub.com/restaurant/the-bite-996-mission-st-san-francisco/2854787
+
+
+ANALYZED CONTENT:
+=================
+
+SOURCE 1: https://socalfolkdance.org/scene/scene_1976_09.pdf
+TITLE: folk dance scene
+STRATEGY: menu_pdf_search
+CONTENT LENGTH: 156 characters
+MENU ITEMS FOUND: 
+PRICES FOUND: $29
+============================================================
+FULL CONTENT:
+Your editor isn't trying to "put the bite" on anyone ... The menu will feature hamburgers, corn-on ... San Francisco, California 94103. 08. (714). $29-6396.
+
+============================================================
+
+SOURCE 2: https://www.doordash.com/en/store/the-bite-bar-&-bistro-northbridge-959080/
+TITLE: DoorDash Order The Bite Bar & Bistro - Northbridge, WA Menu Delivery [Menu & Prices] | Northbridge - DoorDash
+STRATEGY: doordash_ordering
+CONTENT LENGTH: 256 characters
+MENU ITEMS FOUND: 
+PRICES FOUND: $0
+============================================================
+FULL CONTENT:
+The Bite Bar & Bistro is not active · This restaurant you are trying to reach is not available on DoorDash right now.Ok · Asian, Korean · • · See More · Store Info · $$•Asian, Korean · See More · Full Menu5:30 pm - 1:40 am · A$0 delivery fee, first order ·
+
+============================================================
+
+SOURCE 3: https://www.doordash.com/en-US/store/a-bite-of-jersey-garden-grove-56113/
+TITLE: DoorDash Order A Bite of Jersey - Garden Grove, CA Menu Delivery [Menu & Prices] | Garden Grove - DoorDash
+STRATEGY: doordash_ordering
+CONTENT LENGTH: 248 characters
+MENU ITEMS FOUND: chicken
+PRICES FOUND: 
+============================================================
+FULL CONTENT:
+Checking if the site connection is secured... View Menu · A Bite of Jersey is not active · This restaurant you are trying to reach is not available on DoorDash right now.Ok · 4.7(50+)•Burgers, Chicken Wings · • · See More · Store Info · 4.7(50+)• ·
+
+============================================================
+
+SOURCE 4: https://www.ubereats.com/store/heytea-downtown-metreon/jw7QZlfUVuqdoLltMTSpyA?srsltid=AfmBOoocUqCZ_qhaCfOGzEF_fuJgoNcjlvdc3Rjbi2ahzX1hHTKJc26m
+TITLE: Order HEYTEA (Downtown Metreon) - San Francisco
+STRATEGY: ubereats_ordering
+CONTENT LENGTH: 161 characters
+MENU ITEMS FOUND: chicken
+PRICES FOUND: 
+============================================================
+FULL CONTENT:
+... The Bite (Mission St) deliveryKatana-ya deliveryChris's Chicken Tenders ... HEYTEA (Downtown Metreon). 4.9 x (900+). 165 4th Street, San Francisco, CA 94103.
+
+============================================================
+
+SOURCE 5: https://www.ubereats.com/store/the-bite-mission-st/MilyP8htRUKxkUp0qtD9Fw?srsltid=AfmBOoocsxbQihhTU7vtnA-eqLhQxpfMlSJCkN0K_Vo1e-mo3zh2mdEs
+TITLE: San Francisco Delivery - The Bite (Mission St) - Uber Eats
+STRATEGY: ubereats_ordering
+CONTENT LENGTH: 599 characters
+MENU ITEMS FOUND: chicken
+PRICES FOUND: 
+============================================================
+FULL CONTENT:
++ Chicken Gyro Rice Bowl (GF) I like this food, good portion, and healthy. + ### Can I order The Bite (Mission St) delivery in San Francisco with Uber Eats? Yes. The Bite (Mission St) delivery is available on Uber Eats in San Francisco. + ### How do I order The Bite (Mission St) delivery online in San Francisco? After you’ve looked over the The Bite (Mission St) menu, simply choose the items you’d like to order and add them to your cart. + ### How do I get free delivery on my The Bite (Mission St) order? + ### What’s the best thing to order for The Bite (Mission St) delivery in San Francisco?
+
+============================================================
+

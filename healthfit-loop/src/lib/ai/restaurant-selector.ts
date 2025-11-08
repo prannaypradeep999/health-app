@@ -23,7 +23,7 @@ export function selectOptimalRestaurants(
     reasoning.push(`${restaurant.rating}⭐ rating`);
 
     // Budget alignment
-    const budgetAlignment = getBudgetAlignment(restaurant.priceLevel, userContext.surveyData.budgetTier);
+    const budgetAlignment = getBudgetAlignment(restaurant.priceLevel, userContext.surveyData.monthlyFoodBudget);
     score += budgetAlignment.score;
     reasoning.push(budgetAlignment.reason);
 
@@ -59,7 +59,14 @@ export function selectOptimalRestaurants(
     .slice(0, maxRestaurants);
 }
 
-function getBudgetAlignment(priceLevel: number, budgetTier: string): { score: number; reason: string } {
+function getBudgetAlignment(priceLevel: number, monthlyFoodBudget: number): { score: number; reason: string } {
+  // Convert monthly budget to budget tier for existing logic
+  let budgetTier: string;
+  if (monthlyFoodBudget < 200) budgetTier = 'low';
+  else if (monthlyFoodBudget < 400) budgetTier = 'medium';
+  else if (monthlyFoodBudget < 600) budgetTier = 'high';
+  else budgetTier = 'premium';
+
   const budgetMap = {
     'low': { optimal: [1, 2], acceptable: [3], avoid: [4] },
     'medium': { optimal: [2, 3], acceptable: [1, 4], avoid: [] },

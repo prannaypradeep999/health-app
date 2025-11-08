@@ -1,0 +1,1106 @@
+RESTAURANT: Bottega
+ADDRESS: 1132 Valencia St, San Francisco 94110
+CUISINE: italian
+TIMESTAMP: 2025-11-08T03:23:59.265Z
+================================================================================
+
+SEARCH RESULTS SUMMARY:
+========================
+Strategy: doordash_precise
+Success: true
+URLs Found: 5
+Has Menu Content: true
+  - https://www.doordash.com/store/bottega-san-francisco-1228078?cursor=eyJzZWFyY2hfaXRlbV9jYXJvdXNlbF9jdXJzb3IiOnsicXVlcnkiOiJyZXN0YXVyYW50cyIsIml0ZW1faWRzIjpbXSwic2VhcmNoX3Rlcm0iOiJyZXN0YXVyYW50IiwidmVydGljYWxfaWQiOi05OTksInZlcnRpY2FsX25hbWUiOiJhbGwifSwic3RvcmVfcHJpbWFyeV92ZXJ0aWNhbF9pZHMiOlsxLDQsMTAwMzMyLDEwMDMzMywxNzYsMTc3LDE3OSwxOTMsMTk1XX0=&pickup=false&srsltid=AfmBOoq7YnX2WlYKXYzzTJgs-QOb3uTgUA3e-V5BWmTE4OFNcd0tGrkL
+  - https://page-service.doordash.com/store/bottega90-san-francisco-1228078/
+  - https://www.doordash.com/store/bottega-san-francisco-1228078/
+  - https://www.doordash.com/store/bottega-italian-deli-thousand-oaks-894938/
+  - https://www.doordash.com/store/cafe-bottega-riverside-25793047/
+
+Strategy: ubereats_precise
+Success: true
+URLs Found: 1
+Has Menu Content: true
+  - https://www.ubereats.com/store/bottega/nLSGyGdQR3WjYo3XC3W5Xg
+
+Strategy: grubhub_precise
+Success: true
+URLs Found: 2
+Has Menu Content: false
+  - https://www.grubhub.com/restaurant/bottega90-1132-valencia-st-san-francisco/2875369
+  - https://www.grubhub.com/restaurant/bottega90-1132-valencia-st-san-francisco/2875369/reviews
+
+Strategy: menu_with_address
+Success: true
+URLs Found: 5
+Has Menu Content: true
+  - https://www.bottega90menu.com/
+  - https://bottega.pops-cafe.com/
+  - https://order.toasttab.com/online/bottegavalencia
+  - https://postmates.com/store/bottega/nLSGyGdQR3WjYo3XC3W5Xg
+  - https://www.grubhub.com/restaurant/bottega90-1132-valencia-st-san-francisco/2875369
+
+Strategy: restaurant_website
+Success: true
+URLs Found: 5
+Has Menu Content: true
+  - https://www.facebook.com/BottegaNapaValley/photos/here-at-bottega-we-encourage-our-guests-to-dine-with-their-eyes-as-well-as-their/1582096561835037/
+  - https://bottega.wheree.com/menu
+  - https://www.yelp.com/search?cflt=italian&find_loc=Glen+Park%2C+San+Francisco%2C+CA+94131
+  - https://www.tiktok.com/discover/bottega-restaurant-menu
+  - https://belottirb.com/menu
+
+Strategy: zipcode_fallback
+Success: true
+URLs Found: 5
+Has Menu Content: true
+  - https://postmates.com/store/bottega/nLSGyGdQR3WjYo3XC3W5Xg
+  - https://www.ubereats.com/store/bottega/nLSGyGdQR3WjYo3XC3W5Xg?srsltid=AfmBOorlfwbjmg3Nzs4-tbb_STlijE8YDBDpGhIa6N4ByPfD_-YQlyJA
+  - https://www.ubereats.com/store/bottega/nLSGyGdQR3WjYo3XC3W5Xg?srsltid=AfmBOoojgCW4T5nRY5t1Jk8yMO7e85gASjW3qQzDG3GrUfXZnyb1Rsvy
+  - https://bottega.wheree.com/menu
+  - https://bottega.pops-cafe.com/
+
+
+ANALYZED CONTENT:
+=================
+
+SOURCE 1: https://www.doordash.com/store/bottega-san-francisco-1228078/
+TITLE: Order Bottega - San Francisco, CA Menu Delivery [Menu ...
+STRATEGY: doordash_precise
+CONTENT LENGTH: 1421 characters
+MENU ITEMS FOUND: pasta, tiramisu, pizza, fettuccine, chicken
+PRICES FOUND: $0, $24.00, $18.00, $27.00
+============================================================
+FULL CONTENT:
+The sauces and meatballs were underwhelming. The pasta was passable but did not feel fresh. The portions were small and inadequate. The tiramisu was placed on top of hot items despite being a cold dessert. I would never order here again.
+
+C
+
+Chelsea P
+
+Emerging Expert • 6 contributions
+
+5/21/24
+
+• DoorDash order
+
+Amazing food. Great service. But I wish the portion size for the Sacchetti was larger. Counted only 10 pieces. Expensive meal for a small portion. But taste wise it was10/10.
+
+See All [...] ## Most Ordered
+
+The most commonly ordered items and dishes from this store
+
+## Antipasti
+
+## Fritti
+
+## Pasta
+
+## Entrée
+
+## Pizza Romana
+
+## Kids Menu
+
+## Combo Meals x 2
+
+## Side
+
+## Dessert
+
+## Beverages
+
+## Utensils
+
+Prices on this menu are set directly by the Merchant.
+
+Prices may differ between Delivery and Pickup.
+
+Enjoy $0 delivery fee on your first order
+
+Checking if the site connection is secured... [...] Sign InSign Up
+
+Get it delivered to your doorSign in for saved address
+
+Home
+
+/
+
+San Francisco
+
+/
+
+Pizza
+
+/
+
+Bottega
+
+# Bottega
+
+Bottega
+
+4.6(5k+)•
+
+DashPass•
+
+Italian
+
+•
+
+4.6(5k+)•
+
+DashPass•
+
+Italian
+
+•
+
+Bottega
+
+4.6(5k+)•
+
+DashPass•
+
+Italian
+
+•
+
+Store Info
+
+DashPass
+
+4.6(5k+)•
+
+$$•Italian
+
+Full Menu
+
+11:00 am - 11:50 pm
+
+## Featured Items
+
+$0 delivery fee, first order
+
+pricing & fees
+
+## Featured Items
+
+Mezzemaniche Boscaiola
+
+$24.00
+
+Fettuccine Alfredo
+
+$18.00
+
+Chicken Parmigiana
+
+$27.00
+
+============================================================
+
+SOURCE 2: https://www.ubereats.com/store/bottega/nLSGyGdQR3WjYo3XC3W5Xg
+TITLE: Uber Eats Order Bottega - Menu & Prices - San Francisco Delivery | Uber Eats
+STRATEGY: ubereats_precise
+CONTENT LENGTH: 1120 characters
+MENU ITEMS FOUND: pasta, pizza, caesar
+PRICES FOUND: 
+============================================================
+FULL CONTENT:
+Skip to content
+
+Enter delivery address
+
+Log inSign up
+
+# Bottega
+
+4.6 x (2,000+) • Italian • Pasta • Pizza • Group Friendly • $$ • Info
+
+x Delivery unavailable
+
+1132 Valencia Street, San Francisco, CA 94110
+
+Group order
+
+### Rating and reviews
+
+# 4.6
+
+2000+ Ratings
+
+"they gave me soft bread to dip in my pasta sauce. i almost cried from joy. it was a rough day and i needed this❤️"
+
+• Jen A. • 04/29/24
+
+"Very nice. Meatballs with a Caesar and Lemon Cheese Cake can’t go wrong!" [...] ## Frequently asked questions
+
++ ### Can I order Bottega delivery in San Francisco with Uber Eats?
+
+  Yes. Bottega delivery is available on Uber Eats in San Francisco.
++ ### Is Bottega delivery available near me?
+
+  Enter your address to see if Bottega delivery is available to your location in San Francisco.
++ ### How do I order Bottega delivery online in San Francisco? [...] Please note: Some item descriptions on this menu may have been generated by AI, so the content may not be complete or accurate. If you have any questions regarding item ingredients, allergens, or dietary preferences, please contact the merchant directly.
+
+============================================================
+
+SOURCE 3: https://www.bottega90menu.com/
+TITLE: Bottega 90 - San Francisco, CA - 1132 Valencia St - Hours, Menu ...
+STRATEGY: menu_with_address
+CONTENT LENGTH: 1299 characters
+MENU ITEMS FOUND: salad, lasagna, beef, bolognese, tiramisu, pasta, fettuccine
+PRICES FOUND: $14.00, $22.00, $23.00, $17.00, $24.00, $16.00, $12.00
+============================================================
+FULL CONTENT:
+5% OFFOnline only
+
+## Bottega 90
+
+View MenuStart Order
+
+### House Favorites
+
+These are the shop recommendations for a great meal experience.
+
+### Popular Items
+
+Insalata di Rucola
+
+The most simple and refreshing salad with fresh organic arugula, succulent cherry tomatoes, and shaved authentic parmigiana Reggiano in a delicious homemade lemon dressing. Gluten-free, vegetarian.
+
+$14.00
+
+Lasagna
+
+Homemade lasagna with ground beef Bolognese sauce, béchamel, and parmesan cheese.
+
+$22.00
+
+Tiramisu [...] Homemade short rigatoni pasta with our rich Boscaiola sauce: tasty Italian sausage, wild mushrooms, and green English peas in a sauce of your choice.
+
+$23.00
+
+Spaghetti al Pomodoro
+
+Looking for a tasty, light, vegetarian option? Look no further! Homemade spaghetti pasta with the most genuine san marzano tomato sauce and a sprinkle of parmigiano reggiano to finish!
+
+$17.00
+
+Salmon Fettuccine
+
+Homemade fettuccine pasta, grilled salmon in a creamy pink sauce. Just Yummy!
+
+$24.00 [...] Lightly powdered calamari in our seasoned flour and deep fried with a mix of seasonal vegetables. Served with authentic cocktail salsa rosa. You’ll never have enough!
+
+$16.00
+
+Cavoletti di Bruxelle
+
+Deep-fried brussels sprouts with roman pecorino and lemon juice dressing. Vegan.
+
+$12.00
+
+Crochette di Verdure
+
+============================================================
+
+SOURCE 4: https://bottega.pops-cafe.com/
+TITLE: Bottega San Francisco, CA 94158 | Discover Full Menu, Reviews ...
+STRATEGY: menu_with_address
+CONTENT LENGTH: 490 characters
+MENU ITEMS FOUND: 
+PRICES FOUND: $4.00, $3.50, $3.75, $0.50, $0.00
+============================================================
+FULL CONTENT:
+#### Lemon Soda
+
+SanPellegrino (Can)
+
+$4.00
+
+#### Sparkling Water
+
+San Pellegrino Sparkling Water (500ml)
+
+$3.50
+
+#### Nesquik Chocolate Milk
+
+Bottle (14oz) cold chocolate milk
+
+$3.75
+
+#### Yes Utensils
+
+$0.50
+
+#### No Utensils
+
+$0.00
+
+Show Full Menu
+
+## Location
+
+Address: 1132 Valencia St San Francisco, CA 94158  
+ Phone: (415) 655-9048
+
+🕓 Work Hours
+
+MON 11:00 AM - 11:00 PM
+
+TUE 11:00 AM - 11:00 PM
+
+WED 11:00 AM - 11:00 PM
+
+THU 11:00 AM - 11:00 PM
+
+FRI 11:00 AM - 12:00 AM (Next day)
+
+============================================================
+
+SOURCE 5: https://order.toasttab.com/online/bottegavalencia
+TITLE: Bottega 1132 Valencia street - Order Online
+STRATEGY: menu_with_address
+CONTENT LENGTH: 1455 characters
+MENU ITEMS FOUND: gnocchi, pasta, lasagna, chicken, pizza, gelato, arancini, risotto
+PRICES FOUND: $20.00, $21.00, $7.00, $9.00, $10.00, $2.00, $5.00, $11.00, $15.00, $14.00, $12.00, $16.00
+============================================================
+FULL CONTENT:
+$20.00
+ ### Gnocchi
+
+  $21.00
+
+## Kid Menu'
+
+### Bambini
+
+ ### Kids Pasta Butter
+
+  $7.00
+ ### Kids Pasta Tomato
+
+  $7.00
+ ### Kids Gnocchi
+
+  $9.00
+ ### Kids Pasta Meatball
+
+  $9.00
+ ### KIds Lasagna
+
+  $10.00
+ ### Kids Chicken Strips
+
+  $9.00
+ ### Kids Cheese Pizza
+
+  $10.00
+ ### Kids Soda
+
+  $2.00
+ ### Kids Gelato
+
+  $5.00
+
+## Dessert
+
+### Dolci
+
+ ### Dessert
+
+  $11.00
+ ### Nutella Pizza
+
+  $15.00
+
+## Bottega 1132 Valencia street Location and Ordering Hours
+
+(415) 655-9048 [...] Serving of 4. Breaded and crunchy outside, melted and juicy buffalo mozzarella inside served with homemade San Marzano tomato sauce (Vegetarian).
+
+  $14.00
+ ### Cavoletti Di Bruxelles
+
+  Daily fresh fried Brussel sprouts sautéed with roman pecorino and finished with a citrusy lemon juice dressing.
+
+  $12.00
+ ### Calamari Fritti
+
+  Lightly powdered in our seasoned flour and deep-fried with a mix of seasonal vegetables. Served with authentic cocktail salsa rosa. You’ll never have enough! [...] $16.00
+ ### Arancini
+
+  Saffron Risotto balls, Peas, smoked cheese, dipping
+  english peas Sauce
+
+  $14.00
+ ### Waffle Fries
+
+  The very well-known fried wavy fries served with our homemade, authentic, cocktail salsa rosa.
+
+  $12.00
+ ### Carciofi
+
+  $14.00
+
+### Pasta a mano
+
+ ### Spaghetti con le Polpette
+
+  Like in the movies…just a little bit better! Homemade spaghetti pasta served with our famous meatballs in the most simple but authentic San Marzano tomato sauce.
+
+============================================================
+
+SOURCE 6: https://postmates.com/store/bottega/nLSGyGdQR3WjYo3XC3W5Xg
+TITLE: Order Bottega Delivery Online - Postmates
+STRATEGY: menu_with_address
+CONTENT LENGTH: 1319 characters
+MENU ITEMS FOUND: pasta, pizza, caesar, salad, tiramisu, risotto, beef, soup
+PRICES FOUND: $0, $24.00, $12.00, $22.00, $11.00, $14.00, $23.00, $28.00, $50, $15.00
+============================================================
+FULL CONTENT:
+Skip to content
+
+Enter delivery address
+
+Log inSign up
+
+# Bottega
+
+4.6 x (2,000+) • Italian • Pasta • Pizza • Group Friendly • $$ • Info
+
+1132 Valencia Street, San Francisco, CA 94110
+
+x $0 delivery fee
+
+Other fees x
+
+Enter address
+
+to see delivery time
+
+Sunday - Thursday
+
+11:00 AM-10:50 PM
+
+Friday - Saturday
+
+11:00 AM-11:50 PM
+
+- ### Featured items
+
+  + #1 most liked
+
+    Mezzemaniche Boscaiola
+
+    $24.00 •  93% (234)
+  + #2 most liked
+
+    Caesar Salad
+
+    $12.00 •  85% (128) [...] $22.00 •  87% (158)
+  + Tiramisu
+
+    $11.00 •  92% (166)
+  + Mozzarella in Carrozza
+
+    $14.00 •  85% (193)
+  + Amatriciana
+
+    $23.00
+
+  + Risotto Tartufato
+
+    $28.00 •  83% (53)
+  + Torta al Limoncello and Mascarpone
+
+    $11.00 •  98% (55)
+
+ ### Free with $50 purchase
+
+  Max 1 free item per order
+
+  + Caesar Salad
+
+    $12.00 •  85% (128) [...] Free with $50 purchase
+  + Caprese con Burrata
+
+    $15.00 •  89% (107)
+
+    Fresh burrata cheese with a unique creamy heart on a bed of arugula, cherry tomatoes and garlic bread (Vegetarian)
+  + Polpette
+
+    $14.00 •  91% (83)
+
+    Serving of 3 meatballs. Inspired by a combination of our grandmas’ recipes. we mix 100% grounded beef meat, grated parmigiano Reggiano, breadcrumbs and a touch of garlic and cook them in the most delicious tomato sauce.
+  + Minestrone Soup
+
+============================================================
+
+SOURCE 7: https://www.grubhub.com/restaurant/bottega90-1132-valencia-st-san-francisco/2875369
+TITLE: Bottega90 Delivery Menu - 1132 Valencia St San Francisco - Grubhub
+STRATEGY: menu_with_address
+CONTENT LENGTH: 1358 characters
+MENU ITEMS FOUND: pizza, chicken, caesar, salad, bruschetta, gnocchi
+PRICES FOUND: $20.00, $14.00, $12.00, $13.00, $21.00
+============================================================
+FULL CONTENT:
+###### napoletana pizza
+
+$20.00+
+
+San Marzano tomato sauce, olives, garlic and oregano
+(Vegan)
+
+###### Kids Chicken ＆ Side
+
+$14.00
+
+Grilled or breaded fried chicken breast served with a voice of side:
+
+###### Caesar Salad
+
+$12.00+
+
+Our loved Roman lettuce, shaved salty parmigiano Reggiano, our homemade bread transformed in crispy croutons all topped with our homemade (and perfectionated) creamy Caesar dressing.
+
+###### Bruschetta
+
+$13.00
+
+burrata cheese with 24 months aged prosciutto di parma [...] Our loved Roman lettuce, shaved salty parmigiano Reggiano, our homemade bread transformed in crispy croutons all topped with our homemade (and perfectionated) creamy Caesar dressing.
+
+###### Caesar Salad
+
+$12.00+
+
+Our loved Roman lettuce, shaved salty parmigiano Reggiano, our homemade bread transformed in crispy croutons all topped with our homemade (and perfectionated) creamy Caesar dressing.
+
+###### Gnocchi
+
+$21.00+ [...] Our loved Roman lettuce, shaved salty parmigiano Reggiano, our homemade bread transformed in crispy croutons all topped with our homemade (and perfectionated) creamy Caesar dressing.
+
+###### Caesar Salad
+
+$12.00+
+
+Our loved Roman lettuce, shaved salty parmigiano Reggiano, our homemade bread transformed in crispy croutons all topped with our homemade (and perfectionated) creamy Caesar dressing.
+
+###### Caesar Salad
+
+$12.00+
+
+============================================================
+
+SOURCE 8: https://bottega.wheree.com/menu
+TITLE: Bottega Menu (Updated 2025) - Wheree
+STRATEGY: restaurant_website
+CONTENT LENGTH: 1357 characters
+MENU ITEMS FOUND: fettuccine, pasta, pizza
+PRICES FOUND: 
+============================================================
+FULL CONTENT:
+Bottega offers a delightful culinary experience that embodies the essence of Italian dining in San Francisco. Nestled on Valencia Street, this quaint eatery boasts a menu brimming with fresh and flavorful dishes made from high-quality ingredients. Customer feedback highlights the exceptional taste and generous portions of various offerings, making it a popular destination for both casual meals and special occasions. [...] - Salmon Fettuccine: Light yet satisfying pasta enjoyed for its delicious sauce and generous portion size.
+
+ With friendly staff providing attentive service, Bottega stands out as a must-visit gem in the heart of San Francisco’s vibrant culinary scene. 
+
+Image 28: Photos
+
+Bottega
+
+Location: 1132 Valencia St, San Francisco, CA 94110, United States
+
+Phone Number: +1 4156-559-048
+
+Image 29
+
+Image 30: Bottega "Bottega")Image 31: Bottega "Bottega")
+
+Image 32
+
+Previous [...] Image 33: BottegaImage 34: BottegaImage 35: BottegaImage 36: BottegaImage 37: Bottega
+
+Next
+
+Image 38: Hidden modal
+
+Image 39: Bottega
+
+Image 40: Bottega
+
+Image 41: Bottega
+
+Image 42: Bottega
+
+1/2
+
+### Related Menu Searches
+
+Image 43: Firenze By Night
+
+Firenze By Night
+1429 Stockton St, San Francisco, CA 94133, United States
+
+Image 44: Long Bridge Pizza Company
+
+Long Bridge Pizza Company
+2347 3rd St, San Francisco, CA 94107, United States
+
+Image 45: Bix
+
+============================================================
+
+SOURCE 9: https://belottirb.com/menu
+TITLE: Menus
+STRATEGY: restaurant_website
+CONTENT LENGTH: 1355 characters
+MENU ITEMS FOUND: 
+PRICES FOUND: $0
+============================================================
+FULL CONTENT:
+Menu items and prices are subject to change. Check with the restaurant for accurate menus, menu items and information pertaining to the menu
+
+(v)=vegetarian option
+
+Top
+
+
+
+4001B Piedmont Ave
+
+Oakland, CA 94611
+
+(510) 350-7619
+
+Ristorante ( full service restaurant )
+
+5403 College Avenue
+
+Oakland, CA 94618
+
+(510) 788-7890
+
+### HOURS
+
+Bottega
+
+_Monday - Saturday: 11 am - 8 pm
+
+Sunday: Closed_
+
+Ristorante
+
+_Monday-Saturday: 11:00am-10pm_
+
+_Sunday : Closed_
+
+Subscribe to our mailing list [...] Menus — Belotti Ristorante e Bottega
+
+College Ave Ristorante
+
+       Menus
+
+   
+Piedmont Ave Bottega
+
+       What is Bottega
+       Online Pick Up Ordering Page
+
+   Catering
+   Special Events
+   Reservation
+   Gift Cards
+   News
+   Contact
+   ABOUT
+
+0 items
+
+$0
+
+Image 1: Belotti Ristorante e Bottega
+
+ or call us at 510-788-7890
+
+All Day Menu
+
+dessert
+
+Wine list [...] So we can keep you posted with announcements and upcoming events.
+
+Email Address 
+
+Sign Up
+
+By submitting, you agree to our privacy policy.
+
+Thank you! We will keep you updated
+
+Image 4: Best of the east bay 2016 
+
+Image 6: Opentable diner’s choice 2016 
+
+Image 8: opentable diner’s choice 2017 
+
+Image 10: best of san francisco winner 2017 
+
+Image 12: best of the east bay 2018 winner 
+
+Image 14: best of the east bay 2019 winner 
+
+Image 16: SFC-Top88-Restaurants-2020-Badge-2000x2000px.png
+
+============================================================
+
+SOURCE 10: https://postmates.com/store/bottega/nLSGyGdQR3WjYo3XC3W5Xg
+TITLE: Order Bottega Delivery Online - Postmates
+STRATEGY: zipcode_fallback
+CONTENT LENGTH: 1280 characters
+MENU ITEMS FOUND: pasta, pizza, caesar, salad, gnocchi, fettuccine
+PRICES FOUND: $0, $24.00, $12.00
+============================================================
+FULL CONTENT:
+Skip to content
+
+Enter delivery address
+
+Log inSign up
+
+# Bottega
+
+4.6 x (2,000+) • Italian • Pasta • Pizza • Group Friendly • $$ • Info
+
+1132 Valencia Street, San Francisco, CA 94110
+
+x $0 delivery fee
+
+Other fees x
+
+Enter address
+
+to see delivery time
+
+Sunday - Thursday
+
+11:00 AM-10:50 PM
+
+Friday - Saturday
+
+11:00 AM-11:50 PM
+
+- ### Featured items
+
+  + #1 most liked
+
+    Mezzemaniche Boscaiola
+
+    $24.00 •  93% (234)
+  + #2 most liked
+
+    Caesar Salad
+
+    $12.00 •  85% (128) [...] Yes, you can access the menu for Bottega90 online on Postmates. Follow the link to see the full menu available for delivery and pickup.
++ What are the most popular items on the Bottega90 menu?
+
+  The most ordered items from Bottega90 are: Gnocchi, Fettuccine Alfredo, Mezzemaniche Boscaiola.
++ Does Bottega90 offer delivery in San Francisco? [...] Yes, Bottega90 offers delivery in San Francisco via Postmates. Enter your delivery address to see if you are within the Bottega90 delivery radius, then place your order.
++ Can I get free delivery from Bottega90?
+
+  Delivery fees for Bottega90 vary. Just enter your delivery address to see the delivery fee for your location. You could always get free delivery from Bottega90 with Postmates Unlimited.
++ Can I pick up my order from Bottega90?
+
+============================================================
+
+SOURCE 11: https://www.ubereats.com/store/bottega/nLSGyGdQR3WjYo3XC3W5Xg?srsltid=AfmBOorlfwbjmg3Nzs4-tbb_STlijE8YDBDpGhIa6N4ByPfD_-YQlyJA
+TITLE: Order Bottega - Delivered in as Little as 25 Minutes in San Francisco
+STRATEGY: zipcode_fallback
+CONTENT LENGTH: 1473 characters
+MENU ITEMS FOUND: pasta, pizza, caesar, ravioli, gnocchi, lasagna, tiramisu, risotto
+PRICES FOUND: $18.00, $21.00, $24.00, $22.00, $11.00, $14.00, $23.00
+============================================================
+FULL CONTENT:
+Skip to content
+
+Enter delivery address
+
+Log inSign up
+
+# Bottega
+
+4.6 x (2,000+) • Italian • Pasta • Pizza • Group Friendly • $$ • Info
+
+x Delivery unavailable
+
+1132 Valencia Street, San Francisco, CA 94110
+
+Group order
+
+### Rating and reviews
+
+# 4.6
+
+2000+ Ratings
+
+"they gave me soft bread to dip in my pasta sauce. i almost cried from joy. it was a rough day and i needed this❤️"
+
+• Jen A. • 04/29/24
+
+"Very nice. Meatballs with a Caesar and Lemon Cheese Cake can’t go wrong!" [...] Homemade Ravioli stuffed with porcini mushrooms and cheese, served in a tasty and creamy black truffle sauce with a touch of white truffle oil. (Vegetarian)
+ ### Entrée
+ ### Pizza Romana
+ ### Kids Menu
+ ### Combo Meals x 2
+ ### Side
+ ### Dessert
+ ### Beverages
+ ### Utensils
+ Rating and reviews
+
+  4.6
+
+   • 
+
+  2000+ Ratings • 
+
+  16 Reviews
+
+  Christopher R.
+
+  • 09/06/24
+
+  consistently delicious, and great vegan + nondairy options
+
+  Erin M.
+
+  • 08/06/24
+
+  Tastes great, quick delivery! [...] $18.00 •  78% (169)
+
+  + Gnocchi
+
+    $21.00 •  89% (212)
+  + Tartufo Pizza
+
+    $24.00 •  94% (88)
+  + Spaghetti con le polpette
+
+    $21.00 •  86% (97)
+  + Salsiccia e Funghi Pizza
+
+    $22.00 •  86% (108)
+  + Prosciutto e Burrata Pizza
+
+    $24.00 •  84% (98)
+
+  + Pepperoni pizza
+
+    $21.00 •  90% (11)
+  + Lasagna
+
+    $22.00 •  87% (157)
+  + Tiramisu
+
+    $11.00 •  92% (166)
+  + Mozzarella in Carrozza
+
+    $14.00 •  85% (193)
+  + Amatriciana
+
+    $23.00
+
+  + Risotto Tartufato
+
+============================================================
+
+SOURCE 12: https://www.ubereats.com/store/bottega/nLSGyGdQR3WjYo3XC3W5Xg?srsltid=AfmBOoojgCW4T5nRY5t1Jk8yMO7e85gASjW3qQzDG3GrUfXZnyb1Rsvy
+TITLE: Order Bottega - Delivered in as Little as 25 Minutes in San Francisco
+STRATEGY: zipcode_fallback
+CONTENT LENGTH: 1473 characters
+MENU ITEMS FOUND: pasta, pizza, caesar, ravioli, gnocchi, lasagna, tiramisu, risotto
+PRICES FOUND: $18.00, $21.00, $24.00, $22.00, $11.00, $14.00, $23.00
+============================================================
+FULL CONTENT:
+Skip to content
+
+Enter delivery address
+
+Log inSign up
+
+# Bottega
+
+4.6 x (2,000+) • Italian • Pasta • Pizza • Group Friendly • $$ • Info
+
+x Delivery unavailable
+
+1132 Valencia Street, San Francisco, CA 94110
+
+Group order
+
+### Rating and reviews
+
+# 4.6
+
+2000+ Ratings
+
+"they gave me soft bread to dip in my pasta sauce. i almost cried from joy. it was a rough day and i needed this❤️"
+
+• Jen A. • 04/29/24
+
+"Very nice. Meatballs with a Caesar and Lemon Cheese Cake can’t go wrong!" [...] Homemade Ravioli stuffed with porcini mushrooms and cheese, served in a tasty and creamy black truffle sauce with a touch of white truffle oil. (Vegetarian)
+ ### Entrée
+ ### Pizza Romana
+ ### Kids Menu
+ ### Combo Meals x 2
+ ### Side
+ ### Dessert
+ ### Beverages
+ ### Utensils
+ Rating and reviews
+
+  4.6
+
+   • 
+
+  2000+ Ratings • 
+
+  16 Reviews
+
+  Christopher R.
+
+  • 09/06/24
+
+  consistently delicious, and great vegan + nondairy options
+
+  Erin M.
+
+  • 08/06/24
+
+  Tastes great, quick delivery! [...] $18.00 •  78% (169)
+
+  + Gnocchi
+
+    $21.00 •  89% (212)
+  + Tartufo Pizza
+
+    $24.00 •  94% (88)
+  + Spaghetti con le polpette
+
+    $21.00 •  86% (97)
+  + Salsiccia e Funghi Pizza
+
+    $22.00 •  86% (108)
+  + Prosciutto e Burrata Pizza
+
+    $24.00 •  84% (98)
+
+  + Pepperoni pizza
+
+    $21.00 •  90% (11)
+  + Lasagna
+
+    $22.00 •  87% (157)
+  + Tiramisu
+
+    $11.00 •  92% (166)
+  + Mozzarella in Carrozza
+
+    $14.00 •  85% (193)
+  + Amatriciana
+
+    $23.00
+
+  + Risotto Tartufato
+
+============================================================
+
+SOURCE 13: https://bottega.wheree.com/menu
+TITLE: Bottega Menu (Updated 2025) - Wheree
+STRATEGY: zipcode_fallback
+CONTENT LENGTH: 1357 characters
+MENU ITEMS FOUND: fettuccine, pasta, pizza
+PRICES FOUND: 
+============================================================
+FULL CONTENT:
+- Salmon Fettuccine: Light yet satisfying pasta enjoyed for its delicious sauce and generous portion size.
+
+ With friendly staff providing attentive service, Bottega stands out as a must-visit gem in the heart of San Francisco’s vibrant culinary scene. 
+
+Image 28: Photos
+
+Bottega
+
+Location: 1132 Valencia St, San Francisco, CA 94110, United States
+
+Phone Number: +1 4156-559-048
+
+Image 29
+
+Image 30: Bottega "Bottega")Image 31: Bottega "Bottega")
+
+Image 32
+
+Previous [...] Bottega offers a delightful culinary experience that embodies the essence of Italian dining in San Francisco. Nestled on Valencia Street, this quaint eatery boasts a menu brimming with fresh and flavorful dishes made from high-quality ingredients. Customer feedback highlights the exceptional taste and generous portions of various offerings, making it a popular destination for both casual meals and special occasions. [...] Image 33: BottegaImage 34: BottegaImage 35: BottegaImage 36: BottegaImage 37: Bottega
+
+Next
+
+Image 38: Hidden modal
+
+Image 39: Bottega
+
+Image 40: Bottega
+
+Image 41: Bottega
+
+Image 42: Bottega
+
+1/2
+
+### Related Menu Searches
+
+Image 43: Firenze By Night
+
+Firenze By Night
+1429 Stockton St, San Francisco, CA 94133, United States
+
+Image 44: Long Bridge Pizza Company
+
+Long Bridge Pizza Company
+2347 3rd St, San Francisco, CA 94107, United States
+
+Image 45: Bix
+
+============================================================
+
+SOURCE 14: https://bottega.pops-cafe.com/
+TITLE: Bottega San Francisco, CA 94158 | Discover Full Menu, Reviews ...
+STRATEGY: zipcode_fallback
+CONTENT LENGTH: 1269 characters
+MENU ITEMS FOUND: pasta, pizza, soup, bruschetta, gnocchi, chicken
+PRICES FOUND: $8.00, $15.00, $31.00
+============================================================
+FULL CONTENT:
+Overall, Bottega offers a culinary journey through authentic Italian flavors in a stylish setting, making it a top choice for dining in San Francisco. Whether you're craving pasta, pizza, or classic Italian fare, Bottega has something for everyone to enjoy.
+
+## Bottega Menu
+
+#### Minestrone Soup
+
+Only the most fresh and seasonal ingredients mixed together and slowly cooked to make a healthy homemade vegetarian soup.
+
+$8.00
+
+#### Bruschetta [...] For main courses, Bottega serves up indulgent pasta dishes like the Gnocchi and the Mezzemaniche ai Porcini, as well as delicious pizzas including the Quattro Formaggi and the Prosciutto e Burrata. The Entre section offers mouthwatering options like the Branzino and the Chicken Parmigiana, ensuring a satisfying dining experience. [...] Step 1) Choose the noodleStep 2) Select the sauce you likeStep 3) Choose what else to add (if you want)Step 4) Make sure you have everything you need in your cartStep 5) Add a dessert (we know you want it)Step 6) Send the order and chill while you wait.... Step 7) Give us feedback on your experience...especially if you enjoyed it :)
+
+$15.00
+
+#### Branzino
+
+Wild mediterranean seabass, fillet serv with mix vegetables and famous Salerno sauce
+
+$31.00
+
+#### Parmigiana di melanzane
+
+============================================================
+

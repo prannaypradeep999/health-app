@@ -7,6 +7,7 @@ import { WorkoutPlanPage } from './WorkoutPlanPage';
 import { ProgressPage } from './ProgressPage';
 import { AccountPage } from './AccountPage';
 import { LoadingPage } from './LoadingPage';
+import { calculateTargetCalories, calculateMacroTargets } from '@/lib/utils/nutrition';
 
 type Screen = 'dashboard' | 'meal-plan' | 'workout-plan' | 'progress' | 'account';
 
@@ -20,9 +21,13 @@ interface SurveyData {
   lastName: string;
   email: string;
   age: number;
+  sex: string;
+  height: number;
+  weight: number;
   goal: string;
   city: string;
   state: string;
+  zipCode: string;
   activityLevel: string;
   createdAt: string;
 }
@@ -93,12 +98,25 @@ export function DashboardContainer({ initialScreen = 'dashboard' }: DashboardCon
     return <LoadingPage />;
   }
 
+  // Calculate nutrition targets
+  const nutritionTargets = surveyData ? calculateMacroTargets({
+    age: surveyData.age,
+    sex: surveyData.sex,
+    height: surveyData.height,
+    weight: surveyData.weight,
+    activityLevel: surveyData.activityLevel,
+    goal: surveyData.goal
+  }) : { calories: 2200, protein: 0, carbs: 0, fat: 0 };
+
   const userData = {
     name: surveyData ? `${surveyData.firstName} ${surveyData.lastName}` : 'User',
     email: surveyData?.email || 'user@example.com',
     location: surveyData ? `${surveyData.city}, ${surveyData.state}` : 'Location',
+    zipCode: surveyData?.zipCode || '',
     goal: surveyData?.goal || 'fitness',
-    activityLevel: surveyData?.activityLevel || 'moderate'
+    activityLevel: surveyData?.activityLevel || 'moderate',
+    calorieTarget: nutritionTargets.calories,
+    macroTargets: nutritionTargets
   };
 
   switch (currentScreen) {

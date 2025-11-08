@@ -29,18 +29,55 @@ interface WorkoutPlanPageProps {
 }
 
 export function WorkoutPlanPage({ onNavigate, generationStatus }: WorkoutPlanPageProps) {
-  const [selectedDay, setSelectedDay] = useState("monday");
+  // Generate dynamic days starting from today
+  const getDaysStartingFromToday = () => {
+    const today = new Date();
+    const dayNames = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'];
+    const dayDisplayNames = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+    const todayIndex = today.getDay();
+
+    const orderedDays = [];
+    for (let i = 0; i < 7; i++) { // 7-day workout plan
+      const dayIndex = (todayIndex + i) % 7;
+      orderedDays.push({
+        id: dayNames[dayIndex],
+        name: dayDisplayNames[dayIndex],
+        focus: "Loading..." // Will be updated with real data
+      });
+    }
+    return orderedDays;
+  };
+
+  const getCurrentDay = () => {
+    const today = new Date();
+    const dayNames = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'];
+    return dayNames[today.getDay()];
+  };
+
+  const [selectedDay, setSelectedDay] = useState(getCurrentDay());
   const [completedExercises, setCompletedExercises] = useState<Set<string>>(new Set());
   const [workoutData, setWorkoutData] = useState<any>(null);
   const [loading, setLoading] = useState(true);
 
-  // 4-day workout plan
-  const days = [
-    { id: "monday", name: "Mon", focus: "Upper Body" },
-    { id: "tuesday", name: "Tue", focus: "Lower Body" },
-    { id: "wednesday", name: "Wed", focus: "Push/Pull" },
-    { id: "thursday", name: "Thu", focus: "Full Body" }
-  ];
+  // Get available workout days from the actual data or fallback to dynamic days
+  const getDays = () => {
+    if (workoutData && workoutData.workoutPlan && workoutData.workoutPlan.planData && workoutData.workoutPlan.planData.weeklyPlan) {
+      // Map workout data to our dynamic day structure
+      const dynamicDays = getDaysStartingFromToday();
+      return dynamicDays.map((dayInfo) => {
+        const workoutDay = workoutData.workoutPlan.planData.weeklyPlan.find((wd: any) => wd.day === dayInfo.id);
+        return {
+          id: dayInfo.id,
+          name: dayInfo.name,
+          focus: workoutDay ? (workoutDay.restDay ? "Rest Day" : (workoutDay.focus || "Workout")) : "No workout"
+        };
+      });
+    }
+    // Fallback to dynamic days starting from today
+    return getDaysStartingFromToday();
+  };
+
+  const days = getDays();
 
   useEffect(() => {
     if (generationStatus.workoutsGenerated) {
@@ -74,48 +111,48 @@ export function WorkoutPlanPage({ onNavigate, generationStatus }: WorkoutPlanPag
     setCompletedExercises(newCompleted);
   };
 
-  // Mock workout data for demo
-  const currentWorkout = {
-    focus: "Upper Body Strength",
-    duration: 45,
-    calories: 350,
-    exercises: [
-      {
-        id: "e1",
-        name: "Push-ups",
-        sets: 3,
-        reps: "12-15",
-        restTime: "60s",
-        targetMuscles: ["Chest", "Triceps", "Shoulders"],
-        instructions: "Keep your body straight, lower chest to floor, push back up"
-      },
-      {
-        id: "e2",
-        name: "Dumbbell Rows",
-        sets: 3,
-        reps: "10-12",
-        weight: "15-20 lbs",
-        restTime: "60s",
-        targetMuscles: ["Back", "Biceps"],
-        instructions: "Pull weight to hip, squeeze shoulder blades together"
-      },
-      {
-        id: "e3",
-        name: "Shoulder Press",
-        sets: 3,
-        reps: "10-12",
-        weight: "10-15 lbs",
-        restTime: "60s",
-        targetMuscles: ["Shoulders", "Triceps"],
-        instructions: "Press weights overhead, control the descent"
+  // Get current workout based on selected day
+  const getCurrentWorkout = () => {
+    if (workoutData && workoutData.workoutPlan && workoutData.workoutPlan.planData && workoutData.workoutPlan.planData.weeklyPlan) {
+      console.log('Looking for workout for day:', selectedDay, 'in data:', workoutData.workoutPlan.planData.weeklyPlan);
+
+      const workoutDay = workoutData.workoutPlan.planData.weeklyPlan.find((day: any) => {
+        console.log('Checking workout day:', day.day, 'focus:', day.focus, 'against:', selectedDay);
+        return day.day === selectedDay;
+      });
+
+      if (workoutDay) {
+        console.log('Found workout for day:', workoutDay);
+        return {
+          focus: workoutDay.restDay ? "Rest Day" : (workoutDay.focus || "Workout"),
+          duration: parseInt(workoutDay.estimatedTime) || 60,
+          calories: workoutDay.restDay ? 0 : 350, // No calories burned on rest days
+          exercises: workoutDay.exercises || [],
+          restDay: workoutDay.restDay || false,
+          description: workoutDay.description || ""
+        };
       }
-    ]
+    }
+
+    // No real workout data available
+    console.log('No real workout data found - showing empty state');
+    return {
+      focus: "No workout data available",
+      duration: 0,
+      calories: 0,
+      exercises: [],
+      restDay: false,
+      description: ""
+    };
   };
+
+  const currentWorkout = getCurrentWorkout();
 
   const completionPercentage = (completedExercises.size / currentWorkout.exercises.length) * 100;
 
   const ExerciseCard = ({ exercise }: { exercise: any }) => {
-    const isCompleted = completedExercises.has(exercise.id);
+    const exerciseId = exercise.name; // Use name as ID since no id field
+    const isCompleted = completedExercises.has(exerciseId);
 
     return (
       <Card className={`mb-4 border-0 shadow-subtle transition-all duration-200 hover:shadow-medium ${
@@ -123,8 +160,19 @@ export function WorkoutPlanPage({ onNavigate, generationStatus }: WorkoutPlanPag
       }`}>
         <CardContent className="p-4">
           <div className="flex space-x-4">
-            <div className="w-20 h-20 bg-gradient-to-br from-gray-100 to-gray-50 rounded-lg flex items-center justify-center">
-              <Dumbbell className="w-8 h-8 text-gray-500" />
+            <div className="w-20 h-20 bg-gradient-to-br from-gray-100 to-gray-50 rounded-lg flex items-center justify-center overflow-hidden">
+              {exercise.imageUrl ? (
+                <ImageWithFallback
+                  src={exercise.imageUrl}
+                  alt={exercise.name}
+                  width={80}
+                  height={80}
+                  className="w-full h-full object-cover rounded-lg"
+                  fallback={<Dumbbell className="w-8 h-8 text-gray-500" />}
+                />
+              ) : (
+                <Dumbbell className="w-8 h-8 text-gray-500" />
+              )}
             </div>
             <div className="flex-1">
               <div className="flex items-start justify-between mb-2">
@@ -132,7 +180,7 @@ export function WorkoutPlanPage({ onNavigate, generationStatus }: WorkoutPlanPag
                 <Button
                   variant={isCompleted ? "default" : "outline"}
                   size="sm"
-                  onClick={() => toggleExerciseComplete(exercise.id)}
+                  onClick={() => toggleExerciseComplete(exerciseId)}
                   className={isCompleted ? "bg-accent-green hover:bg-accent-green/90 text-white" : "border-neutral-200"}
                 >
                   {isCompleted ? (
@@ -144,7 +192,7 @@ export function WorkoutPlanPage({ onNavigate, generationStatus }: WorkoutPlanPag
               </div>
 
               <div className="flex flex-wrap gap-2 mb-3">
-                {exercise.targetMuscles.map((muscle: string) => (
+                {(exercise.muscleTargets || []).map((muscle: string) => (
                   <Badge key={muscle} variant="secondary" className="text-xs bg-neutral-100 text-neutral-700">
                     {muscle}
                   </Badge>
@@ -164,9 +212,9 @@ export function WorkoutPlanPage({ onNavigate, generationStatus }: WorkoutPlanPag
                 </div>
               </div>
 
-              {exercise.weight && (
+              {exercise.description && (
                 <div className="text-sm text-accent-blue mb-1">
-                  Weight: {exercise.weight}
+                  {exercise.description}
                 </div>
               )}
 
@@ -190,6 +238,32 @@ export function WorkoutPlanPage({ onNavigate, generationStatus }: WorkoutPlanPag
         Creating personalized exercises based on your fitness goals...
       </p>
     </div>
+  );
+
+  const RestDay = ({ description }: { description: string }) => (
+    <Card className="mb-6 border-0 shadow-subtle bg-gradient-to-br from-green-50 to-blue-50">
+      <CardContent className="p-8 text-center">
+        <div className="w-16 h-16 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-4">
+          <span className="text-3xl">🧘‍♂️</span>
+        </div>
+        <h3 className="text-xl font-medium text-neutral-900 mb-3">Rest & Recovery Day</h3>
+        <p className="text-neutral-600 mb-6">{description}</p>
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-sm">
+          <div className="p-4 bg-white rounded-lg shadow-sm">
+            <div className="font-medium text-green-600 mb-1">💧 Hydration</div>
+            <div className="text-neutral-600">Drink plenty of water throughout the day</div>
+          </div>
+          <div className="p-4 bg-white rounded-lg shadow-sm">
+            <div className="font-medium text-blue-600 mb-1">🧘 Recovery</div>
+            <div className="text-neutral-600">Light stretching or yoga</div>
+          </div>
+          <div className="p-4 bg-white rounded-lg shadow-sm">
+            <div className="font-medium text-purple-600 mb-1">🍎 Nutrition</div>
+            <div className="text-neutral-600">Focus on protein and nutrients</div>
+          </div>
+        </div>
+      </CardContent>
+    </Card>
   );
 
   if (!generationStatus.workoutsGenerated) {
@@ -374,12 +448,25 @@ export function WorkoutPlanPage({ onNavigate, generationStatus }: WorkoutPlanPag
           </CardContent>
         </Card>
 
-        {/* Exercises */}
+        {/* Exercises or Rest Day */}
         <div className="space-y-4 pb-24">
-          <h2 className="text-xl font-medium text-neutral-900">Today's Exercises</h2>
-          {currentWorkout.exercises.map((exercise: any) => (
-            <ExerciseCard key={exercise.id} exercise={exercise} />
-          ))}
+          {currentWorkout.restDay ? (
+            <RestDay description={currentWorkout.description} />
+          ) : (
+            <>
+              <h2 className="text-xl font-medium text-neutral-900">Today's Exercises</h2>
+              {currentWorkout.exercises.length > 0 ? (
+                currentWorkout.exercises.map((exercise: any) => (
+                  <ExerciseCard key={exercise.id || exercise.name} exercise={exercise} />
+                ))
+              ) : (
+                <div className="text-center py-8">
+                  <p className="text-neutral-600">No workout data available for {selectedDay}</p>
+                  <p className="text-sm text-neutral-500 mt-2">Real workout data will appear here once generated</p>
+                </div>
+              )}
+            </>
+          )}
         </div>
       </div>
 
