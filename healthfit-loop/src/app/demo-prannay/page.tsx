@@ -1,9 +1,9 @@
 'use client';
 
-import { useEffect } from 'react';
+import { useEffect, Suspense } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 
-export default function DemoPrannayPage() {
+function DemoPrannayContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
 
@@ -47,5 +47,20 @@ export default function DemoPrannayPage() {
         <p className="text-sm text-gray-600">Loading personalized muscle gain plan with real restaurant search for 1244 California St, SF</p>
       </div>
     </div>
+  );
+}
+
+export default function DemoPrannayPage() {
+  return (
+    <Suspense fallback={
+      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+        <div className="text-center">
+          <div className="w-8 h-8 border-2 border-red-600 border-t-transparent rounded-full animate-spin mx-auto mb-4"></div>
+          <h2 className="text-lg font-medium text-gray-900 mb-2">Loading demo...</h2>
+        </div>
+      </div>
+    }>
+      <DemoPrannayContent />
+    </Suspense>
   );
 }
