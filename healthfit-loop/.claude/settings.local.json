@@ -40,7 +40,12 @@
       "Bash(npm install:*)",
       "Bash(brew services start:*)",
       "Bash(brew services:*)",
-      "Bash(brew list:*)"
+      "Bash(brew list:*)",
+      "Bash(/dev/null)",
+      "Bash(open \"http://localhost:3001\")",
+      "Bash(npm start)",
+      "Read(//private/tmp/**)",
+      "Bash(open \"http://localhost:3004/dashboard\")"
     ],
     "deny": [],
     "ask": []

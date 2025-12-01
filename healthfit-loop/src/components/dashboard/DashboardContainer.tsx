@@ -53,6 +53,18 @@ export function DashboardContainer({ initialScreen = 'dashboard' }: DashboardCon
     checkGenerationStatus();
   }, []);
 
+  useEffect(() => {
+    // Poll for generation status updates every 5 seconds if meals aren't generated yet
+    if (!generationStatus.mealsGenerated) {
+      const pollInterval = setInterval(() => {
+        console.log('Polling for meal generation status...');
+        checkGenerationStatus();
+      }, 5000);
+
+      return () => clearInterval(pollInterval);
+    }
+  }, [generationStatus.mealsGenerated]);
+
   const fetchSurveyData = async () => {
     try {
       const response = await fetch('/api/survey');
@@ -67,21 +79,21 @@ export function DashboardContainer({ initialScreen = 'dashboard' }: DashboardCon
 
   const checkGenerationStatus = async () => {
     try {
-      // Check if meals are generated
-      const mealsResponse = await fetch('/api/ai/meals/current');
-      const mealsGenerated = mealsResponse.ok;
+      // Simple check - just see if APIs return data
+      const [mealsResponse, workoutsResponse] = await Promise.all([
+        fetch('/api/ai/meals/current'),
+        fetch('/api/ai/workouts/current')
+      ]);
 
-      // Check if workouts are generated
-      const workoutsResponse = await fetch('/api/ai/workouts/current');
+      const mealsGenerated = mealsResponse.ok;
       const workoutsGenerated = workoutsResponse.ok;
 
-      // For now, assume restaurants are discovered if meals are generated
-      const restaurantsDiscovered = mealsGenerated;
+      console.log(`Generation status: meals=${mealsGenerated}, workouts=${workoutsGenerated}`);
 
       setGenerationStatus({
         mealsGenerated,
         workoutsGenerated,
-        restaurantsDiscovered
+        restaurantsDiscovered: mealsGenerated
       });
     } catch (error) {
       console.error('Failed to check generation status:', error);

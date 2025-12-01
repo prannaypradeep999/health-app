@@ -15,8 +15,11 @@ import {
   Plus,
   BarChart3,
   Apple,
-  Dumbbell
+  Dumbbell,
+  User,
+  MapPin
 } from "lucide-react";
+// import ModernMealPlanModal from "./modals/ModernMealPlanModal";
 
 interface DashboardHomeProps {
   user: any;
@@ -33,14 +36,151 @@ export function DashboardHome({ user, onNavigate, generationStatus }: DashboardH
   const [consumedMeals, setConsumedMeals] = useState<any>(null);
   const [workoutProgress, setWorkoutProgress] = useState<any>(null);
   const [loading, setLoading] = useState(false);
+  const [eatenMeals, setEatenMeals] = useState<{[key: string]: boolean}>({});
+  const [isInitialized, setIsInitialized] = useState(false);
+  const [completedExercises, setCompletedExercises] = useState<Record<string, Set<string>>>({});
+  const [workoutData, setWorkoutData] = useState<any>(null);
+
+  // Helper functions for the new design
+  const getGreeting = () => {
+    const hour = new Date().getHours();
+    if (hour < 12) return "Good morning";
+    if (hour < 18) return "Good afternoon";
+    return "Good evening";
+  };
+
+  const getUserLocation = () => {
+    if (user?.activeSurvey?.city && user?.activeSurvey?.state) {
+      return `${user.activeSurvey.city}, ${user.activeSurvey.state}`;
+    }
+    return "Location not set";
+  };
+
+  const getGoalText = () => {
+    const goal = user?.activeSurvey?.goal || "GENERAL_WELLNESS";
+    const goalMap = {
+      'WEIGHT_LOSS': 'Lose weight & feel great',
+      'MUSCLE_GAIN': 'Build muscle & strength',
+      'ENDURANCE': 'Improve endurance',
+      'GENERAL_WELLNESS': 'Stay healthy & active'
+    };
+    return goalMap[goal] || goalMap['GENERAL_WELLNESS'];
+  };
+
+  const getDayCount = () => {
+    // Calculate days since plan creation (you can adjust this logic)
+    if (mealData?.mealPlan?.weekOf) {
+      const startDate = new Date(mealData.mealPlan.weekOf);
+      const today = new Date();
+      const diffTime = Math.abs(today.getTime() - startDate.getTime());
+      const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+      return Math.min(diffDays, 90); // Cap at 90 days
+    }
+    return 1;
+  };
 
   useEffect(() => {
     if (generationStatus.mealsGenerated) {
       fetchMealData();
     }
+    if (generationStatus.workoutsGenerated) {
+      fetchWorkoutData();
+    }
     fetchConsumptionData();
     fetchWorkoutProgress();
+
+    // Load persisted eaten meals from localStorage
+    const savedEatenMeals = localStorage.getItem('eatenMeals');
+    console.log('Dashboard useEffect - Loading from localStorage:', savedEatenMeals);
+    if (savedEatenMeals) {
+      const parsed = JSON.parse(savedEatenMeals);
+      console.log('Dashboard useEffect - Parsed eatenMeals:', parsed);
+      setEatenMeals(parsed);
+    }
+    setIsInitialized(true);
+
+    // Load persisted completed exercises from localStorage
+    const savedCompletedExercises = localStorage.getItem('completedExercises');
+    console.log('Dashboard useEffect - Loading completedExercises from localStorage:', savedCompletedExercises);
+    if (savedCompletedExercises) {
+      try {
+        const parsed = JSON.parse(savedCompletedExercises);
+        console.log('Dashboard useEffect - Parsed completedExercises:', parsed);
+        // Convert Sets back from arrays (localStorage can't store Sets)
+        const restoredState: Record<string, Set<string>> = {};
+        Object.keys(parsed).forEach(day => {
+          restoredState[day] = new Set(parsed[day]);
+        });
+        setCompletedExercises(restoredState);
+      } catch (error) {
+        console.error('Error parsing completed exercises from localStorage:', error);
+      }
+    }
   }, [generationStatus.mealsGenerated]);
+
+  // Refresh data when dashboard comes into focus (user switches back from other tabs)
+  useEffect(() => {
+    const handleFocus = () => {
+      console.log('Dashboard focused - refreshing data');
+      fetchWorkoutProgress();
+      fetchConsumptionData();
+
+      // Also reload eaten meals from localStorage in case they changed in other tabs
+      const savedEatenMeals = localStorage.getItem('eatenMeals');
+      if (savedEatenMeals) {
+        setEatenMeals(JSON.parse(savedEatenMeals));
+      }
+    };
+
+    // Listen for localStorage changes from other tabs/windows
+    const handleStorageChange = (e: StorageEvent) => {
+      if (e.key === 'eatenMeals' && e.newValue) {
+        console.log('Dashboard - localStorage changed in another tab:', e.newValue);
+        setEatenMeals(JSON.parse(e.newValue));
+      }
+    };
+
+    // Listen for custom events from same tab (meal plan page)
+    const handleEatenMealsUpdate = (e: CustomEvent) => {
+      console.log('Dashboard - received eatenMealsUpdate event:', e.detail);
+      // Only update if the new state is different and has content
+      if (e.detail && Object.keys(e.detail).length > 0) {
+        setEatenMeals(e.detail);
+      }
+    };
+
+    // Listen for custom events from same tab (workout plan page)
+    const handleCompletedExercisesUpdate = (e: CustomEvent) => {
+      console.log('Dashboard - received completedExercisesUpdate event:', e.detail);
+      setCompletedExercises(e.detail);
+    };
+
+    window.addEventListener('focus', handleFocus);
+    window.addEventListener('storage', handleStorageChange);
+    window.addEventListener('eatenMealsUpdate', handleEatenMealsUpdate as EventListener);
+    window.addEventListener('completedExercisesUpdate', handleCompletedExercisesUpdate as EventListener);
+
+    return () => {
+      window.removeEventListener('focus', handleFocus);
+      window.removeEventListener('storage', handleStorageChange);
+      window.removeEventListener('eatenMealsUpdate', handleEatenMealsUpdate as EventListener);
+      window.removeEventListener('completedExercisesUpdate', handleCompletedExercisesUpdate as EventListener);
+    };
+  }, []);
+
+  // Save eaten meals to localStorage whenever it changes (but skip initial empty state)
+  useEffect(() => {
+    // Only save if we're initialized and have some data
+    if (isInitialized && Object.keys(eatenMeals).length > 0) {
+      console.log('Dashboard - Saving to localStorage:', eatenMeals);
+      localStorage.setItem('eatenMeals', JSON.stringify(eatenMeals));
+      console.log('Dashboard - Saved to localStorage, checking:', localStorage.getItem('eatenMeals'));
+
+      // Dispatch custom event to notify other components in the same tab (like meal plan page)
+      const event = new CustomEvent('eatenMealsUpdate', { detail: eatenMeals });
+      window.dispatchEvent(event);
+    }
+  }, [eatenMeals, isInitialized]);
 
   const fetchConsumptionData = async () => {
     try {
@@ -72,6 +212,8 @@ export function DashboardHome({ user, onNavigate, generationStatus }: DashboardH
       const response = await fetch('/api/ai/meals/current');
       if (response.ok) {
         const data = await response.json();
+        console.log('Dashboard meal data:', data);
+        console.log('Day 1 meals:', data?.mealPlan?.planData?.weeklyPlan?.find(d => d.day === 1));
         setMealData(data);
       }
     } catch (error) {
@@ -81,291 +223,813 @@ export function DashboardHome({ user, onNavigate, generationStatus }: DashboardH
     }
   };
 
-  // Get today's meals from real data
-  const getTodaysMeals = () => {
-    if (mealData && mealData.mealPlan && mealData.mealPlan.meals && mealData.mealPlan.meals.length > 0) {
-      // Get today's meals (day 1 in our 4-day plan) - handling new JSON structure
-      const todaysMeals = mealData.mealPlan.meals.find((day: any) => day.day === 1) || mealData.mealPlan.meals[0];
+  const fetchWorkoutData = async () => {
+    try {
+      const response = await fetch('/api/ai/workouts/current');
+      if (response.ok) {
+        const data = await response.json();
+        console.log('Dashboard workout data:', data);
+        setWorkoutData(data);
+      }
+    } catch (error) {
+      console.error('Failed to fetch workout data:', error);
+    }
+  };
 
-      const formatMeal = (meal) => {
-        if (!meal) return "No data available";
-        if (meal.source === "restaurant") {
-          return `${meal.dish} from ${meal.restaurant} ($${meal.price})`;
+  // Get today's meals from real data - using same structure as MealPlanPage
+  const getTodaysMeals = () => {
+    if (mealData && mealData.mealPlan && mealData.mealPlan.planData && mealData.mealPlan.planData.weeklyPlan) {
+      // Get today's meals (day 1) - same logic as meal tab
+      const todaysMeals = mealData.mealPlan.planData.weeklyPlan.find((day: any) => day.day === 1) || mealData.mealPlan.planData.weeklyPlan[0];
+
+      const formatMeal = (meal: any, optionType: 'primary' | 'alternative' = 'primary') => {
+        if (!meal) return { name: "No data available", image: null, calories: 0 };
+
+        // Handle primary/alternatives structure
+        let actualMeal;
+        if (optionType === 'alternative' && meal.alternatives && meal.alternatives.length > 0) {
+          actualMeal = meal.alternatives[0]; // First alternative
         } else {
-          return meal.name || "Home-cooked meal";
+          actualMeal = meal.primary || meal;
+        }
+
+        if (actualMeal.source === "restaurant") {
+          return {
+            name: `${actualMeal.dish} from ${actualMeal.restaurant}`,
+            image: actualMeal.imageUrl || actualMeal.image,
+            calories: actualMeal.calories || 0,
+            restaurant: actualMeal.restaurant,
+            price: actualMeal.price
+          };
+        } else {
+          return {
+            name: actualMeal.name || actualMeal.dish || "Home-cooked meal",
+            image: actualMeal.imageUrl || actualMeal.image,
+            calories: actualMeal.calories || 0
+          };
         }
       };
 
-      // Estimate calories based on meal type if not provided
-      const estimateCalories = (meal: any, mealType: string) => {
-        if (meal?.calories) return meal.calories;
-
-        // Fallback calorie estimates based on meal type and source
-        const mealCalorieEstimates = {
-          breakfast: { home: 350, restaurant: 400 },
-          lunch: { home: 450, restaurant: 550 },
-          dinner: { home: 500, restaurant: 650 }
-        };
-
-        const source = meal?.source || 'home';
-        return mealCalorieEstimates[mealType as keyof typeof mealCalorieEstimates]?.[source as 'home' | 'restaurant'] || 400;
-      };
-
-      const breakfastCals = estimateCalories(todaysMeals.breakfast, 'breakfast');
-      const lunchCals = estimateCalories(todaysMeals.lunch, 'lunch');
-      const dinnerCals = estimateCalories(todaysMeals.dinner, 'dinner');
+      // Handle the {primary, alternatives} structure - show both options
+      const breakfastPrimary = formatMeal(todaysMeals.breakfast, 'primary');
+      const breakfastAlternative = formatMeal(todaysMeals.breakfast, 'alternative');
+      const lunchPrimary = formatMeal(todaysMeals.lunch, 'primary');
+      const lunchAlternative = formatMeal(todaysMeals.lunch, 'alternative');
+      const dinnerPrimary = formatMeal(todaysMeals.dinner, 'primary');
+      const dinnerAlternative = formatMeal(todaysMeals.dinner, 'alternative');
 
       return {
-        breakfast: formatMeal(todaysMeals.breakfast),
-        lunch: formatMeal(todaysMeals.lunch),
-        dinner: formatMeal(todaysMeals.dinner),
-        totalCalories: breakfastCals + lunchCals + dinnerCals,
+        breakfast: {
+          primary: breakfastPrimary,
+          alternative: breakfastAlternative
+        },
+        lunch: {
+          primary: lunchPrimary,
+          alternative: lunchAlternative
+        },
+        dinner: {
+          primary: dinnerPrimary,
+          alternative: dinnerAlternative
+        },
+        totalCalories: Math.round((breakfastPrimary.calories + lunchPrimary.calories + dinnerPrimary.calories) / 50) * 50,
         dayName: todaysMeals.day_name || "Today"
       };
     }
+
     return {
-      breakfast: "No meal data available",
-      lunch: "No meal data available",
-      dinner: "No meal data available",
+      breakfast: {
+        primary: { name: "No meal data available", image: null, calories: 0 },
+        alternative: { name: "No meal data available", image: null, calories: 0 }
+      },
+      lunch: {
+        primary: { name: "No meal data available", image: null, calories: 0 },
+        alternative: { name: "No meal data available", image: null, calories: 0 }
+      },
+      dinner: {
+        primary: { name: "No meal data available", image: null, calories: 0 },
+        alternative: { name: "No meal data available", image: null, calories: 0 }
+      },
       totalCalories: 0,
       dayName: "Today"
     };
   };
 
+  // Get today's workout from real data - using same structure as WorkoutPlanPage
+  const getTodaysWorkout = () => {
+    if (workoutData && workoutData.workoutPlan && workoutData.workoutPlan.planData && workoutData.workoutPlan.planData.weeklyPlan) {
+      const todayDayName = getTodayDayName();
+      console.log('Dashboard - Looking for workout for:', todayDayName);
+
+      const workoutDay = workoutData.workoutPlan.planData.weeklyPlan.find((day: any) => {
+        console.log('Dashboard - Checking workout day:', day.day, 'focus:', day.focus);
+        return day.day === todayDayName;
+      });
+
+      if (workoutDay) {
+        console.log('Dashboard - Found workout for today:', workoutDay);
+        return {
+          focus: workoutDay.restDay ? "Rest Day" : workoutDay.focus,
+          duration: parseInt(workoutDay.estimatedTime) || 0,
+          calories: workoutDay.restDay ? 0 : workoutDay.estimatedCalories || 0,
+          exercises: workoutDay.exercises || [],
+          restDay: workoutDay.restDay || false,
+          description: workoutDay.description || "",
+          totalExercises: (workoutDay.exercises || []).length
+        };
+      }
+    }
+
+    return {
+      focus: "No workout data available",
+      duration: 0,
+      calories: 0,
+      exercises: [],
+      restDay: false,
+      description: "Generate your workout plan to see today's workout",
+      totalExercises: 0
+    };
+  };
+
+  // Helper function to get today's day name (same format as MealPlanPage)
+  const getTodayDayName = () => {
+    const today = new Date();
+    const dayNames = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'];
+    return dayNames[today.getDay()];
+  };
+
+  // Helper functions for meal consumption tracking (same as MealPlanPage)
+  const isMealEaten = (mealType: string, optionIndex: number = 0, optionType: 'primary' | 'alternative' = 'primary') => {
+    const selectedDay = getTodayDayName(); // Always use TODAY for dashboard
+    const mealKey = `${selectedDay}-${mealType}-${optionType}-${optionIndex}`;
+    console.log('Dashboard isMealEaten - selectedDay:', selectedDay, 'mealKey:', mealKey, 'eatenMeals:', eatenMeals);
+    return eatenMeals[mealKey] || false;
+  };
+
+  // Helper function to toggle meal eaten status from dashboard
+  const toggleMealEatenFromDashboard = (mealType: string, optionIndex: number = 0, optionType: 'primary' | 'alternative' = 'primary') => {
+    const selectedDay = getTodayDayName();
+    const mealKey = `${selectedDay}-${mealType}-${optionType}-${optionIndex}`;
+    console.log('Dashboard - toggleMealEatenFromDashboard called');
+    console.log('Dashboard - selectedDay:', selectedDay);
+    console.log('Dashboard - mealKey:', mealKey);
+    console.log('Dashboard - current eatenMeals:', eatenMeals);
+
+    setEatenMeals(prev => {
+      const newState = {
+        ...prev,
+        [mealKey]: !prev[mealKey]
+      };
+      console.log('Dashboard - new eatenMeals state:', newState);
+      return newState;
+    });
+  };
+
+  // Calculate real consumed macros for today
+  const getTotalCaloriesEaten = () => {
+    let total = 0;
+    const meals = getTodaysMeals();
+
+    // Check primary and alternative options for all meals
+    if (isMealEaten('breakfast', 0, 'primary')) {
+      total += meals.breakfast?.primary?.calories || 0;
+    }
+    if (isMealEaten('breakfast', 0, 'alternative')) {
+      total += meals.breakfast?.alternative?.calories || 0;
+    }
+    if (isMealEaten('lunch', 0, 'primary')) {
+      total += meals.lunch?.primary?.calories || 0;
+    }
+    if (isMealEaten('lunch', 0, 'alternative')) {
+      total += meals.lunch?.alternative?.calories || 0;
+    }
+    if (isMealEaten('dinner', 0, 'primary')) {
+      total += meals.dinner?.primary?.calories || 0;
+    }
+    if (isMealEaten('dinner', 0, 'alternative')) {
+      total += meals.dinner?.alternative?.calories || 0;
+    }
+
+    console.log('Real calories eaten - total:', total);
+    return total;
+  };
+
+  const getTotalProteinEaten = () => {
+    let total = 0;
+    const meals = getTodaysMeals();
+
+    // Get protein from actual meal data for checked items
+    if (isMealEaten('breakfast', 0, 'primary')) {
+      total += getMealMacro(meals.breakfast?.primary, 'protein') || 0;
+    }
+    if (isMealEaten('breakfast', 0, 'alternative')) {
+      total += getMealMacro(meals.breakfast?.alternative, 'protein') || 0;
+    }
+    if (isMealEaten('lunch', 0, 'primary')) {
+      total += getMealMacro(meals.lunch?.primary, 'protein') || 0;
+    }
+    if (isMealEaten('lunch', 0, 'alternative')) {
+      total += getMealMacro(meals.lunch?.alternative, 'protein') || 0;
+    }
+    if (isMealEaten('dinner', 0, 'primary')) {
+      total += getMealMacro(meals.dinner?.primary, 'protein') || 0;
+    }
+    if (isMealEaten('dinner', 0, 'alternative')) {
+      total += getMealMacro(meals.dinner?.alternative, 'protein') || 0;
+    }
+
+    console.log('Real protein eaten - total:', total);
+    return Math.round(total);
+  };
+
+  const getTotalCarbsEaten = () => {
+    let total = 0;
+    const meals = getTodaysMeals();
+
+    // Get carbs from actual meal data for checked items
+    if (isMealEaten('breakfast', 0, 'primary')) {
+      total += getMealMacro(meals.breakfast?.primary, 'carbs') || 0;
+    }
+    if (isMealEaten('breakfast', 0, 'alternative')) {
+      total += getMealMacro(meals.breakfast?.alternative, 'carbs') || 0;
+    }
+    if (isMealEaten('lunch', 0, 'primary')) {
+      total += getMealMacro(meals.lunch?.primary, 'carbs') || 0;
+    }
+    if (isMealEaten('lunch', 0, 'alternative')) {
+      total += getMealMacro(meals.lunch?.alternative, 'carbs') || 0;
+    }
+    if (isMealEaten('dinner', 0, 'primary')) {
+      total += getMealMacro(meals.dinner?.primary, 'carbs') || 0;
+    }
+    if (isMealEaten('dinner', 0, 'alternative')) {
+      total += getMealMacro(meals.dinner?.alternative, 'carbs') || 0;
+    }
+
+    return Math.round(total);
+  };
+
+  const getTotalFatEaten = () => {
+    let total = 0;
+    const meals = getTodaysMeals();
+
+    // Get fat from actual meal data for checked items
+    if (isMealEaten('breakfast', 0, 'primary')) {
+      total += getMealMacro(meals.breakfast?.primary, 'fat') || 0;
+    }
+    if (isMealEaten('breakfast', 0, 'alternative')) {
+      total += getMealMacro(meals.breakfast?.alternative, 'fat') || 0;
+    }
+    if (isMealEaten('lunch', 0, 'primary')) {
+      total += getMealMacro(meals.lunch?.primary, 'fat') || 0;
+    }
+    if (isMealEaten('lunch', 0, 'alternative')) {
+      total += getMealMacro(meals.lunch?.alternative, 'fat') || 0;
+    }
+    if (isMealEaten('dinner', 0, 'primary')) {
+      total += getMealMacro(meals.dinner?.primary, 'fat') || 0;
+    }
+    if (isMealEaten('dinner', 0, 'alternative')) {
+      total += getMealMacro(meals.dinner?.alternative, 'fat') || 0;
+    }
+
+    return Math.round(total);
+  };
+
+  // Helper function to extract macro values from meal data
+  const getMealMacro = (meal: any, macroType: string): number => {
+    if (!meal) return 0;
+
+    // Try to get macro data from the meal object
+    const macroValue = meal[macroType];
+    if (typeof macroValue === 'number') {
+      return macroValue;
+    }
+
+    // Fallback to estimated values based on calories for basic calculation
+    if (meal.calories && typeof meal.calories === 'number') {
+      const estimatedMacros = {
+        protein: Math.round(meal.calories * 0.25 / 4), // 25% calories from protein
+        carbs: Math.round(meal.calories * 0.45 / 4), // 45% calories from carbs
+        fat: Math.round(meal.calories * 0.30 / 9) // 30% calories from fat
+      };
+      return estimatedMacros[macroType] || 0;
+    }
+
+    return 0;
+  };
+
   const todaysMeals = getTodaysMeals();
+  const todaysWorkout = getTodaysWorkout();
 
-  const caloriesTarget = user?.calorieTarget || 2200;
-  const caloriesConsumed = consumedMeals?.totalCaloriesConsumed || 0; // Real consumed calories from tracking
-  const estimatedMealCalories = todaysMeals.totalCalories; // Estimated if no consumption logged
-  const displayCalories = caloriesConsumed > 0 ? caloriesConsumed : estimatedMealCalories;
+  // Get nutrition targets from meal plan data or user data
+  const nutritionTargets = mealData?.mealPlan?.nutritionTargets || user?.macroTargets || {
+    dailyCalories: 2200,
+    dailyProtein: 165,
+    dailyCarbs: 275,
+    dailyFat: 73
+  };
 
-  const workoutsCompleted = workoutProgress?.completedWorkouts || 0;
-  const workoutsPlanned = workoutProgress?.totalWorkouts || 4;
+  // Use real eaten calories from checkbox tracking
+  const caloriesEaten = getTotalCaloriesEaten();
+  const proteinEaten = getTotalProteinEaten();
+  const carbsEaten = getTotalCarbsEaten();
+  const fatEaten = getTotalFatEaten();
+
+  // Calculate today's workout completion from localStorage data
+  const calculateTodayWorkoutCompletion = () => {
+    const todayDayName = getTodayDayName();
+    const todayCompleted = completedExercises[todayDayName] || new Set();
+    const todaysWorkoutData = getTodaysWorkout();
+
+    const totalExercisesToday = todaysWorkoutData.totalExercises || 0;
+    const completedToday = todayCompleted.size;
+
+    return {
+      completed: completedToday,
+      planned: totalExercisesToday,
+      percentage: totalExercisesToday > 0 ? Math.round((completedToday / totalExercisesToday) * 100) : 0
+    };
+  };
+
+  const todayWorkoutCompletion = calculateTodayWorkoutCompletion();
 
   return (
     <div className="min-h-screen bg-[#fafafa]">
       {/* Header */}
-      <div className="bg-white border-b border-[#e3e8ef] px-8 py-6">
+      <div className="bg-gradient-to-r from-white to-gray-50 border-b border-gray-200 px-4 sm:px-6 lg:px-8 py-6 sm:py-8 shadow-sm">
         <div className="max-w-7xl mx-auto flex items-center justify-between">
-          <div className="flex items-center space-x-8">
-            <div className="flex items-center space-x-3">
-              <img src="/fytr-icon.svg" alt="FYTR" className="w-8 h-8" />
-              <span className="text-lg font-semibold text-[#0a2540]">FYTR</span>
+          <div className="flex items-center space-x-4 sm:space-x-8">
+            <div className="flex items-center space-x-2 sm:space-x-3">
+              <img src="/fytr-icon.svg" alt="FYTR" className="w-8 h-8 sm:w-10 sm:h-10" />
+              <span className="text-lg sm:text-xl font-bold text-[#c1272d]">FYTR</span>
             </div>
             <nav className="hidden md:flex items-center space-x-6">
               <button className="text-sm font-medium text-[#c1272d] border-b-2 border-[#c1272d] pb-3">Dashboard</button>
             </nav>
           </div>
 
-          <div className="flex items-center space-x-3 pl-4 border-l border-[#e3e8ef]">
-            <div className="w-8 h-8 bg-gradient-to-r from-[#c1272d] to-[#8b5cf6] rounded-full flex items-center justify-center">
-              <span className="text-xs font-medium text-white">{user?.name?.charAt(0) || "U"}</span>
+          <div className="flex items-center space-x-2 sm:space-x-4 bg-white rounded-xl px-2 sm:px-4 py-2 sm:py-3 shadow-md border border-gray-100">
+            <div className="w-10 h-10 sm:w-12 sm:h-12 bg-gradient-to-r from-[#c1272d] to-[#8b5cf6] rounded-xl flex items-center justify-center shadow-sm">
+              <span className="text-sm sm:text-lg font-bold text-white">{user?.name?.charAt(0) || "U"}</span>
             </div>
-            <div>
-              <div className="text-sm font-medium text-[#0a2540]">{user?.name?.split(' ')[0] || "User"}</div>
-              <div className="text-xs text-[#697386]">{user?.zipCode || user?.location || "Location"}</div>
+            <div className="hidden sm:block">
+              <div className="text-sm sm:text-base font-bold text-gray-900">Hey, {user?.name?.split(' ')[0] || "User"}!</div>
+              <div className="flex items-center text-xs sm:text-sm text-[#8b5cf6] font-medium">
+                <MapPin className="w-3 h-3 sm:w-4 sm:h-4 mr-1" />
+                {user?.zipCode || user?.location || "Location"}
+              </div>
             </div>
           </div>
         </div>
       </div>
 
       {/* Main Content */}
-      <div className="max-w-7xl mx-auto px-8 py-8">
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 py-6 sm:py-8 pb-24">
         {/* Welcome Section */}
-        <div className="mb-8">
-          <h1 className="text-3xl font-bold bg-gradient-to-r from-[#c1272d] to-[#8b5cf6] bg-clip-text text-transparent mb-3">
-            Good morning, {user?.name?.split(' ')[0] || "User"}!
+        <div className="mb-6 sm:mb-8">
+          <h1 className="text-2xl sm:text-3xl font-bold text-[#c1272d] mb-2">
+            {getGreeting()}, {user?.name?.split(' ')[0] || "User"}!
           </h1>
-          <p className="text-lg text-[#697386]">Ready to achieve your health goals today?</p>
+          <p className="text-sm sm:text-base text-gray-600">Ready to crush your health goals today? Let's make it happen!</p>
         </div>
 
         {/* Stats Grid */}
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8">
-          <div className="bg-white border border-[#e3e8ef] rounded-xl p-6 shadow-[0_4px_12px_rgba(0,0,0,0.04)] hover:shadow-[0_8px_24px_rgba(0,0,0,0.08)] transition-all duration-300">
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4 sm:gap-6 mb-6 sm:mb-8">
+          {/* Box 1: Nutrition Goal */}
+          <div className="bg-white border border-gray-200 rounded-2xl p-4 sm:p-6 shadow-md hover:shadow-lg transition-all duration-300">
             <div className="flex items-center justify-between mb-4">
-              <div className="w-12 h-12 bg-gradient-to-r from-[#c1272d] to-[#8b5cf6] rounded-xl flex items-center justify-center">
-                <Target className="w-6 h-6 text-white" />
-              </div>
-              <Badge className="bg-[#fafafa] text-[#697386] border-[#e3e8ef] text-xs">Workouts</Badge>
+              <BarChart3 className="w-8 h-8 text-[#c1272d] stroke-1" />
+              <span className="bg-gray-100 text-gray-700 px-3 py-1 rounded-full text-xs font-medium">
+                Nutrition
+              </span>
             </div>
-            <div className="text-3xl font-bold text-[#0a2540] mb-1">{workoutsCompleted}/{workoutsPlanned}</div>
-            <div className="text-sm font-medium text-[#697386]">Workouts completed</div>
-            <div className="text-xs text-[#697386] mt-2">{workoutsPlanned - workoutsCompleted} remaining</div>
+            <div className="text-2xl sm:text-3xl font-bold text-[#c1272d] mb-1">{caloriesEaten > 0 ? Math.round((caloriesEaten/nutritionTargets.dailyCalories)*100) : 0}%</div>
+            <div className="text-lg font-bold text-[#8b5cf6] mb-1">Daily goal</div>
+            <div className="text-sm text-gray-600">{caloriesEaten} / {nutritionTargets.dailyCalories} calories</div>
           </div>
 
-          <div className="bg-white border border-[#e3e8ef] rounded-xl p-6 shadow-[0_4px_12px_rgba(0,0,0,0.04)] hover:shadow-[0_8px_24px_rgba(0,0,0,0.08)] transition-all duration-300">
+          {/* Box 2: Today's Workouts */}
+          <div className="bg-white border border-gray-200 rounded-2xl p-4 sm:p-6 shadow-md hover:shadow-lg transition-all duration-300">
             <div className="flex items-center justify-between mb-4">
-              <div className="w-12 h-12 bg-gradient-to-r from-[#c1272d] to-[#8b5cf6] rounded-xl flex items-center justify-center">
-                <BarChart3 className="w-6 h-6 text-white" />
-              </div>
-              <Badge className="bg-[#fafafa] text-[#697386] border-[#e3e8ef] text-xs">Nutrition</Badge>
+              <Target className="w-8 h-8 text-[#c1272d] stroke-1" />
+              <span className="bg-gray-100 text-gray-700 px-3 py-1 rounded-full text-xs font-medium">
+                Today
+              </span>
             </div>
-            <div className="text-3xl font-bold text-[#0a2540] mb-1">{displayCalories > 0 ? Math.round((displayCalories/caloriesTarget)*100) : 0}%</div>
-            <div className="text-sm font-medium text-[#697386]">Nutrition goal</div>
-            <div className="text-xs text-[#697386] mt-2">{displayCalories} / {caloriesTarget} calories</div>
+            <div className="text-2xl sm:text-3xl font-bold text-[#c1272d] mb-1">{todayWorkoutCompletion.completed}/{todayWorkoutCompletion.planned}</div>
+            <div className="text-lg font-bold text-[#8b5cf6] mb-1">Exercises today</div>
+            <div className="text-sm text-gray-600">{todayWorkoutCompletion.planned - todayWorkoutCompletion.completed} remaining today</div>
+          </div>
+
+          {/* Box 3: Macros from Today's Meals */}
+          <div className="bg-white border border-gray-200 rounded-2xl p-4 sm:p-6 shadow-md hover:shadow-lg transition-all duration-300">
+            <div className="flex items-center justify-between mb-4">
+              <Apple className="w-8 h-8 text-[#c1272d] stroke-1" />
+              <span className="bg-gray-100 text-gray-700 px-3 py-1 rounded-full text-xs font-medium">
+                Macros
+              </span>
+            </div>
+            <div className="text-lg sm:text-xl font-bold text-[#c1272d] mb-1">{proteinEaten}g | {carbsEaten}g | {fatEaten}g</div>
+            <div className="text-lg font-bold text-[#8b5cf6] mb-1">Protein | Carbs | Fat eaten</div>
+            <div className="text-sm text-gray-600">From selected meals today</div>
           </div>
         </div>
 
-        {/* Quick Actions */}
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 mb-8">
+        {/* Quick Actions - Single Row */}
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 sm:gap-6 mb-6 sm:mb-8">
           <div
-            className="bg-white border border-[#e3e8ef] rounded-2xl p-8 shadow-[0_4px_12px_rgba(0,0,0,0.04)] cursor-pointer hover:shadow-[0_8px_24px_rgba(0,0,0,0.08)] transition-all duration-300"
+            className="bg-white border border-gray-200 rounded-xl p-4 shadow-md cursor-pointer hover:shadow-lg hover:scale-105 transition-all duration-300"
             onClick={() => onNavigate("meal-plan")}
           >
-            <div className="flex items-start justify-between mb-6">
-              <div className="flex items-center space-x-4">
-                <div className="w-16 h-16 bg-gradient-to-r from-[#c1272d] to-[#8b5cf6] rounded-2xl flex items-center justify-center">
-                  <Apple className="w-8 h-8 text-white" />
-                </div>
+            <div className="flex items-center justify-between">
+              <div className="flex items-center space-x-3">
+                <Apple className="w-7 h-7 text-[#c1272d] stroke-1" />
                 <div>
-                  <h3 className="text-xl font-bold text-[#0a2540] mb-2">Meal Plans</h3>
-                  <p className="text-sm text-[#697386] font-medium">AI-crafted nutrition plans</p>
+                  <h3 className="text-lg font-bold text-[#c1272d]">Meal Plans</h3>
+                  <p className="text-xs text-[#8b5cf6]">AI-powered nutrition</p>
                 </div>
               </div>
-              <ChevronRight className="w-6 h-6 text-[#697386]" />
-            </div>
-            <div className="flex items-center justify-between">
-              <Badge className={`text-sm px-4 py-2 ${
-                generationStatus.mealsGenerated
-                  ? "bg-[#fafafa] text-[#697386] border-[#e3e8ef]"
-                  : "bg-[#fafafa] text-[#697386] border-[#e3e8ef]"
-              }`}>
-                {generationStatus.mealsGenerated ? "Ready" : "Generating..."}
-              </Badge>
-              <span className="text-sm text-[#697386]">4 days planned</span>
+              <ChevronRight className="w-5 h-5 text-[#c1272d] stroke-1" />
             </div>
           </div>
 
           <div
-            className="bg-white border border-[#e3e8ef] rounded-2xl p-8 shadow-[0_4px_12px_rgba(0,0,0,0.04)] cursor-pointer hover:shadow-[0_8px_24px_rgba(0,0,0,0.08)] transition-all duration-300"
+            className="bg-white border border-gray-200 rounded-xl p-4 shadow-md cursor-pointer hover:shadow-lg hover:scale-105 transition-all duration-300"
             onClick={() => onNavigate("workout-plan")}
           >
-            <div className="flex items-start justify-between mb-6">
-              <div className="flex items-center space-x-4">
-                <div className="w-16 h-16 bg-gradient-to-r from-[#c1272d] to-[#8b5cf6] rounded-2xl flex items-center justify-center">
-                  <Dumbbell className="w-8 h-8 text-white" />
-                </div>
-                <div>
-                  <h3 className="text-xl font-bold text-[#0a2540] mb-2">Workouts</h3>
-                  <p className="text-sm text-[#697386] font-medium">{user?.goal || 'Weight loss'} training plan</p>
-                </div>
-              </div>
-              <ChevronRight className="w-6 h-6 text-[#697386]" />
-            </div>
             <div className="flex items-center justify-between">
-              <Badge className={`text-sm px-4 py-2 ${
-                generationStatus.workoutsGenerated
-                  ? "bg-[#fafafa] text-[#697386] border-[#e3e8ef]"
-                  : "bg-[#fafafa] text-[#697386] border-[#e3e8ef]"
-              }`}>
-                {generationStatus.workoutsGenerated ? "Ready" : "Generating..."}
-              </Badge>
-              <span className="text-sm text-[#697386]">4 days scheduled</span>
+              <div className="flex items-center space-x-3">
+                <Dumbbell className="w-7 h-7 text-[#c1272d] stroke-1" />
+                <div>
+                  <h3 className="text-lg font-bold text-[#c1272d]">Workouts</h3>
+                  <p className="text-xs text-[#8b5cf6]">Custom training plans</p>
+                </div>
+              </div>
+              <ChevronRight className="w-5 h-5 text-[#c1272d] stroke-1" />
             </div>
           </div>
         </div>
 
-        {/* Today's Meal Plan */}
-        <div className="bg-white border border-[#e3e8ef] rounded-2xl p-8 shadow-[0_4px_12px_rgba(0,0,0,0.04)] mb-8">
-          <div className="flex items-center justify-between mb-8">
-            <div>
-              <h2 className="text-2xl font-bold text-[#0a2540] mb-2">
-                {todaysMeals.dayName}'s Meal Plan
-              </h2>
-              <p className="text-lg text-[#697386]">Your personalized nutrition for today</p>
+        {/* Today's Workout Section */}
+        {generationStatus.workoutsGenerated && todaysWorkout.focus !== "No workout data available" && (
+          <div className="bg-white border border-gray-200 rounded-xl p-4 sm:p-6 shadow-md mb-6 sm:mb-8">
+            <div className="flex items-center justify-between mb-4">
+              <div className="flex items-center space-x-3">
+                <Dumbbell className="w-7 h-7 text-[#c1272d] stroke-1" />
+                <div>
+                  <h3 className="text-lg font-bold text-[#c1272d]">Today's Workout</h3>
+                  <p className="text-xs text-[#8b5cf6] font-medium">{todaysWorkout.focus}</p>
+                </div>
+              </div>
+              <button
+                onClick={() => onNavigate("workout-plan")}
+                className="text-sm text-[#c1272d] font-bold hover:underline hover:scale-105 transition-transform bg-gray-50 px-3 py-1 rounded-full"
+              >
+                Start →
+              </button>
             </div>
-            <Button
-              variant="outline"
-              size="lg"
-              className="border-[#c1272d] text-[#c1272d] hover:bg-[#c1272d] hover:text-white transition-all duration-300"
-              onClick={() => onNavigate("meal-plan")}
-            >
-              View Full Plan
-            </Button>
+
+            <div className="bg-gray-50 rounded-lg p-3 sm:p-4 border border-gray-200">
+              <div className="flex items-center space-x-3 sm:space-x-4">
+                <div className="w-12 h-12 sm:w-16 sm:h-16 bg-white rounded-lg flex items-center justify-center shadow-sm">
+                  <Dumbbell className="w-6 h-6 text-[#c1272d] stroke-1" />
+                </div>
+                <div className="flex-1">
+                  <h4 className="font-bold text-gray-900 text-sm sm:text-base">{todaysWorkout.focus}</h4>
+                  <div className="flex items-center space-x-2 sm:space-x-4 text-xs sm:text-sm text-gray-600 mt-1">
+                    {!todaysWorkout.restDay && (
+                      <>
+                        <span className="flex items-center">
+                          <Clock className="w-4 h-4 mr-1 text-[#8b5cf6]" />
+                          {todaysWorkout.duration}min
+                        </span>
+                        <span className="flex items-center">
+                          <Flame className="w-4 h-4 mr-1 text-[#8b5cf6]" />
+                          ~{todaysWorkout.calories} cal
+                        </span>
+                        <span className="flex items-center">
+                          <Target className="w-4 h-4 mr-1 text-[#8b5cf6]" />
+                          {todaysWorkout.totalExercises} exercises
+                        </span>
+                      </>
+                    )}
+                    {todaysWorkout.restDay && (
+                      <span className="text-[#8b5cf6] font-medium">Recovery & Rest Day</span>
+                    )}
+                  </div>
+                  {todaysWorkout.description && (
+                    <p className="text-sm text-gray-600 mt-2 leading-relaxed">{todaysWorkout.description}</p>
+                  )}
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Today's Meals Section */}
+        {generationStatus.mealsGenerated && todaysMeals.breakfast && (
+          <div className="bg-white border border-gray-200 rounded-xl p-4 sm:p-6 shadow-md mb-6 sm:mb-8">
+            <div className="flex items-center justify-between mb-4">
+              <div className="flex items-center space-x-3">
+                <Apple className="w-7 h-7 text-[#c1272d] stroke-1" />
+                <div>
+                  <h3 className="text-lg font-bold text-[#c1272d]">Today's Meals</h3>
+                  <p className="text-xs text-[#8b5cf6] font-medium">Check off as you eat</p>
+                </div>
+              </div>
+              <button
+                onClick={() => onNavigate("meal-plan")}
+                className="text-sm text-[#c1272d] font-bold hover:underline hover:scale-105 transition-transform bg-gray-50 px-3 py-1 rounded-full"
+              >
+                View all →
+              </button>
+            </div>
+
+            <div className="grid gap-3">
+              {/* Breakfast */}
+              {todaysMeals.breakfast && (
+                <div className="space-y-2">
+                  <h4 className="font-bold text-gray-900 text-base">Breakfast Options</h4>
+                  {/* Primary Option */}
+                  <div className="flex items-center space-x-3 sm:space-x-4 p-2 sm:p-3 bg-gray-50 border border-gray-200 rounded-lg hover:shadow-md transition-shadow">
+                    <div className="flex-shrink-0">
+                      <ImageWithFallback
+                        src={todaysMeals.breakfast.primary.image || "https://images.unsplash.com/photo-1506084868230-bb9d95c24759"}
+                        alt={todaysMeals.breakfast.primary.name}
+                        className="w-12 h-12 sm:w-14 sm:h-14 object-cover rounded-lg shadow-sm"
+                      />
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm text-gray-700 truncate">{todaysMeals.breakfast.primary.name}</p>
+                      <p className="text-xs text-[#8b5cf6] font-medium">{todaysMeals.breakfast.primary.calories} cal</p>
+                    </div>
+                    <div className="flex items-center space-x-2">
+                      <input
+                        type="checkbox"
+                        checked={isMealEaten('breakfast', 0, 'primary')}
+                        onChange={() => toggleMealEatenFromDashboard('breakfast', 0, 'primary')}
+                        className="h-4 w-4 text-[#c1272d] focus:ring-[#c1272d] border-gray-300 rounded"
+                      />
+                    </div>
+                  </div>
+                  {/* Alternative Option */}
+                  {todaysMeals.breakfast.alternative.name !== "No meal data available" && (
+                    <div className="flex items-center space-x-3 sm:space-x-4 p-2 sm:p-3 bg-gray-50 border border-gray-200 rounded-lg hover:shadow-md transition-shadow">
+                      <div className="flex-shrink-0">
+                        <ImageWithFallback
+                          src={todaysMeals.breakfast.alternative.image || "https://images.unsplash.com/photo-1506084868230-bb9d95c24759"}
+                          alt={todaysMeals.breakfast.alternative.name}
+                          className="w-12 h-12 sm:w-14 sm:h-14 object-cover rounded-lg shadow-sm"
+                        />
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm text-gray-700 truncate">{todaysMeals.breakfast.alternative.name}</p>
+                        <p className="text-xs text-[#8b5cf6] font-medium">{todaysMeals.breakfast.alternative.calories} cal</p>
+                      </div>
+                      <div className="flex items-center space-x-2">
+                        <input
+                          type="checkbox"
+                          checked={isMealEaten('breakfast', 0, 'alternative')}
+                          onChange={() => toggleMealEatenFromDashboard('breakfast', 0, 'alternative')}
+                          className="h-4 w-4 text-[#c1272d] focus:ring-[#c1272d] border-gray-300 rounded"
+                        />
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* Lunch */}
+              {todaysMeals.lunch && (
+                <div className="space-y-2">
+                  <h4 className="font-bold text-gray-900 text-base">Lunch Options</h4>
+                  {/* Primary Option */}
+                  <div className="flex items-center space-x-3 sm:space-x-4 p-2 sm:p-3 bg-gray-50 border border-gray-200 rounded-lg hover:shadow-md transition-shadow">
+                    <div className="flex-shrink-0">
+                      <ImageWithFallback
+                        src={todaysMeals.lunch.primary.image || "https://images.unsplash.com/photo-1546793665-c74683f339c1"}
+                        alt={todaysMeals.lunch.primary.name}
+                        className="w-12 h-12 sm:w-14 sm:h-14 object-cover rounded-lg shadow-sm"
+                      />
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm text-gray-700 truncate">{todaysMeals.lunch.primary.name}</p>
+                      <p className="text-xs text-[#8b5cf6] font-medium">{todaysMeals.lunch.primary.calories} cal</p>
+                    </div>
+                    <div className="flex items-center space-x-2">
+                      <input
+                        type="checkbox"
+                        checked={isMealEaten('lunch', 0, 'primary')}
+                        onChange={() => toggleMealEatenFromDashboard('lunch', 0, 'primary')}
+                        className="h-4 w-4 text-[#c1272d] focus:ring-[#c1272d] border-gray-300 rounded"
+                      />
+                    </div>
+                  </div>
+                  {/* Alternative Option */}
+                  {todaysMeals.lunch.alternative.name !== "No meal data available" && (
+                    <div className="flex items-center space-x-3 sm:space-x-4 p-2 sm:p-3 bg-gray-50 border border-gray-200 rounded-lg hover:shadow-md transition-shadow">
+                      <div className="flex-shrink-0">
+                        <ImageWithFallback
+                          src={todaysMeals.lunch.alternative.image || "https://images.unsplash.com/photo-1546793665-c74683f339c1"}
+                          alt={todaysMeals.lunch.alternative.name}
+                          className="w-12 h-12 sm:w-14 sm:h-14 object-cover rounded-lg shadow-sm"
+                        />
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm text-gray-700 truncate">{todaysMeals.lunch.alternative.name}</p>
+                        <p className="text-xs text-[#8b5cf6] font-medium">{todaysMeals.lunch.alternative.calories} cal</p>
+                      </div>
+                      <div className="flex items-center space-x-2">
+                        <input
+                          type="checkbox"
+                          checked={isMealEaten('lunch', 0, 'alternative')}
+                          onChange={() => toggleMealEatenFromDashboard('lunch', 0, 'alternative')}
+                          className="h-4 w-4 text-[#c1272d] focus:ring-[#c1272d] border-gray-300 rounded"
+                        />
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* Dinner */}
+              {todaysMeals.dinner && (
+                <div className="space-y-2">
+                  <h4 className="font-bold text-gray-900 text-base">Dinner Options</h4>
+                  {/* Primary Option */}
+                  <div className="flex items-center space-x-3 sm:space-x-4 p-2 sm:p-3 bg-gray-50 border border-gray-200 rounded-lg hover:shadow-md transition-shadow">
+                    <div className="flex-shrink-0">
+                      <ImageWithFallback
+                        src={todaysMeals.dinner.primary.image || "https://images.unsplash.com/photo-1565299624946-b28f40a0ca4b"}
+                        alt={todaysMeals.dinner.primary.name}
+                        className="w-12 h-12 sm:w-14 sm:h-14 object-cover rounded-lg shadow-sm"
+                      />
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm text-gray-700 truncate">{todaysMeals.dinner.primary.name}</p>
+                      <p className="text-xs text-[#8b5cf6] font-medium">{todaysMeals.dinner.primary.calories} cal</p>
+                    </div>
+                    <div className="flex items-center space-x-2">
+                      <input
+                        type="checkbox"
+                        checked={isMealEaten('dinner', 0, 'primary')}
+                        onChange={() => toggleMealEatenFromDashboard('dinner', 0, 'primary')}
+                        className="h-4 w-4 text-[#c1272d] focus:ring-[#c1272d] border-gray-300 rounded"
+                      />
+                    </div>
+                  </div>
+                  {/* Alternative Option */}
+                  {todaysMeals.dinner.alternative.name !== "No meal data available" && (
+                    <div className="flex items-center space-x-3 sm:space-x-4 p-2 sm:p-3 bg-gray-50 border border-gray-200 rounded-lg hover:shadow-md transition-shadow">
+                      <div className="flex-shrink-0">
+                        <ImageWithFallback
+                          src={todaysMeals.dinner.alternative.image || "https://images.unsplash.com/photo-1565299624946-b28f40a0ca4b"}
+                          alt={todaysMeals.dinner.alternative.name}
+                          className="w-12 h-12 sm:w-14 sm:h-14 object-cover rounded-lg shadow-sm"
+                        />
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm text-gray-700 truncate">{todaysMeals.dinner.alternative.name}</p>
+                        <p className="text-xs text-[#8b5cf6] font-medium">{todaysMeals.dinner.alternative.calories} cal</p>
+                      </div>
+                      <div className="flex items-center space-x-2">
+                        <input
+                          type="checkbox"
+                          checked={isMealEaten('dinner', 0, 'alternative')}
+                          onChange={() => toggleMealEatenFromDashboard('dinner', 0, 'alternative')}
+                          className="h-4 w-4 text-[#c1272d] focus:ring-[#c1272d] border-gray-300 rounded"
+                        />
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+
+        {/* Daily Macro Progress - Compact */}
+        <div className="bg-white border border-gray-200 rounded-xl p-4 sm:p-6 shadow-md mb-6 sm:mb-8">
+          <div className="flex items-center justify-between mb-4">
+            <div className="flex items-center space-x-3">
+              <BarChart3 className="w-7 h-7 text-[#c1272d] stroke-1" />
+              <div>
+                <h3 className="text-lg font-bold text-[#c1272d]">Today's Nutrition</h3>
+                <p className="text-xs text-[#8b5cf6] font-medium">Track your macro intake</p>
+              </div>
+            </div>
+            <div className="text-xl font-bold text-[#c1272d] bg-gray-50 px-3 py-1 rounded-full">
+              {Math.round((caloriesEaten/nutritionTargets.dailyCalories)*100)}%
+            </div>
           </div>
 
-          {generationStatus.mealsGenerated ? (
-            <div className="space-y-6">
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                <div className="bg-[#fafafa] rounded-xl p-6 border border-[#e3e8ef]">
-                  <div className="flex items-center space-x-3 mb-3">
-                    <div className="w-8 h-8 bg-gradient-to-r from-[#c1272d] to-[#8b5cf6] rounded-lg flex items-center justify-center">
-                      <Clock className="w-4 h-4 text-white" />
-                    </div>
-                    <span className="text-lg font-bold text-[#0a2540]">Breakfast</span>
-                  </div>
-                  <p className="text-sm text-[#697386] leading-relaxed">{todaysMeals.breakfast}</p>
-                </div>
-
-                <div className="bg-[#fafafa] rounded-xl p-6 border border-[#e3e8ef]">
-                  <div className="flex items-center space-x-3 mb-3">
-                    <div className="w-8 h-8 bg-gradient-to-r from-[#c1272d] to-[#8b5cf6] rounded-lg flex items-center justify-center">
-                      <Clock className="w-4 h-4 text-white" />
-                    </div>
-                    <span className="text-lg font-bold text-[#0a2540]">Lunch</span>
-                  </div>
-                  <p className="text-sm text-[#697386] leading-relaxed">{todaysMeals.lunch}</p>
-                </div>
-
-                <div className="bg-[#fafafa] rounded-xl p-6 border border-[#e3e8ef]">
-                  <div className="flex items-center space-x-3 mb-3">
-                    <div className="w-8 h-8 bg-gradient-to-r from-[#c1272d] to-[#8b5cf6] rounded-lg flex items-center justify-center">
-                      <Clock className="w-4 h-4 text-white" />
-                    </div>
-                    <span className="text-lg font-bold text-[#0a2540]">Dinner</span>
-                  </div>
-                  <p className="text-sm text-[#697386] leading-relaxed">{todaysMeals.dinner}</p>
-                </div>
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
+            {/* Calories Progress */}
+            <div className="bg-gray-50 rounded-lg p-3 border border-gray-200">
+              <div className="flex justify-between items-center text-xs mb-2">
+                <span className="text-[#c1272d] font-bold">Calories</span>
+                <span className="text-gray-700 font-bold">
+                  {caloriesEaten}/{nutritionTargets.dailyCalories}
+                </span>
               </div>
-
-              <div className="bg-[#fafafa] rounded-xl p-6 border border-[#e3e8ef]">
-                <div className="flex items-center justify-between mb-4">
-                  <div className="flex items-center space-x-3">
-                    <div className="w-10 h-10 bg-gradient-to-r from-[#c1272d] to-[#8b5cf6] rounded-xl flex items-center justify-center">
-                      <Target className="w-5 h-5 text-white" />
-                    </div>
-                    <div>
-                      <span className="text-lg font-bold text-[#0a2540]">Daily Progress</span>
-                      <div className="text-sm text-[#697386]">{displayCalories} / {caloriesTarget} calories consumed</div>
-                    </div>
-                  </div>
-                  <div className="text-2xl font-bold text-[#0a2540]">
-                    {Math.round((displayCalories/caloriesTarget)*100)}%
-                  </div>
-                </div>
-                <div className="w-full bg-white rounded-full h-3">
-                  <div
-                    className="bg-gradient-to-r from-[#c1272d] to-[#8b5cf6] h-3 rounded-full transition-all duration-1000"
-                    style={{ width: `${Math.min((displayCalories/caloriesTarget)*100, 100)}%` }}
-                  ></div>
-                </div>
+              <div className="w-full bg-gray-200 rounded-full h-2">
+                <div
+                  className="h-2 rounded-full transition-all duration-500 bg-gradient-to-r from-[#c1272d] to-red-500"
+                  style={{ width: `${Math.min((caloriesEaten / nutritionTargets.dailyCalories) * 100, 100)}%` }}
+                />
               </div>
             </div>
-          ) : (
-            <div className="text-center py-16">
-              <div className="w-20 h-20 bg-gradient-to-r from-[#c1272d]/20 to-[#8b5cf6]/20 rounded-full flex items-center justify-center mx-auto mb-6">
-                <div className="w-10 h-10 border-4 border-[#c1272d] border-t-transparent rounded-full animate-spin"></div>
+
+            {/* Protein Progress */}
+            <div className="bg-gray-50 rounded-lg p-3 border border-gray-200">
+              <div className="flex justify-between items-center text-xs mb-2">
+                <span className="text-[#8b5cf6] font-bold">Protein</span>
+                <span className="text-gray-700 font-bold">
+                  {proteinEaten}g/{Math.round(nutritionTargets.dailyProtein)}g
+                </span>
               </div>
-              <h3 className="text-2xl font-bold text-[#0a2540] mb-4">
-                Generating Your Meal Plan
-              </h3>
-              <p className="text-lg text-[#697386]">Creating personalized nutrition recommendations...</p>
+              <div className="w-full bg-gray-200 rounded-full h-2">
+                <div
+                  className="h-2 rounded-full transition-all duration-500 bg-gradient-to-r from-[#8b5cf6] to-purple-600"
+                  style={{ width: `${Math.min((proteinEaten / nutritionTargets.dailyProtein) * 100, 100)}%` }}
+                />
+              </div>
             </div>
-          )}
+
+            {/* Carbs Progress */}
+            <div className="bg-gray-50 rounded-lg p-3 border border-gray-200">
+              <div className="flex justify-between items-center text-xs mb-2">
+                <span className="text-[#c1272d] font-bold">Carbs</span>
+                <span className="text-gray-700 font-bold">
+                  {carbsEaten}g/{Math.round(nutritionTargets.dailyCarbs)}g
+                </span>
+              </div>
+              <div className="w-full bg-gray-200 rounded-full h-2">
+                <div
+                  className="h-2 rounded-full transition-all duration-500 bg-gradient-to-r from-[#c1272d] to-[#8b5cf6]"
+                  style={{ width: `${Math.min((carbsEaten / nutritionTargets.dailyCarbs) * 100, 100)}%` }}
+                />
+              </div>
+            </div>
+
+            {/* Fat Progress */}
+            <div className="bg-gray-50 rounded-lg p-3 border border-gray-200">
+              <div className="flex justify-between items-center text-xs mb-2">
+                <span className="text-[#8b5cf6] font-bold">Fat</span>
+                <span className="text-gray-700 font-bold">
+                  {fatEaten}g/{Math.round(nutritionTargets.dailyFat)}g
+                </span>
+              </div>
+              <div className="w-full bg-gray-200 rounded-full h-2">
+                <div
+                  className="h-2 rounded-full transition-all duration-500 bg-gradient-to-r from-[#8b5cf6] to-purple-600"
+                  style={{ width: `${Math.min((fatEaten / nutritionTargets.dailyFat) * 100, 100)}%` }}
+                />
+              </div>
+            </div>
+          </div>
         </div>
 
-        {/* Quick Action Button */}
-        <div className="text-center">
-          <Button
-            className="bg-gradient-to-r from-[#c1272d] to-[#8b5cf6] hover:from-[#c1272d]/90 hover:to-[#8b5cf6]/90 text-white px-8 py-3 rounded-lg shadow-[0_4px_12px_rgba(193,39,45,0.3)] hover:shadow-[0_8px_24px_rgba(193,39,45,0.4)] transition-all duration-200"
+      </div>
+
+      {/* Bottom Navigation */}
+      <div className="fixed bottom-0 left-0 right-0 bg-white border-t border-neutral-200">
+        <div className="max-w-md mx-auto grid grid-cols-5 h-16">
+          <button className="flex flex-col items-center justify-center text-primary">
+            <img src="/fytr-icon.svg" alt="Home" className="w-5 h-5 mb-1" />
+            <span className="text-xs">Home</span>
+          </button>
+          <button
+            className="flex flex-col items-center justify-center text-neutral-400"
             onClick={() => onNavigate("meal-plan")}
           >
-            <Plus className="w-4 h-4 mr-2" />
-            Get Started
-          </Button>
-          <p className="text-sm text-[#697386] mt-4">Start your personalized health plan</p>
+            <Apple className="w-5 h-5 mb-1 stroke-1" />
+            <span className="text-xs">Meals</span>
+          </button>
+          <button
+            className="flex flex-col items-center justify-center text-neutral-400"
+            onClick={() => onNavigate("workout-plan")}
+          >
+            <Dumbbell className="w-5 h-5 mb-1 stroke-1" />
+            <span className="text-xs">Workouts</span>
+          </button>
+          <button
+            className="flex flex-col items-center justify-center text-neutral-400"
+            onClick={() => onNavigate("progress")}
+          >
+            <TrendingUp className="w-5 h-5 mb-1 stroke-1" />
+            <span className="text-xs">Progress</span>
+          </button>
+          <button
+            className="flex flex-col items-center justify-center text-neutral-400"
+            onClick={() => onNavigate("account")}
+          >
+            <User className="w-5 h-5 mb-1 stroke-1" />
+            <span className="text-xs">Account</span>
+          </button>
         </div>
       </div>
+
     </div>
   );
 }

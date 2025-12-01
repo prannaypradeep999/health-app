@@ -1,21 +1,27 @@
 'use client';
 
+import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Progress as ProgressBar } from "@/components/ui/progress";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, BarChart, Bar } from 'recharts';
 import {
   ArrowLeft,
   TrendingUp,
   Target,
-  Calendar,
   Award,
   BarChart3,
   Apple,
   Dumbbell,
-  User
+  User,
+  Watch,
+  Activity,
+  Scale,
+  Moon,
+  Heart,
+  Footprints,
+  Zap
 } from "lucide-react";
 
 interface ProgressPageProps {
@@ -23,246 +29,377 @@ interface ProgressPageProps {
 }
 
 export function ProgressPage({ onNavigate }: ProgressPageProps) {
-  // Mock data for charts - MVP placeholder data
+  const [appleWatchConnected, setAppleWatchConnected] = useState(false);
+  const [renphoConnected, setRenphoConnected] = useState(false);
+  const [ouraConnected, setOuraConnected] = useState(false);
+
+  // Mock data for charts
   const weeklyData = [
     { day: 'Mon', workouts: 1, calories: 2100 },
-    { day: 'Tue', workouts: 0, calories: 0 },
-    { day: 'Wed', workouts: 0, calories: 0 },
-    { day: 'Thu', workouts: 0, calories: 0 },
-    { day: 'Fri', workouts: 0, calories: 0 },
-    { day: 'Sat', workouts: 0, calories: 0 },
-    { day: 'Sun', workouts: 0, calories: 0 }
+    { day: 'Tue', workouts: 0, calories: 2250 },
+    { day: 'Wed', workouts: 1, calories: 2050 },
+    { day: 'Thu', workouts: 1, calories: 2180 },
+    { day: 'Fri', workouts: 0, calories: 2300 },
+    { day: 'Sat', workouts: 1, calories: 2000 },
+    { day: 'Sun', workouts: 0, calories: 2150 }
+  ];
+
+  const monthlyWeight = [
+    { week: 'Week 1', weight: 165 },
+    { week: 'Week 2', weight: 164 },
+    { week: 'Week 3', weight: 163 },
+    { week: 'Week 4', weight: 162 }
   ];
 
   const achievements = [
-    { id: 1, title: "Survey Complete", description: "Completed your health assessment", earned: true, progress: 100 },
-    { id: 2, title: "Plan Generated", description: "Your personalized plans are ready", earned: true, progress: 100 },
-    { id: 3, title: "First Week", description: "Complete your first week", earned: false, progress: 14 },
-    { id: 4, title: "Consistency Champion", description: "30 days of tracking", earned: false, progress: 3 }
+    { id: 1, title: "7-Day Streak", description: "Completed workouts for 7 days straight", earned: true, progress: 100 },
+    { id: 2, title: "Meal Plan Master", description: "Followed meal plan for 5 days", earned: true, progress: 100 },
+    { id: 3, title: "Consistency Champion", description: "30 days of tracking", earned: false, progress: 73 },
+    { id: 4, title: "Strength Builder", description: "Increased weight in all exercises", earned: false, progress: 45 }
   ];
 
   const weeklyStats = {
-    workoutsCompleted: 0,
-    workoutsPlanned: 4,
-    mealPlanAdherence: 0,
-    avgCalories: 0,
-    streakDays: 1,
-    totalActiveMinutes: 0
+    workoutsCompleted: 4,
+    workoutsPlanned: 5,
+    mealPlanAdherence: 85,
+    avgCalories: 2150,
+    avgCaloriesBurned: 420,
+    streakDays: 7,
+    totalActiveMinutes: 180,
+    avgActiveMinutes: 26,
+    steps: 8542
   };
 
+  // Long-term goal
+  const goalType = "Lose 10 pounds in 3 months";
+  const currentDay = 12;
+  const totalDays = 90;
+  const weightLost = 3;
+  const weightGoal = 10;
+
+  // Motivational quotes
+  const motivationalQuotes = [
+    "The only bad workout is the one that didn't happen.",
+    "You're stronger than you think. Keep pushing!",
+    "Small progress is still progress.",
+    "Your body can stand almost anything. It's your mind you have to convince.",
+    "Success is the sum of small efforts repeated day in and day out."
+  ];
+  const todaysQuote = motivationalQuotes[Math.floor(Math.random() * motivationalQuotes.length)];
+
   return (
-    <div className="min-h-screen bg-gradient-to-br from-neutral-50 via-red-50/15 to-purple-50/10">
+    <div className="min-h-screen bg-[#fafafa] pb-20">
       {/* Header */}
-      <div className="bg-white border-b border-neutral-200 p-6">
-        <div className="flex items-center justify-between">
-          <div className="flex items-center">
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={() => onNavigate("dashboard")}
-              className="mr-3 text-neutral-600"
-            >
-              <ArrowLeft className="w-5 h-5" />
-            </Button>
-            <div>
-              <h1 className="text-2xl font-medium text-neutral-900">Progress</h1>
-              <p className="text-sm text-neutral-600">Track your fitness journey</p>
+      <div className="bg-gradient-to-r from-white to-gray-50 border-b border-gray-200 px-8 py-8 shadow-sm">
+        <div className="max-w-7xl mx-auto flex items-center justify-between">
+          <div className="flex items-center space-x-8">
+            <div className="flex items-center space-x-3">
+              <img src="/fytr-icon.svg" alt="FYTR" className="w-10 h-10" />
+              <span className="text-xl font-bold text-[#c1272d]">FYTR</span>
             </div>
+            <nav className="hidden md:flex items-center space-x-6">
+              <button className="text-sm font-medium text-[#c1272d] border-b-2 border-[#c1272d] pb-3">Progress</button>
+            </nav>
           </div>
           <Button
-            variant="outline"
+            variant="ghost"
             size="sm"
-            className="text-primary border-primary hover:bg-primary/5"
+            onClick={() => onNavigate("dashboard")}
+            className="text-gray-600 hover:text-[#c1272d]"
           >
-            <Calendar className="w-4 h-4 mr-2" />
-            This Week
+            <ArrowLeft className="w-5 h-5 mr-2" />
+            Back to Dashboard
           </Button>
         </div>
       </div>
 
-      <div className="p-6">
-        {/* Weekly Overview */}
-        <Card className="mb-6 border-0 shadow-subtle bg-white">
-          <CardHeader>
-            <CardTitle className="flex items-center text-lg font-medium">
-              <BarChart3 className="w-5 h-5 mr-2 text-primary" />
-              This Week's Summary
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="grid grid-cols-2 gap-6 mb-6">
-              <div>
-                <div className="flex items-center justify-between mb-2">
-                  <span className="text-sm text-neutral-600">Workouts</span>
-                  <span className="text-sm font-medium text-neutral-900">
-                    {weeklyStats.workoutsCompleted}/{weeklyStats.workoutsPlanned}
-                  </span>
-                </div>
-                <ProgressBar
-                  value={(weeklyStats.workoutsCompleted / weeklyStats.workoutsPlanned) * 100}
-                  className="h-2 bg-neutral-100"
-                />
-              </div>
-              <div>
-                <div className="flex items-center justify-between mb-2">
-                  <span className="text-sm text-neutral-600">Nutrition</span>
-                  <span className="text-sm font-medium text-neutral-900">
-                    {weeklyStats.mealPlanAdherence}%
-                  </span>
-                </div>
-                <ProgressBar
-                  value={weeklyStats.mealPlanAdherence}
-                  className="h-2 bg-neutral-100"
-                />
-              </div>
+      <div className="max-w-4xl mx-auto px-6 py-8 space-y-8">
+        {/* Long-term Goal Progress */}
+        <div className="bg-white border border-gray-200 rounded-2xl p-6 shadow-md">
+          <div className="flex items-center justify-between mb-3">
+            <div className="flex items-center gap-2">
+              <Target className="w-5 h-5 text-[#8b5cf6]" />
+              <h3 className="font-medium text-gray-900">{goalType}</h3>
             </div>
-            <div className="grid grid-cols-3 gap-4 text-center pt-4 border-t border-neutral-100">
-              <div>
-                <div className="text-2xl font-medium text-accent-green mb-1">{weeklyStats.streakDays}</div>
-                <div className="text-sm text-neutral-600">Day streak</div>
-              </div>
-              <div>
-                <div className="text-2xl font-medium text-accent-blue mb-1">{weeklyStats.avgCalories || "N/A"}</div>
-                <div className="text-sm text-neutral-600">Avg calories</div>
-              </div>
-              <div>
-                <div className="text-2xl font-medium text-neutral-800 mb-1">{weeklyStats.totalActiveMinutes}min</div>
-                <div className="text-sm text-neutral-600">Active time</div>
-              </div>
+            <Badge className="bg-[#8b5cf6]/10 text-[#8b5cf6] border border-[#8b5cf6]/20">
+              Day {currentDay}/{totalDays}
+            </Badge>
+          </div>
+          <ProgressBar
+            value={(currentDay/totalDays)*100}
+            className="h-3 mb-2 bg-gray-200 [&>div]:bg-gradient-to-r [&>div]:from-[#8b5cf6] [&>div]:to-[#c1272d]"
+          />
+          <div className="flex items-center justify-between">
+            <p className="text-sm text-gray-600">Lost {weightLost} out of {weightGoal} pounds</p>
+            <p className="text-sm font-medium text-[#8b5cf6]">{Math.round((weightLost/weightGoal)*100)}% achieved</p>
+          </div>
+        </div>
+
+        {/* Motivational Quote */}
+        <div className="bg-gradient-to-r from-[#8b5cf6]/5 to-[#c1272d]/5 border border-gray-200 rounded-2xl p-6 shadow-md">
+          <div className="flex items-start gap-3">
+            <Zap className="w-5 h-5 text-[#8b5cf6] mt-1 flex-shrink-0" />
+            <div>
+              <p className="text-sm font-medium text-gray-900 italic">"{todaysQuote}"</p>
+              <p className="text-xs text-gray-600 mt-2">Your daily motivation</p>
             </div>
-          </CardContent>
-        </Card>
+          </div>
+        </div>
 
-        {/* Charts and Details */}
-        <Tabs defaultValue="activity" className="w-full">
-          <TabsList className="grid w-full grid-cols-2 mb-6 bg-neutral-100">
-            <TabsTrigger value="activity" className="data-[state=active]:bg-white">Activity</TabsTrigger>
-            <TabsTrigger value="achievements" className="data-[state=active]:bg-white">Goals</TabsTrigger>
-          </TabsList>
+        {/* Weekly Stats Overview */}
+        <div className="bg-white border border-gray-200 rounded-2xl p-8 shadow-md">
+          <h3 className="text-xl font-bold text-gray-900 mb-6">This Week</h3>
+          <div className="grid grid-cols-2 gap-4">
+            <div className="p-4 bg-gradient-to-br from-[#8b5cf6]/10 to-[#8b5cf6]/5 rounded-xl">
+              <div className="flex items-center justify-between mb-2">
+                <Dumbbell className="w-5 h-5 text-[#8b5cf6]" />
+                <Badge className="bg-white/50 text-[#8b5cf6] text-xs">
+                  {weeklyStats.workoutsCompleted}/{weeklyStats.workoutsPlanned}
+                </Badge>
+              </div>
+              <div className="text-2xl font-semibold text-gray-900">{weeklyStats.workoutsCompleted}</div>
+              <div className="text-sm text-gray-600">Workouts</div>
+            </div>
+            <div className="p-4 bg-gradient-to-br from-[#c1272d]/10 to-[#c1272d]/5 rounded-xl">
+              <div className="flex items-center justify-between mb-2">
+                <Apple className="w-5 h-5 text-[#c1272d]" />
+                <Badge className="bg-white/50 text-[#c1272d] text-xs">
+                  {weeklyStats.mealPlanAdherence}%
+                </Badge>
+              </div>
+              <div className="text-2xl font-semibold text-gray-900">{weeklyStats.avgCalories}</div>
+              <div className="text-sm text-gray-600">Avg calories per day</div>
+            </div>
+            <div className="p-4 bg-gradient-to-br from-orange-100 to-orange-50 rounded-xl">
+              <div className="flex items-center justify-between mb-2">
+                <Activity className="w-5 h-5 text-orange-600" />
+              </div>
+              <div className="text-2xl font-semibold text-gray-900">{weeklyStats.avgCaloriesBurned}</div>
+              <div className="text-sm text-gray-600">Avg calories burned per day</div>
+            </div>
+            <div className="p-4 bg-gradient-to-br from-blue-100 to-blue-50 rounded-xl">
+              <div className="flex items-center justify-between mb-2">
+                <BarChart3 className="w-5 h-5 text-blue-600" />
+              </div>
+              <div className="text-2xl font-semibold text-gray-900">{weeklyStats.avgActiveMinutes}</div>
+              <div className="text-sm text-gray-600">Avg active time per day (min)</div>
+            </div>
+          </div>
+        </div>
 
-          <TabsContent value="activity" className="space-y-6 pb-24">
-            <Card className="border-0 shadow-subtle bg-white">
-              <CardHeader>
-                <CardTitle className="text-lg font-medium">Weekly Activity</CardTitle>
-              </CardHeader>
-              <CardContent>
-                <div className="text-center py-8">
-                  <div className="w-12 h-12 bg-blue-50 rounded-full flex items-center justify-center mx-auto mb-4">
-                    <BarChart3 className="w-6 h-6 text-blue-600" />
+        {/* Device Integrations */}
+        <div className="bg-white border border-gray-200 rounded-2xl p-8 shadow-md">
+          <h3 className="text-xl font-bold text-gray-900 mb-6">Device Integrations</h3>
+          <div className="space-y-4">
+            {/* Apple Watch */}
+            <div className={`p-4 rounded-xl border-2 transition-all duration-200 ${
+              appleWatchConnected ? 'border-green-500 bg-green-50' : 'border-gray-200 bg-gray-50'
+            }`}>
+              <div className="flex items-center justify-between mb-3">
+                <div className="flex items-center gap-3">
+                  <div className={`w-10 h-10 rounded-full flex items-center justify-center ${
+                    appleWatchConnected ? 'bg-green-500' : 'bg-gray-200'
+                  }`}>
+                    <Watch className={`w-5 h-5 ${appleWatchConnected ? 'text-white' : 'text-gray-600'}`} />
                   </div>
-                  <h3 className="font-medium text-neutral-900 mb-2">Start Tracking Your Progress</h3>
-                  <p className="text-sm text-neutral-600 mb-4">
-                    Complete workouts and log meals to see your progress here.
-                  </p>
-                  <Button
-                    size="sm"
-                    onClick={() => onNavigate("workout-plan")}
-                    className="bg-primary hover:bg-primary/90"
-                  >
-                    Start First Workout
-                  </Button>
+                  <div>
+                    <h4 className="font-semibold text-gray-900">Apple Watch</h4>
+                    <p className="text-sm text-gray-600">Track steps, heart rate, and activity</p>
+                  </div>
                 </div>
-              </CardContent>
-            </Card>
-
-            <div className="grid grid-cols-2 gap-4">
-              <Card className="border-0 shadow-subtle bg-white">
-                <CardContent className="p-4 text-center">
-                  <div className="text-2xl font-medium text-accent-green mb-1">0</div>
-                  <div className="text-sm text-neutral-600 mb-2">Workouts done</div>
-                  <div className="text-xs text-neutral-500">Get started!</div>
-                </CardContent>
-              </Card>
-              <Card className="border-0 shadow-subtle bg-white">
-                <CardContent className="p-4 text-center">
-                  <div className="text-2xl font-medium text-accent-blue mb-1">0</div>
-                  <div className="text-sm text-neutral-600">Meals tracked</div>
-                  <div className="text-xs text-neutral-500">Coming soon</div>
-                </CardContent>
-              </Card>
-            </div>
-          </TabsContent>
-
-          <TabsContent value="achievements" className="space-y-4 pb-24">
-            <div className="grid gap-4">
-              {achievements.map((achievement) => (
-                <Card
-                  key={achievement.id}
-                  className={`border-0 shadow-subtle transition-all duration-200 ${
-                    achievement.earned
-                      ? 'bg-gradient-to-r from-yellow-50 to-orange-50'
-                      : 'bg-white'
-                  }`}
+                <Button
+                  size="sm"
+                  onClick={() => setAppleWatchConnected(!appleWatchConnected)}
+                  className={appleWatchConnected
+                    ? "bg-green-500 hover:bg-green-600 text-white"
+                    : "bg-[#8b5cf6] hover:bg-purple-700 text-white"
+                  }
                 >
-                  <CardContent className="p-4">
-                    <div className="flex items-start space-x-4">
-                      <div className={`w-12 h-12 rounded-xl flex items-center justify-center ${
-                        achievement.earned ? 'bg-yellow-100' : 'bg-neutral-100'
-                      }`}>
-                        <Award className={`w-6 h-6 ${
-                          achievement.earned ? 'text-yellow-600' : 'text-neutral-400'
-                        }`} />
-                      </div>
-                      <div className="flex-1">
-                        <div className="flex items-center justify-between mb-1">
-                          <h3 className="font-medium text-neutral-900">{achievement.title}</h3>
-                          {achievement.earned && (
-                            <Badge className="bg-yellow-100 text-yellow-700 border-yellow-200">
-                              Earned
-                            </Badge>
-                          )}
-                        </div>
-                        <p className="text-sm text-neutral-600 mb-3">{achievement.description}</p>
-                        <div className="flex items-center space-x-3">
-                          <ProgressBar
-                            value={achievement.progress}
-                            className="flex-1 h-2 bg-neutral-100"
-                          />
-                          <span className="text-xs text-neutral-500">{achievement.progress}%</span>
-                        </div>
-                      </div>
-                    </div>
-                  </CardContent>
-                </Card>
-              ))}
+                  {appleWatchConnected ? 'Connected' : 'Connect'}
+                </Button>
+              </div>
+              {appleWatchConnected && (
+                <div className="flex items-center gap-4 pt-3 border-t border-green-200">
+                  <div className="flex items-center gap-2">
+                    <Footprints className="w-4 h-4 text-green-600" />
+                    <span className="text-sm font-medium text-gray-900">{weeklyStats.steps.toLocaleString()} steps today</span>
+                  </div>
+                </div>
+              )}
             </div>
-          </TabsContent>
-        </Tabs>
+
+            {/* Renpho Scale */}
+            <div className={`p-4 rounded-xl border-2 transition-all duration-200 ${
+              renphoConnected ? 'border-blue-500 bg-blue-50' : 'border-gray-200 bg-gray-50'
+            }`}>
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-3">
+                  <div className={`w-10 h-10 rounded-full flex items-center justify-center ${
+                    renphoConnected ? 'bg-blue-500' : 'bg-gray-200'
+                  }`}>
+                    <Scale className={`w-5 h-5 ${renphoConnected ? 'text-white' : 'text-gray-600'}`} />
+                  </div>
+                  <div>
+                    <h4 className="font-semibold text-gray-900">Renpho Scale</h4>
+                    <p className="text-sm text-gray-600">Track weight, body fat, and muscle mass</p>
+                  </div>
+                </div>
+                <Button
+                  size="sm"
+                  onClick={() => setRenphoConnected(!renphoConnected)}
+                  className={renphoConnected
+                    ? "bg-blue-500 hover:bg-blue-600 text-white"
+                    : "bg-[#8b5cf6] hover:bg-purple-700 text-white"
+                  }
+                >
+                  {renphoConnected ? 'Connected' : 'Connect'}
+                </Button>
+              </div>
+            </div>
+
+            {/* OURA Ring */}
+            <div className={`p-4 rounded-xl border-2 transition-all duration-200 ${
+              ouraConnected ? 'border-purple-500 bg-purple-50' : 'border-gray-200 bg-gray-50'
+            }`}>
+              <div className="flex items-center justify-between mb-3">
+                <div className="flex items-center gap-3">
+                  <div className={`w-10 h-10 rounded-full flex items-center justify-center ${
+                    ouraConnected ? 'bg-purple-500' : 'bg-gray-200'
+                  }`}>
+                    <Moon className={`w-5 h-5 ${ouraConnected ? 'text-white' : 'text-gray-600'}`} />
+                  </div>
+                  <div>
+                    <h4 className="font-semibold text-gray-900">OURA Ring</h4>
+                    <p className="text-sm text-gray-600">Track sleep, recovery, and readiness</p>
+                  </div>
+                </div>
+                <Button
+                  size="sm"
+                  onClick={() => setOuraConnected(!ouraConnected)}
+                  className={ouraConnected
+                    ? "bg-purple-500 hover:bg-purple-600 text-white"
+                    : "bg-[#8b5cf6] hover:bg-purple-700 text-white"
+                  }
+                >
+                  {ouraConnected ? 'Connected' : 'Connect'}
+                </Button>
+              </div>
+              {ouraConnected && (
+                <div className="pt-3 border-t border-purple-200">
+                  <p className="text-sm text-purple-900 font-medium">
+                    AI will optimize your meals and workouts based on your sleep and recovery data
+                  </p>
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+
+        {/* Weight Progress Chart */}
+        <div className="bg-white border border-gray-200 rounded-2xl p-8 shadow-md">
+          <h3 className="text-xl font-bold text-gray-900 mb-6">Weight Progress</h3>
+          <ResponsiveContainer width="100%" height={200}>
+            <LineChart data={monthlyWeight}>
+              <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
+              <XAxis dataKey="week" stroke="#9CA3AF" />
+              <YAxis stroke="#9CA3AF" domain={[160, 166]} />
+              <Tooltip />
+              <Line
+                type="monotone"
+                dataKey="weight"
+                stroke="#c1272d"
+                strokeWidth={3}
+                dot={{ fill: '#8b5cf6', r: 4 }}
+              />
+            </LineChart>
+          </ResponsiveContainer>
+        </div>
+
+        {/* Weekly Activity Chart */}
+        <div className="bg-white border border-gray-200 rounded-2xl p-8 shadow-md">
+          <h3 className="text-xl font-bold text-gray-900 mb-6">Weekly Activity</h3>
+          <ResponsiveContainer width="100%" height={200}>
+            <BarChart data={weeklyData}>
+              <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
+              <XAxis dataKey="day" stroke="#9CA3AF" />
+              <YAxis stroke="#9CA3AF" />
+              <Tooltip />
+              <Bar dataKey="workouts" fill="#8b5cf6" radius={[8, 8, 0, 0]} />
+            </BarChart>
+          </ResponsiveContainer>
+        </div>
+
+        {/* Achievements */}
+        <div className="bg-white border border-gray-200 rounded-2xl p-8 shadow-md">
+          <h3 className="text-xl font-bold text-gray-900 mb-6 flex items-center">
+            <Award className="w-6 h-6 mr-3 text-[#8b5cf6]" />
+            Achievements
+          </h3>
+          <div className="space-y-4">
+            {achievements.map((achievement) => (
+              <div
+                key={achievement.id}
+                className={`p-4 rounded-xl border-2 transition-all duration-200 ${
+                  achievement.earned
+                    ? 'border-[#8b5cf6] bg-gradient-to-r from-purple-50 to-red-50'
+                    : 'border-gray-200 bg-gray-50'
+                }`}
+              >
+                <div className="flex items-start justify-between mb-2">
+                  <div className="flex-1">
+                    <h4 className="font-semibold text-gray-900 mb-1">{achievement.title}</h4>
+                    <p className="text-sm text-gray-600">{achievement.description}</p>
+                  </div>
+                  {achievement.earned && (
+                    <Badge className="bg-[#8b5cf6] text-white">
+                      Earned
+                    </Badge>
+                  )}
+                </div>
+                <ProgressBar
+                  value={achievement.progress}
+                  className="h-2 bg-gray-200 [&>div]:bg-gradient-to-r [&>div]:from-[#8b5cf6] [&>div]:to-[#c1272d]"
+                />
+                <p className="text-xs text-gray-600 mt-1">{achievement.progress}% complete</p>
+              </div>
+            ))}
+          </div>
+        </div>
       </div>
 
       {/* Bottom Navigation */}
-      <div className="fixed bottom-0 left-0 right-0 bg-white border-t border-neutral-200">
+      <div className="fixed bottom-0 left-0 right-0 bg-white border-t border-gray-200">
         <div className="max-w-md mx-auto grid grid-cols-5 h-16">
           <button
-            className="flex flex-col items-center justify-center text-neutral-400"
+            className="flex flex-col items-center justify-center text-gray-400 hover:text-[#c1272d] transition-colors"
             onClick={() => onNavigate("dashboard")}
           >
-            <Target className="w-5 h-5 mb-1" />
+            <img src="/fytr-icon.svg" alt="Home" className="w-5 h-5 mb-1" />
             <span className="text-xs">Home</span>
           </button>
           <button
-            className="flex flex-col items-center justify-center text-neutral-400"
+            className="flex flex-col items-center justify-center text-gray-400 hover:text-[#c1272d] transition-colors"
             onClick={() => onNavigate("meal-plan")}
           >
-            <Apple className="w-5 h-5 mb-1" />
+            <Apple className="w-5 h-5 mb-1 stroke-1" />
             <span className="text-xs">Meals</span>
           </button>
           <button
-            className="flex flex-col items-center justify-center text-neutral-400"
+            className="flex flex-col items-center justify-center text-gray-400 hover:text-[#c1272d] transition-colors"
             onClick={() => onNavigate("workout-plan")}
           >
-            <Dumbbell className="w-5 h-5 mb-1" />
+            <Dumbbell className="w-5 h-5 mb-1 stroke-1" />
             <span className="text-xs">Workouts</span>
           </button>
-          <button className="flex flex-col items-center justify-center text-primary">
-            <TrendingUp className="w-5 h-5 mb-1" />
+          <button className="flex flex-col items-center justify-center text-[#c1272d]">
+            <TrendingUp className="w-5 h-5 mb-1 stroke-1" />
             <span className="text-xs">Progress</span>
           </button>
           <button
-            className="flex flex-col items-center justify-center text-neutral-400"
+            className="flex flex-col items-center justify-center text-gray-400 hover:text-[#c1272d] transition-colors"
             onClick={() => onNavigate("account")}
           >
-            <User className="w-5 h-5 mb-1" />
+            <User className="w-5 h-5 mb-1 stroke-1" />
             <span className="text-xs">Account</span>
           </button>
         </div>

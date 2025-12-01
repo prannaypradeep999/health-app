@@ -5,11 +5,79 @@ import { pexelsClient } from '@/lib/external/pexels-client';
 
 export const runtime = 'nodejs';
 
+// Generate personalized fitness profile based on survey data
+async function generateFitnessProfile(surveyData: any): Promise<string> {
+  const startTime = Date.now();
+  console.log(`[FITNESS-PROFILE] 🏋️ Generating personalized fitness profile...`);
+
+  try {
+    const profilePrompt = `You are an elite personal trainer and fitness coach. Create a comprehensive fitness profile for this user.
+
+SURVEY DATA:
+${JSON.stringify({
+  name: `${surveyData.firstName} ${surveyData.lastName}`,
+  age: surveyData.age,
+  sex: surveyData.sex,
+  goal: surveyData.goal,
+  activityLevel: surveyData.activityLevel,
+  sportsInterests: surveyData.sportsInterests,
+  fitnessTimeline: surveyData.fitnessTimeline,
+  workoutPreferences: surveyData.workoutPreferencesJson,
+  monthlyFitnessBudget: surveyData.monthlyFitnessBudget
+}, null, 2)}
+
+TASK: Create a comprehensive fitness profile that captures this user's personality, goals, and training needs. Write as if you're their personal trainer who knows them well.
+
+FORMAT: Write in 2nd person ("you") as if speaking directly to the user. Be specific, actionable, and motivating.
+
+INCLUDE:
+1. TRAINING PHILOSOPHY: Based on their goal (${surveyData.goal}) and current activity level
+2. WORKOUT STRATEGY: How to structure training for their lifestyle and preferences
+3. PROGRESSION APPROACH: Realistic timeline based on their fitness timeline expectations
+4. MOTIVATION STYLE: What drives them based on sports interests and personality
+5. EQUIPMENT & BUDGET: How to optimize their $${surveyData.monthlyFitnessBudget}/month budget
+6. LIFESTYLE INTEGRATION: How workouts fit into their current activity patterns
+7. SUCCESS METRICS: What progress looks like for their specific goals
+
+Keep it concise but comprehensive (300-500 words). Write like a knowledgeable trainer who understands their specific situation.`;
+
+    const response = await fetch('https://api.openai.com/v1/chat/completions', {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${process.env.GPT_KEY}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        model: 'gpt-4o',
+        messages: [{ role: 'system', content: profilePrompt }],
+        temperature: 0.7
+      })
+    });
+
+    if (!response.ok) {
+      throw new Error(`Fitness profile generation failed: ${response.status}`);
+    }
+
+    const data = await response.json();
+    const profile = data.choices?.[0]?.message?.content || '';
+
+    console.log(`[FITNESS-PROFILE] ✅ Generated in ${Date.now() - startTime}ms`);
+    console.log(`[FITNESS-PROFILE] 🏋️ Profile:\n${profile}`);
+
+    return profile;
+
+  } catch (error) {
+    console.error(`[FITNESS-PROFILE] ❌ Generation failed:`, error);
+    return ''; // Return empty string if failed
+  }
+}
+
 interface WorkoutDay {
   day: string;
   restDay: boolean;
   focus: string;
   estimatedTime: string;
+  estimatedCalories: number;
   targetMuscles: string[];
   description: string;
   exercises: Array<{
@@ -105,12 +173,23 @@ export async function POST(req: NextRequest) {
       workoutPrefs: !!surveyData.workoutPreferencesJson
     });
 
-    // Generate comprehensive workout plan with GPT
-    console.log('[WORKOUT-GENERATION] 🎯 Generating comprehensive workout plan with GPT...');
+    // Generate fitness profile and workout plan in parallel
+    console.log('[WORKOUT-GENERATION] 🎯 Generating fitness profile and workout plan...');
     const generationStartTime = Date.now();
-    const workoutPlan = await generateWorkoutPlan(surveyData);
+
+    const [fitnessProfile, workoutPlan] = await Promise.all([
+      generateFitnessProfile(surveyData),
+      generateWorkoutPlan(surveyData)
+    ]);
+
+    // Log the fitness profile for debugging
+    if (fitnessProfile) {
+      console.log(`[FITNESS-PROFILE] 🎯 Generated profile will enhance future workout recommendations`);
+    }
+
     const generationTime = Date.now() - generationStartTime;
-    console.log(`[WORKOUT-GENERATION] ✅ Generation completed in ${generationTime}ms`);
+    console.log(`[WORKOUT-GENERATION] ✅ Profile and plan generation completed in ${generationTime}ms`);
+    console.log(`[WORKOUT-GENERATION] 📋 Profile generated: ${fitnessProfile ? 'Yes' : 'No'}`);
 
     // Enhance workout plan with exercise images
     console.log('[WORKOUT-GENERATION] Enhancing workout plan with exercise images...');
@@ -281,8 +360,9 @@ RETURN EXACTLY THIS JSON STRUCTURE:
       "restDay": false,
       "focus": "Upper Body Push (Chest, Shoulders, Triceps)",
       "estimatedTime": "45 minutes",
+      "estimatedCalories": 280,
       "targetMuscles": ["chest", "shoulders", "triceps"],
-      "description": "Welcome to your Push day! Today we're targeting your chest, shoulders, and triceps using proven push movement patterns. This workout follows the Push/Pull/Legs methodology used by top bodybuilders and strength coaches. The exercises are sequenced to maximize muscle activation while preventing fatigue overlap. Perfect for your ${surveyData.goal} goal because pushing movements build upper body strength and size while burning significant calories. You'll feel accomplished and stronger after this session!",
+      "description": "Welcome to your Push day! Today we're targeting your chest, shoulders, and triceps using proven push movement patterns. This workout follows the Push/Pull/Legs methodology used by top bodybuilders and strength coaches. Focus on perfect form over heavy weight - choose weights that allow you to complete all reps with 2-3 reps in reserve. Control the weight on both the lowering and lifting phases, and engage your core throughout each movement. Perfect for your ${surveyData.goal} goal because pushing movements build upper body strength and size while burning significant calories. Listen to your body and adjust weights as needed!",
       "exercises": [
         {
           "name": "Push-ups (or Bench Press if available)",
@@ -330,9 +410,11 @@ CRITICAL REQUIREMENTS:
 1. Create ALL 7 days (monday through sunday) - 5 training days + 2 rest days
 2. Rest days: restDay: true, empty exercises array
 3. Each training day: 4-5 exercises (complete workout structure)
-4. Keep descriptions concise but motivating
+4. Keep descriptions motivating and include form guidance and weight selection tips
 5. Include beginner/intermediate/advanced modifications
 6. Focus on established exercises and proper form
+7. Each workout description must mention: proper form emphasis, weight selection guidance (2-3 reps in reserve), and movement control
+8. CALORIE ESTIMATION: Provide realistic calorie burn estimates (typically 200-400 calories for 30-60min workouts) based on workout intensity and duration
 
 Generate the complete 7-day plan now with expert-level detail and motivating descriptions:
 
@@ -354,8 +436,7 @@ CRITICAL: Return PURE JSON only. No markdown, no text before/after. Must start w
         { role: 'user', content: userPrompt }
       ],
       response_format: { type: 'json_object' },
-      temperature: 0.2,
-      max_tokens: 8000
+      temperature: 0.2
     })
   });
 

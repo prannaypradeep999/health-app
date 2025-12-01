@@ -506,255 +506,196 @@ REMINDER: Response must start with [ and end with ] - pure JSON array only.`;
   }
 }
 
-// Enhanced dual URL selection: extraction URL + ordering URL
-async function selectDualUrls(searchResults: any[], restaurant: any): Promise<{extractionUrl: string | null, orderingUrl: string | null}> {
-  try {
-    if (!searchResults || searchResults.length === 0) {
-      return { extractionUrl: null, orderingUrl: null };
-    }
-
-    // Separate URLs by type
-    const extractionUrls = searchResults
-      .filter(r => {
-        const url = r.url?.toLowerCase() || '';
-        return !url.includes('doordash.com') &&
-               !url.includes('ubereats.com') &&
-               !url.includes('grubhub.com') &&
-               !url.includes('postmates.com');
-      })
-      .slice(0, 6);
-
-    const orderingUrls = searchResults
-      .filter(r => {
-        const url = r.url?.toLowerCase() || '';
-        return url.includes('doordash.com') ||
-               url.includes('ubereats.com') ||
-               url.includes('grubhub.com');
-      })
-      .slice(0, 4);
-
-    // Get best extraction URL (restaurant website)
-    let extractionUrl = null;
-    if (extractionUrls.length > 0) {
-      extractionUrl = await selectBestExtractionUrl(extractionUrls, restaurant);
-    }
-
-    // Get best ordering URL (DoorDash with location verification)
-    let orderingUrl = null;
-    if (orderingUrls.length > 0) {
-      orderingUrl = await selectBestOrderingUrl(orderingUrls, restaurant);
-    }
-
-    // If no ordering URL found, use extraction URL as fallback
-    if (!orderingUrl && extractionUrl) {
-      orderingUrl = extractionUrl;
-    }
-
-    return { extractionUrl, orderingUrl };
-
-  } catch (error) {
-    console.error('[DUAL-URL] Error in dual URL selection:', error);
-    return { extractionUrl: null, orderingUrl: null };
-  }
-}
-
-// Select best URL for menu extraction
-async function selectBestExtractionUrl(extractionUrls: any[], restaurant: any): Promise<string | null> {
-  if (extractionUrls.length === 0) return null;
-  if (extractionUrls.length === 1) return extractionUrls[0].url;
-
-  const prompt = `Select the best URL for menu extraction for ${restaurant.name}.
-
-RESTAURANT: ${restaurant.name} (${restaurant.cuisine})
-LOCATION: ${restaurant.city}
-
-URLs:
-${extractionUrls.map((r, i) => `${i + 1}. ${r.url}
-Title: ${r.title || 'No title'}
-Content: ${r.content?.substring(0, 100) || 'No content'}`).join('\n\n')}
-
-PRIORITY:
-1. Restaurant official website menu page
-2. PDF menu files
-3. Pages with menu items and prices
-
-Return ONLY the number (1-${extractionUrls.length}) of the best URL. If none good, return 0.`;
+// Dual URL selection: extraction URL + ordering URL\nasync function selectDualUrls(searchResults: any[], restaurant: any): Promise<{extractionUrl: string | null, orderingUrl: string | null}> {\n  try {\n    if (!searchResults || searchResults.length === 0) {\n      return { extractionUrl: null, orderingUrl: null };\n    }\n\n    // Separate URLs by type\n    const extractionUrls = searchResults\n      .filter(r => {\n        const url = r.url?.toLowerCase() || '';\n        return !url.includes('doordash.com') && \n               !url.includes('ubereats.com') && \n               !url.includes('grubhub.com') && \n               !url.includes('postmates.com');\n      })\n      .slice(0, 6);\n\n    const orderingUrls = searchResults\n      .filter(r => {\n        const url = r.url?.toLowerCase() || '';\n        return url.includes('doordash.com') || \n               url.includes('ubereats.com') || \n               url.includes('grubhub.com');\n      })\n      .slice(0, 4);\n\n    // Get best extraction URL (restaurant website)\n    let extractionUrl = null;\n    if (extractionUrls.length > 0) {\n      extractionUrl = await selectBestExtractionUrl(extractionUrls, restaurant);\n    }\n\n    // Get best ordering URL (DoorDash with location verification)\n    let orderingUrl = null;\n    if (orderingUrls.length > 0) {\n      orderingUrl = await selectBestOrderingUrl(orderingUrls, restaurant);\n    }\n\n    // If no ordering URL found, use extraction URL as fallback\n    if (!orderingUrl && extractionUrl) {\n      orderingUrl = extractionUrl;\n    }\n\n    return { extractionUrl, orderingUrl };\n\n  } catch (error) {\n    console.error('[DUAL-URL] Error in dual URL selection:', error);\n    return { extractionUrl: null, orderingUrl: null };\n  }\n}\n\n// Select best URL for menu extraction\nasync function selectBestExtractionUrl(extractionUrls: any[], restaurant: any): Promise<string | null> {\n  if (extractionUrls.length === 0) return null;\n  if (extractionUrls.length === 1) return extractionUrls[0].url;\n\n  const prompt = `Select the best URL for menu extraction for ${restaurant.name}.\n\nRESTAURANT: ${restaurant.name} (${restaurant.cuisine})\nLOCATION: ${restaurant.city}\n\nURLs:\n${extractionUrls.map((r, i) => `${i + 1}. ${r.url}\nTitle: ${r.title || 'No title'}\nContent: ${r.content?.substring(0, 100) || 'No content'}`).join('\n\n')}\n\nPRIORITY:\n1. Restaurant official website menu page\n2. PDF menu files\n3. Pages with menu items and prices\n\nReturn ONLY the number (1-${extractionUrls.length}) of the best URL. If none good, return 0.`;\n\n  try {\n    const response = await fetch('https://api.openai.com/v1/chat/completions', {\n      method: 'POST',\n      headers: {\n        'Authorization': `Bearer ${process.env.GPT_KEY}`,\n        'Content-Type': 'application/json'\n      },\n      body: JSON.stringify({\n        model: 'gpt-4o-mini',\n        messages: [{\n          role: 'system',\n          content: 'You are an expert at identifying menu extraction URLs. Return only a number.'\n        }, {\n          role: 'user',\n          content: prompt\n        }],\n        temperature: 0.1,\n        max_tokens: 5\n      })\n    });\n\n    if (!response.ok) {\n      return extractionUrls[0].url;\n    }\n\n    const data = await response.json();\n    const choice = parseInt(data.choices[0]?.message?.content?.trim()) - 1;\n\n    if (choice >= 0 && choice < extractionUrls.length) {\n      return extractionUrls[choice].url;\n    }\n\n    return extractionUrls[0].url;\n\n  } catch (error) {\n    console.error('[EXTRACTION-URL] Error:', error);\n    return extractionUrls[0].url;\n  }\n}\n\n// Select best ordering URL with location verification\nasync function selectBestOrderingUrl(orderingUrls: any[], restaurant: any): Promise<string | null> {\n  if (orderingUrls.length === 0) return null;\n\n  // Simple location verification - check if restaurant name and city match\n  const verifiedUrls = orderingUrls.filter(r => {\n    const title = r.title?.toLowerCase() || '';\n    const content = r.content?.toLowerCase() || '';\n    const url = r.url?.toLowerCase() || '';\n    \n    const restaurantName = restaurant.name.toLowerCase();\n    const city = restaurant.city.toLowerCase();\n    \n    // Check if restaurant name appears in title/content\n    const hasRestaurantName = title.includes(restaurantName) || content.includes(restaurantName);\n    // Check if city appears (more flexible)\n    const hasLocation = title.includes(city) || content.includes(city) || url.includes(city);\n    \n    return hasRestaurantName && (hasLocation || url.includes('doordash.com/store/'));\n  });\n\n  if (verifiedUrls.length > 0) {\n    console.log(`[ORDERING-URL] \u2705 Found ${verifiedUrls.length} verified ordering URLs`);\n    return verifiedUrls[0].url;\n  }\n\n  // Fallback to first ordering URL if verification fails\n  console.log(`[ORDERING-URL] \u26a0\ufe0f Using unverified ordering URL`);\n  return orderingUrls[0].url;\n}\n\n// Legacy function - keeping for compatibility\nasync function selectBestMenuUrl(searchResults: any[], restaurant: any): Promise<string | null> {\n  try {\n    if (!searchResults || searchResults.length === 0) {\n      return null;\n    }\n\n    // Filter for non-delivery platform URLs only\n    const menuUrls = searchResults\n      .filter(r => {\n        const url = r.url?.toLowerCase() || '';\n        return !url.includes('doordash.com') && \n               !url.includes('ubereats.com') && \n               !url.includes('grubhub.com') && \n               !url.includes('postmates.com');\n      })\n      .slice(0, 8); // Limit to top 8 for GPT analysis\n\n    if (menuUrls.length === 0) {\n      return null;\n    }\n\n    const prompt = `You are an expert at identifying the best restaurant menu URLs. Select the URL most likely to contain the actual menu for ${restaurant.name}.\n\nRESTAURANT: ${restaurant.name} (${restaurant.cuisine})\nLOCATION: ${restaurant.city}\n\nAVAILABLE URLs:\n${menuUrls.map((r, i) => `${i + 1}. ${r.url}\\n   Title: ${r.title || 'No title'}\\n   Content: ${r.content?.substring(0, 150) || 'No content'}`).join('\\n\\n')}\n\nSELECTION CRITERIA (PRIORITIZE IN ORDER):\n1. Restaurant's official website menu page\n2. PDF menu files\n3. Pages with actual menu items/prices mentioned\n4. Pages with words like \"menu\", \"appetizers\", \"entrees\", \"$\"\n5. Avoid generic restaurant directories or review sites\n\nReturn ONLY the number (1-${menuUrls.length}) of the BEST menu URL. If none look good, return 0.\n\nResponse format: Just the number, nothing else.`;\n\n    const response = await fetch('https://api.openai.com/v1/chat/completions', {\n      method: 'POST',\n      headers: {\n        'Authorization': `Bearer ${process.env.GPT_KEY}`,\n        'Content-Type': 'application/json'\n      },\n      body: JSON.stringify({\n        model: 'gpt-4o-mini',\n        messages: [{\n          role: 'system',\n          content: 'You are an expert at identifying restaurant menu URLs. Return only the number of the best URL.'\n        }, {\n          role: 'user',\n          content: prompt\n        }],\n        temperature: 0.1,\n        max_tokens: 10\n      })\n    });\n\n    if (!response.ok) {\n      console.error(`[SMART-URL] GPT API error: ${response.status}`);\n      return menuUrls[0]?.url || null; // Fallback to first URL\n    }\n\n    const data = await response.json();\n    const choice = data.choices[0]?.message?.content?.trim();\n    const selectedIndex = parseInt(choice) - 1;\n\n    if (selectedIndex >= 0 && selectedIndex < menuUrls.length) {\n      console.log(`[SMART-URL] GPT selected URL #${selectedIndex + 1}: ${menuUrls[selectedIndex].url}`);\n      return menuUrls[selectedIndex].url;\n    }\n\n    console.log(`[SMART-URL] GPT selection invalid (${choice}), using first URL`);\n    return menuUrls[0]?.url || null;\n\n  } catch (error) {\n    console.error('[SMART-URL] Error in smart URL selection:', error);\n    return null;\n  }\n}\n\n// Extract menu content using Tavily\nasync function extractMenuContent(url: string): Promise<string | null> {\n  try {\n    console.log(`[TAVILY-EXTRACT] Extracting content from: ${url}`);\n    \n    const response = await fetch('https://api.tavily.com/extract', {\n      method: 'POST',\n      headers: {\n        'Content-Type': 'application/json',\n        'Authorization': `Bearer ${process.env.TAVILY_API_KEY}`\n      },\n      body: JSON.stringify({\n        urls: [url]\n      })\n    });\n\n    if (!response.ok) {\n      console.log(`[TAVILY-EXTRACT] ❌ API error ${response.status}: ${response.statusText}`);\n      return null;\n    }\n\n    const extractResponse = await response.json();\n    console.log(`[TAVILY-EXTRACT] 📋 API response structure:`, Object.keys(extractResponse));\n\n    if (extractResponse && extractResponse.results && extractResponse.results.length > 0) {\n      const content = extractResponse.results[0].content || extractResponse.results[0].raw_content;\n      console.log(`[TAVILY-EXTRACT] ✅ Extracted ${content?.length || 0} characters`);\n      return content || null;\n    }\n\n    console.log(`[TAVILY-EXTRACT] ❌ No content extracted from response`);\n    return null;\n\n  } catch (error) {\n    console.error('[TAVILY-EXTRACT] Error extracting content:', error);\n    return null;\n  }\n}\n\nasync function extractMenuInformation(restaurants: any[], surveyData: any): Promise<any[]> {
+  console.log(`[MENU-EXTRACTION] 🔍 Extracting menus for ${restaurants.length} restaurants...`);
+  console.log(`[MENU-EXTRACTION] 🏪 Restaurant list:`, restaurants.map(r => r.name));
 
   try {
-    const response = await fetch('https://api.openai.com/v1/chat/completions', {
-      method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${process.env.GPT_KEY}`,
-        'Content-Type': 'application/json'
-      },
-      body: JSON.stringify({
-        model: 'gpt-4o-mini',
-        messages: [{
-          role: 'system',
-          content: 'You are an expert at identifying menu extraction URLs. Return only a number.'
-        }, {
-          role: 'user',
-          content: prompt
-        }],
-        temperature: 0.1,
-        max_tokens: 5
-      })
-    });
+    console.log(`[TAVILY] 🔑 Initializing Tavily client with API key: ${process.env.TAVILY_API_KEY?.substring(0, 15)}...`);
+    const tavilyClient = new TavilyClient({ apiKey: process.env.TAVILY_API_KEY });
 
-    if (!response.ok) {
-      return extractionUrls[0].url;
-    }
+    const menuSearchPromises = restaurants.map(async (restaurant, index) => {
+      try {
+        // Try targeted delivery site search (optimized for speed)
+        console.log(`[TAVILY] 🔍 Searching delivery sites for: ${restaurant.name}`);
 
-    const data = await response.json();
-    const choice = parseInt(data.choices[0]?.message?.content?.trim()) - 1;
+        // Enhanced 3-search strategy: Restaurant website menus + PDF menus + General menu search
+        const searchStrategies = [
+          {
+            name: 'Restaurant Website Menu',
+            query: `"${restaurant.name}" "${restaurant.city}" menu site:${restaurant.name.toLowerCase().replace(/\s+/g, '')}.com OR site:${restaurant.name.toLowerCase().replace(/\s+/g, '')}.net`,
+            maxResults: 4
+          },
+          {
+            name: 'PDF Menu Search',
+            query: `"${restaurant.name}" "${restaurant.city}" menu filetype:pdf`,
+            maxResults: 3
+          },
+          {
+            name: 'General Menu Search',
+            query: `"${restaurant.name}" ${restaurant.address || restaurant.zipCode || restaurant.city} menu full -site:doordash.com -site:ubereats.com -site:grubhub.com`,
+            maxResults: 4
+          }
+        ];
 
-    if (choice >= 0 && choice < extractionUrls.length) {
-      return extractionUrls[choice].url;
-    }
+        let allResults: any[] = [];
+        let bestDeliveryUrl = null;
 
-    return extractionUrls[0].url;
+        for (const strategy of searchStrategies) {
+          try {
+            console.log(`[TAVILY] 🎯 ${strategy.name}: ${strategy.query}`);
+            const response = await tavilyClient.search({
+              query: strategy.query,
+              max_results: strategy.maxResults,
+              include_answer: true
+            });
 
-  } catch (error) {
-    console.error('[EXTRACTION-URL] Error:', error);
-    return extractionUrls[0].url;
-  }
-}
+            // Filter for relevant menu URLs based on search strategy
+            const relevantResults = response.results?.filter(r => {
+              const url = r.url.toLowerCase();
+              const title = r.title?.toLowerCase() || '';
+              const content = r.content?.toLowerCase() || '';
 
-// Select best ordering URL with location verification
-async function selectBestOrderingUrl(orderingUrls: any[], restaurant: any): Promise<string | null> {
-  if (orderingUrls.length === 0) return null;
+              // Filter out problematic URLs
+              const hasProblematicTerms =
+                url.includes('graveyard') ||
+                url.includes('dnu') ||
+                title.includes('not available') ||
+                title.includes('graveyard') ||
+                title.includes('dnu') ||
+                content.includes('restaurant you are trying to reach is not available') ||
+                content.includes('graveyard') ||
+                content.includes('do not reactivate') ||
+                url.includes('doordash.com') ||
+                url.includes('ubereats.com') ||
+                url.includes('grubhub.com') ||
+                url.includes('postmates.com');
 
-  // Simple location verification - check if restaurant name and city match
-  const verifiedUrls = orderingUrls.filter(r => {
-    const title = r.title?.toLowerCase() || '';
-    const content = r.content?.toLowerCase() || '';
-    const url = r.url?.toLowerCase() || '';
+              if (hasProblematicTerms) {
+                console.log(`[TAVILY] ❌ Filtering out delivery/problematic URL: ${url}`);
+                return false;
+              }
 
-    const restaurantName = restaurant.name.toLowerCase();
-    const city = restaurant.city.toLowerCase();
+              // Prioritize actual menu pages
+              const hasMenuIndicators =
+                url.includes('menu') ||
+                url.includes('.pdf') ||
+                title.includes('menu') ||
+                content.includes('menu') ||
+                content.includes('appetizer') ||
+                content.includes('entree') ||
+                content.includes('$');
 
-    // Check if restaurant name appears in title/content
-    const hasRestaurantName = title.includes(restaurantName) || content.includes(restaurantName);
-    // Check if city appears (more flexible)
-    const hasLocation = title.includes(city) || content.includes(city) || url.includes(city);
+              return hasMenuIndicators;
+            }) || [];
 
-    return hasRestaurantName && (hasLocation || url.includes('doordash.com/store/'));
-  });
+            // Log menu URL findings
+            if (relevantResults.length > 0) {
+              console.log(`[TAVILY] ✅ ${strategy.name}: Found ${relevantResults.length} menu URLs`);
+              relevantResults.slice(0, 2).forEach(result => {
+                console.log(`[TAVILY] 📄 Menu URL: ${result.url}`);
+              });
+            }
 
-  if (verifiedUrls.length > 0) {
-    console.log(`[ORDERING-URL] ✅ Found ${verifiedUrls.length} verified ordering URLs`);
-    return verifiedUrls[0].url;
-  }
+            allResults = allResults.concat(response.results || []);
 
-  // Fallback to first ordering URL if verification fails
-  console.log(`[ORDERING-URL] ⚠️ Using unverified ordering URL`);
-  return orderingUrls[0].url;
-}
-
-// Extract menu content using Tavily
-async function extractMenuContent(url: string): Promise<string | null> {
-  try {
-    console.log(`[TAVILY-EXTRACT] Extracting content from: ${url}`);
-
-    const response = await fetch('https://api.tavily.com/extract', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${process.env.TAVILY_API_KEY}`
-      },
-      body: JSON.stringify({
-        urls: [url]
-      })
-    });
-
-    if (!response.ok) {
-      console.log(`[TAVILY-EXTRACT] ❌ API error ${response.status}: ${response.statusText}`);
-      return null;
-    }
-
-    const extractResponse = await response.json();
-    console.log(`[TAVILY-EXTRACT] 📋 API response structure:`, Object.keys(extractResponse));
-
-    if (extractResponse && extractResponse.results && extractResponse.results.length > 0) {
-      const content = extractResponse.results[0].content || extractResponse.results[0].raw_content;
-      console.log(`[TAVILY-EXTRACT] ✅ Extracted ${content?.length || 0} characters`);
-      return content || null;
-    }
-
-    console.log(`[TAVILY-EXTRACT] ❌ No content extracted from response`);
-    return null;
-
-  } catch (error) {
-    console.error('[TAVILY-EXTRACT] Error extracting content:', error);
-    return null;
-  }
-}
-
-// Try extract-based analysis with fallback
-async function tryExtractAnalysis(restaurant: any, tavilyResponse: any, surveyData: any): Promise<any> {
-  try {
-    console.log(`[EXTRACT-ANALYSIS] 🔍 Trying extract-based analysis for ${restaurant.name}`);
-
-    // Get dual URLs (extraction vs ordering)
-    const { extractionUrl, orderingUrl } = await selectDualUrls(tavilyResponse.results || [], restaurant);
-
-    if (!extractionUrl) {
-      console.log(`[EXTRACT-ANALYSIS] ❌ No extraction URL found for ${restaurant.name}`);
-      return null;
-    }
-
-    console.log(`[EXTRACT-ANALYSIS] 📋 Using extraction URL: ${extractionUrl}`);
-    console.log(`[EXTRACT-ANALYSIS] 🛒 Using ordering URL: ${orderingUrl}`);
-
-    // Extract full page content using Tavily
-    const menuContent = await extractMenuContent(extractionUrl);
-
-    if (!menuContent || menuContent.length < 100) {
-      console.log(`[EXTRACT-ANALYSIS] ❌ Insufficient content extracted (${menuContent?.length || 0} chars)`);
-      return null;
-    }
-
-    console.log(`[EXTRACT-ANALYSIS] ✅ Extracted ${menuContent.length} characters of content`);
-
-    // Create enhanced tavily response with extracted content
-    const enhancedTavilyResponse = {
-      ...tavilyResponse,
-      menuContent: menuContent,
-      extractionUrl: extractionUrl,
-      orderingUrl: orderingUrl || extractionUrl
-    };
-
-    // Analyze the extracted content
-    const analysis = await analyzeExtractedMenuWithGPT(restaurant, enhancedTavilyResponse, surveyData);
-
-    if (analysis && analysis.recommendedItems && analysis.recommendedItems.length > 0) {
-      // Enhance the output to match expected structure
-      const enhancedAnalysis = {
-        ...analysis,
-        menuSourceName: extractionUrl.includes('doordash.com') ? 'DoorDash' :
-                        extractionUrl.includes('ubereats.com') ? 'UberEats' :
-                        extractionUrl.includes('grubhub.com') ? 'GrubHub' : 'Web',
-        isOpen: true, // Assume open if we got content
-        currentHour: new Date().getHours(),
-        itemsCount: analysis.recommendedItems.length,
-        exactPrices: analysis.recommendedItems.filter(item => item.exactPrice && item.exactPrice !== null).length,
-        urlValidation: {
-          usedPrimaryUrl: true,
-          selectedUrl: extractionUrl,
-          platform: extractionUrl.includes('doordash.com') ? 'DoorDash' : 'Web'
+            // Log results for each strategy
+            if (relevantResults.length > 0) {
+              console.log(`[TAVILY] ✅ ${strategy.name}: Found ${relevantResults.length} relevant results`);
+            } else {
+              console.log(`[TAVILY] ❌ ${strategy.name}: No relevant results found`);
+            }
+          } catch (strategyError) {
+            console.log(`[TAVILY] ⚠️ ${strategy.name} failed:`, strategyError.message);
+          }
         }
-      };
 
-      console.log(`[EXTRACT-ANALYSIS] ✅ Successfully extracted ${enhancedAnalysis.itemsCount} items for ${restaurant.name}`);
-      return enhancedAnalysis;
-    }
+        // Dual URL selection: extraction URL + ordering URL
+        console.log(`[DUAL-URL] 🔍 Finding best URLs for ${restaurant.name}...`);
+        const urls = await selectDualUrls(allResults, restaurant);
 
-    console.log(`[EXTRACT-ANALYSIS] ❌ No valid analysis from extracted content`);
-    return null;
+        if (!urls.extractionUrl) {
+          console.log(`[DUAL-URL] ❌ No extraction URL found for ${restaurant.name} - skipping`);
+          return null;
+        }
+
+        console.log(`[DUAL-URL] ✅ Extraction: ${urls.extractionUrl}`);
+        console.log(`[DUAL-URL] ✅ Ordering: ${urls.orderingUrl}`);
+
+        // Extract menu content
+        const menuContent = await extractMenuContent(urls.extractionUrl);
+
+        if (!menuContent) {
+          console.log(`[MENU-EXTRACT] ❌ Failed to extract from ${restaurant.name} - skipping`);
+          return null;
+        }
+
+        const tavilyResponse = {
+          extractionUrl: urls.extractionUrl,
+          orderingUrl: urls.orderingUrl,
+          menuContent: menuContent,
+          extractedSuccessfully: true
+        };
+
+        console.log(`[MENU-EXTRACTION] ✅ Menu extracted for ${restaurant.name}`);
+
+        const menuAnalysis = await analyzeExtractedMenuWithGPT(restaurant, tavilyResponse, surveyData);
+
+        // Only return restaurants with successful menu extraction
+        if (menuAnalysis && menuAnalysis.recommendedItems && menuAnalysis.recommendedItems.length > 0) {
+          return {
+            restaurant: restaurant,
+            menuAnalysis: menuAnalysis
+          };
+        } else {
+          console.log(`[MENU-EXTRACTION] ❌ Skipping ${restaurant.name} - no menu items found`);
+          return null;
+        }
+      } catch (error) {
+        console.error(`[MENU-EXTRACTION] ❌ Error getting menu for ${restaurant.name}:`, error);
+        console.error(`[TAVILY] ❌ Tavily error details:`, error?.message, error?.code);
+
+        // Create a basic fallback menu analysis for timeout/abort errors
+        const isTimeoutError = error?.name === 'AbortError' || error?.code === 20;
+        const fallbackAnalysis = {
+          description: `${restaurant.name} - a ${restaurant.cuisine} restaurant with healthy options`,
+          recommendedItems: [
+            {
+              name: `Fresh ${restaurant.cuisine} Bowl`,
+              exactPrice: null,
+              priceRange: "$$",
+              description: `A fresh and healthy ${restaurant.cuisine} bowl perfect for your fitness goals. Features lean proteins and fresh vegetables.`,
+              healthBenefits: `Great for ${surveyData.goal.toLowerCase().replace('_', ' ')} with balanced nutrition`,
+              mealTiming: "lunch",
+              sourceUrl: restaurant.website || `https://maps.google.com/?q=${encodeURIComponent(restaurant.name + ' ' + restaurant.address)}`,
+              platform: "Restaurant",
+              why_perfect_for_goal: `This balanced meal supports your ${surveyData.goal.toLowerCase().replace('_', ' ')} with quality ingredients and proper nutrition.`
+            }
+          ],
+          orderingUrl: restaurant.website || `https://maps.google.com/?q=${encodeURIComponent(restaurant.name + ' ' + restaurant.address)}`,
+          menuSourceUrl: restaurant.website || `https://maps.google.com/?q=${encodeURIComponent(restaurant.name + ' ' + restaurant.address)}`,
+          menuSourceName: "Restaurant",
+          isOpen: true,
+          itemsCount: 1,
+          exactPrices: 0,
+          error: isTimeoutError ? 'Menu analysis timed out - using fallback' : `Menu analysis failed: ${error?.message || 'Unknown error'}`
+        };
+
+        return {
+          restaurant: restaurant,
+          menuAnalysis: fallbackAnalysis
+        };
+      }
+    });
+
+    const menuResults = await Promise.all(menuSearchPromises);
+    console.log(`[MENU-EXTRACTION] ✅ Menu extraction completed for ${menuResults.length} restaurants`);
+
+    return menuResults;
 
   } catch (error) {
-    console.log(`[EXTRACT-ANALYSIS] ❌ Extract analysis failed for ${restaurant.name}:`, error.message);
-    return null;
+    console.error('[MENU-EXTRACTION] ❌ Error extracting menu information:', error);
+    return [];
   }
 }
 
@@ -773,7 +714,7 @@ async function analyzeExtractedMenuWithGPT(restaurant: any, tavilyResponse: any,
     const restaurantCuisine = restaurant.cuisine || 'Various';
     const restaurantCity = restaurant.city || 'Unknown';
     const userGoal = surveyData.goal || 'GENERAL_WELLNESS';
-    const menuContent = tavilyResponse.menuContent; // No limit - use full content
+    const menuContent = tavilyResponse.menuContent.substring(0, 2500);
     const extractionUrl = tavilyResponse.extractionUrl || '';
     const orderingUrl = tavilyResponse.orderingUrl || extractionUrl;
 
@@ -787,9 +728,8 @@ Current Hour: ${currentHour}
 Menu Content:
 ${menuContent}
 
-Extract 8-12 menu items with exact names, prices, and estimated calories.
-Focus on diverse options that help with ${userGoal}.
-Look for breakfast, lunch, and dinner options with variety in proteins and cooking methods.
+Extract 3-5 menu items with exact names, prices, and estimated calories.
+Focus on items that help with ${userGoal}.
 
 Return JSON with this structure:
 {
@@ -870,236 +810,7 @@ Return ONLY valid JSON.`;
     console.error(`[MENU-ANALYSIS] ❌ Error analyzing menu:`, error);
     return null;
   }
-}
-
-async function extractMenuInformation(restaurants: any[], surveyData: any): Promise<any[]> {
-  console.log(`[MENU-EXTRACTION] 🔍 Extracting menus for ${restaurants.length} restaurants...`);
-  console.log(`[MENU-EXTRACTION] 🏪 Restaurant list:`, restaurants.map(r => r.name));
-
-  try {
-    console.log(`[TAVILY] 🔑 Initializing Tavily client with API key: ${process.env.TAVILY_API_KEY?.substring(0, 15)}...`);
-    const tavilyClient = new TavilyClient({ apiKey: process.env.TAVILY_API_KEY });
-
-    const menuSearchPromises = restaurants.map(async (restaurant, index) => {
-      try {
-        // Try targeted delivery site search (optimized for speed)
-        console.log(`[TAVILY] 🔍 Searching delivery sites for: ${restaurant.name}`);
-
-        // Optimized 2-search strategy: DoorDash for ordering links + Simple menu search
-        const searchStrategies = [
-          {
-            name: 'DoorDash Store',
-            query: `"${restaurant.name}" "${restaurant.city}" "${restaurant.zipCode || ''}" site:doordash.com/store -graveyard -dnu -not-available`,
-            maxResults: 3
-          },
-          {
-            name: 'Menu Search',
-            query: `"${restaurant.name}" ${restaurant.address || restaurant.zipCode || restaurant.city} menu full`,
-            maxResults: 3
-          }
-        ];
-
-        let allResults: any[] = [];
-        let bestDeliveryUrl = null;
-
-        for (const strategy of searchStrategies) {
-          try {
-            console.log(`[TAVILY] 🎯 ${strategy.name}: ${strategy.query}`);
-            const response = await tavilyClient.search({
-              query: strategy.query,
-              max_results: strategy.maxResults,
-              include_answer: true
-            });
-
-            // Filter for relevant results based on search strategy
-            const relevantResults = response.results?.filter(r => {
-              const url = r.url.toLowerCase();
-              const title = r.title?.toLowerCase() || '';
-              const content = r.content?.toLowerCase() || '';
-
-              // Filter out problematic URLs
-              const hasProblematicTerms =
-                url.includes('graveyard') ||
-                url.includes('dnu') ||
-                title.includes('not available') ||
-                title.includes('graveyard') ||
-                title.includes('dnu') ||
-                content.includes('restaurant you are trying to reach is not available') ||
-                content.includes('graveyard') ||
-                content.includes('do not reactivate');
-
-              if (hasProblematicTerms) {
-                console.log(`[TAVILY] ❌ Filtering out problematic URL: ${url} (${title})`);
-                return false;
-              }
-
-              if (strategy.name === 'DoorDash Store') {
-                // For DoorDash, only accept actual store pages
-                return url.includes('doordash.com/store/') ||
-                       (url.includes('doordash.com') && !url.includes('/dish/') && !url.includes('/food-delivery/') && !url.includes('near-me'));
-              } else if (strategy.name === 'Menu Search') {
-                // For menu search, accept any relevant menu content
-                return true; // Let all results through for menu search
-              }
-
-              return false;
-            }) || [];
-
-            if (relevantResults.length > 0 && strategy.name === 'DoorDash Store' && !bestDeliveryUrl) {
-              bestDeliveryUrl = relevantResults[0].url;
-              console.log(`[TAVILY] ✅ Found DoorDash URL: ${bestDeliveryUrl}`);
-            }
-
-            allResults = allResults.concat(response.results || []);
-
-            // Log results for each strategy
-            if (relevantResults.length > 0) {
-              console.log(`[TAVILY] ✅ ${strategy.name}: Found ${relevantResults.length} relevant results`);
-            } else {
-              console.log(`[TAVILY] ❌ ${strategy.name}: No relevant results found`);
-            }
-          } catch (strategyError) {
-            console.log(`[TAVILY] ⚠️ ${strategy.name} failed:`, strategyError.message);
-          }
-        }
-
-        // Extract valid URLs from search results
-        const validOrderingUrls = allResults
-          .filter(r => {
-            const url = r.url.toLowerCase();
-            const title = r.title?.toLowerCase() || '';
-            const content = r.content?.toLowerCase() || '';
-
-            // Filter out problematic URLs
-            const hasProblematicTerms =
-              url.includes('graveyard') ||
-              url.includes('dnu') ||
-              title.includes('not available') ||
-              title.includes('graveyard') ||
-              title.includes('dnu') ||
-              content.includes('restaurant you are trying to reach is not available') ||
-              content.includes('graveyard') ||
-              content.includes('do not reactivate');
-
-            if (hasProblematicTerms) {
-              console.log(`[TAVILY] ❌ Filtering out problematic URL: ${url} (${title})`);
-              return false;
-            }
-
-            return true; // Keep all non-problematic results
-          })
-          .map(r => {
-            // Clean and shorten URLs for better JSON parsing
-            let cleanUrl = r.url;
-
-            // Remove Unicode characters that cause JSON parsing issues
-            cleanUrl = cleanUrl.replace(/[\u{D800}-\u{DFFF}]/gu, ''); // Remove lone surrogates
-            cleanUrl = cleanUrl.replace(/[\u{FFF0}-\u{FFFF}]/gu, ''); // Remove other problematic Unicode
-            cleanUrl = cleanUrl.replace(/[^\x00-\x7F]/g, ''); // Keep only ASCII characters
-
-            // Remove long query parameters that cause JSON issues
-            if (cleanUrl.includes('?')) {
-              const baseUrl = cleanUrl.split('?')[0];
-              const params = new URLSearchParams(cleanUrl.split('?')[1]);
-
-              // Keep only essential parameters
-              const essentialParams = new URLSearchParams();
-              if (params.has('srsltid')) {
-                essentialParams.set('srsltid', params.get('srsltid')!.substring(0, 20));
-              }
-
-              cleanUrl = baseUrl + (essentialParams.toString() ? '?' + essentialParams.toString() : '');
-            }
-
-            return {
-              url: cleanUrl,
-              platform: r.url.includes('doordash.com') ? 'DoorDash' :
-                       r.url.includes('ubereats.com') ? 'UberEats' :
-                       r.url.includes('grubhub.com') ? 'GrubHub' :
-                       r.url.includes('.pdf') ? 'PDF Menu' : 'Web',
-              title: r.title?.substring(0, 100) || '', // Limit title length
-              content: r.content?.substring(0, 200) || '', // Limit content length
-              isStorePage: r.url.includes('/store/') || r.url.includes('/restaurant/'),
-              isDoorDash: r.url.includes('doordash.com')
-            };
-          })
-          .sort((a, b) => {
-            // Prioritize DoorDash store pages first for ordering
-            if (a.isDoorDash && !b.isDoorDash) return -1;
-            if (!a.isDoorDash && b.isDoorDash) return 1;
-            // Then prioritize actual store/restaurant pages
-            if (a.isStorePage && !b.isStorePage) return -1;
-            if (!a.isStorePage && b.isStorePage) return 1;
-            return 0;
-          });
-
-        const tavilyResponse = {
-          results: allResults.slice(0, 10), // Limit to top 10 results
-          bestDeliveryUrl: bestDeliveryUrl,
-          validOrderingUrls: validOrderingUrls,
-          primaryOrderingUrl: validOrderingUrls[0]?.url || bestDeliveryUrl
-        };
-
-        console.log(`[TAVILY] ✅ Results for ${restaurant.name}: ${tavilyResponse.results?.length || 0} results`);
-        console.log(`[TAVILY] 📊 Sample result:`, tavilyResponse.results?.[0]?.url || 'No results');
-
-        // Try extract-based analysis first, fallback to search-based
-        const menuAnalysis = await tryExtractAnalysis(restaurant, tavilyResponse, surveyData) ||
-                             await analyzeMenuWithGPT(restaurant, tavilyResponse, surveyData);
-
-        return {
-          restaurant: restaurant,
-          menuAnalysis: menuAnalysis
-        };
-      } catch (error) {
-        console.error(`[MENU-EXTRACTION] ❌ Error getting menu for ${restaurant.name}:`, error);
-        console.error(`[TAVILY] ❌ Tavily error details:`, error?.message, error?.code);
-
-        // Create a basic fallback menu analysis for timeout/abort errors
-        const isTimeoutError = error?.name === 'AbortError' || error?.code === 20;
-        const fallbackAnalysis = {
-          description: `${restaurant.name} - a ${restaurant.cuisine} restaurant with healthy options`,
-          recommendedItems: [
-            {
-              name: `Fresh ${restaurant.cuisine} Bowl`,
-              exactPrice: null,
-              priceRange: "$$",
-              description: `A fresh and healthy ${restaurant.cuisine} bowl perfect for your fitness goals. Features lean proteins and fresh vegetables.`,
-              healthBenefits: `Great for ${surveyData.goal.toLowerCase().replace('_', ' ')} with balanced nutrition`,
-              mealTiming: "lunch",
-              sourceUrl: restaurant.website || `https://maps.google.com/?q=${encodeURIComponent(restaurant.name + ' ' + restaurant.address)}`,
-              platform: "Restaurant",
-              why_perfect_for_goal: `This balanced meal supports your ${surveyData.goal.toLowerCase().replace('_', ' ')} with quality ingredients and proper nutrition.`
-            }
-          ],
-          orderingUrl: restaurant.website || `https://maps.google.com/?q=${encodeURIComponent(restaurant.name + ' ' + restaurant.address)}`,
-          menuSourceUrl: restaurant.website || `https://maps.google.com/?q=${encodeURIComponent(restaurant.name + ' ' + restaurant.address)}`,
-          menuSourceName: "Restaurant",
-          isOpen: true,
-          itemsCount: 1,
-          exactPrices: 0,
-          error: isTimeoutError ? 'Menu analysis timed out - using fallback' : `Menu analysis failed: ${error?.message || 'Unknown error'}`
-        };
-
-        return {
-          restaurant: restaurant,
-          menuAnalysis: fallbackAnalysis
-        };
-      }
-    });
-
-    const menuResults = await Promise.all(menuSearchPromises);
-    console.log(`[MENU-EXTRACTION] ✅ Menu extraction completed for ${menuResults.length} restaurants`);
-
-    return menuResults;
-
-  } catch (error) {
-    console.error('[MENU-EXTRACTION] ❌ Error extracting menu information:', error);
-    return [];
-  }
-}
-
-async function analyzeMenuWithGPT(restaurant: any, tavilyResponse: any, surveyData: any): Promise<any> {
+}\n\n// Legacy function for fallback\nasync function analyzeMenuWithGPT(restaurant: any, tavilyResponse: any, surveyData: any): Promise<any> {
   try {
     // Get current time to determine meal appropriateness
     const now = new Date();
@@ -1333,7 +1044,7 @@ async function selectRestaurantMeals(restaurantMenuData: any[], surveyData: any)
   const todayName = today.toLocaleDateString('en-US', { weekday: 'long' });
 
   try {
-    const prompt = `Select 7-10 restaurant meals for a 4-day period starting TODAY (${todayName}).
+    const prompt = `Select 4-6 restaurant meals for a 4-day period starting TODAY (${todayName}).
 
 TODAY IS: ${todayName} (this is day 1)
 Day 1 = ${todayName}
@@ -1350,20 +1061,13 @@ USER PREFERENCES:
 AVAILABLE RESTAURANTS & MENUS:
 ${JSON.stringify(restaurantMenuData, null, 2)}
 
-STRICT VARIETY REQUIREMENTS:
-1. ZERO DUPLICATE CUISINES: Each selected meal must be from a completely different cuisine type
-2. ZERO DUPLICATE RESTAURANTS: Each meal must be from a different restaurant
-3. ZERO DUPLICATE PROTEIN SOURCES: Vary protein across all meals (chicken, fish, beef, pork, vegetarian, seafood, etc.)
-4. ZERO SIMILAR DISH TYPES: No pasta + noodles, no burgers + sandwiches, etc.
-
 TASK:
-1. Select EXACTLY 7-10 specific dishes from DIFFERENT restaurants with DIFFERENT cuisines
+1. Select 4-6 specific dishes total from the restaurants above
 2. Assign each to day 1-4 and meal type (lunch or dinner only)
-3. MANDATORY: Each meal must have estimated calories included
-4. Verify each selection is completely unique in cuisine, restaurant, protein, and dish type
-5. Match user's dietary restrictions and goals
-6. Include restaurant description and dish description from the menu data
-7. IMPORTANT: Include ordering URLs and menu source information from the menu data
+3. Spread across different restaurants for variety
+4. Match user's dietary restrictions and goals
+5. Include restaurant description and dish description from the menu data
+6. IMPORTANT: Include ordering URLs and menu source information from the menu data
 
 CRITICAL: Your response must be PURE JSON starting with { and ending with }.
 NO markdown, NO code blocks, NO backticks, NO Unicode characters, NO emojis, NO text before or after the JSON. Use only ASCII characters.
@@ -1378,12 +1082,6 @@ NO markdown, NO code blocks, NO backticks, NO Unicode characters, NO emojis, NO 
       "dish": "Exact Dish Name from Menu",
       "dish_description": "Description of the dish from menu data",
       "price": 18.49,
-      "calories": 650,
-      "protein": 35,
-      "carbs": 45,
-      "fat": 28,
-      "cuisine_type": "Italian",
-      "protein_source": "chicken",
       "orderingUrl": "Ordering URL from menu data (DoorDash, UberEats, etc.)",
       "menuSourceUrl": "URL where menu was verified",
       "menuSourceName": "Name of menu source (e.g., DoorDash, Restaurant Website)"
@@ -1444,7 +1142,7 @@ async function generateHomeMealNames(surveyData: any): Promise<any> {
   const todayName = today.toLocaleDateString('en-US', { weekday: 'long' });
 
   try {
-    const prompt = `Generate 12-15 diverse home-cooked meal names with descriptions for a 4-day period starting TODAY (${todayName}).
+    const prompt = `Generate 10 home-cooked meal names with descriptions for a 4-day period starting TODAY (${todayName}).
 
 TODAY IS: ${todayName} (this is day 1)
 Day 1 = ${todayName}
@@ -1457,23 +1155,16 @@ USER PREFERENCES:
 - Dietary restrictions: ${(surveyData.dietPrefs || []).join(', ') || 'None'}
 - Preferred cuisines: ${(surveyData.preferredCuisines || []).join(', ')}
 
-STRICT VARIETY REQUIREMENTS:
-1. ZERO DUPLICATE CUISINES: Use completely different cuisine types (Mediterranean, Asian, Mexican, American, Italian, Indian, Thai, etc.)
-2. ZERO DUPLICATE PROTEIN SOURCES: Vary proteins (chicken, fish, beef, pork, eggs, tofu, beans, turkey, etc.)
-3. ZERO DUPLICATE COOKING METHODS: Mix grilled, baked, stir-fried, roasted, steamed, sauteed, etc.
-4. ZERO SIMILAR INGREDIENTS: Avoid repeating main ingredients across meals
-
 TASK:
-Generate 12-15 completely unique home meal names with detailed descriptions.
+Generate 10 simple home meal names with 1-2 sentence descriptions.
 Cover breakfast, lunch, and dinner options across 4 days.
-Include estimated calories, protein content, and cuisine type for each.
+NO recipes, NO ingredients, NO costs - just names and brief descriptions.
 
 REQUIREMENTS:
-1. Match dietary restrictions perfectly
-2. Extreme cuisine diversity (no two meals from same cuisine)
-3. Mix of cooking complexities (quick breakfasts, moderate lunches/dinners)
+1. Match dietary restrictions
+2. Vary cuisines from user preferences
+3. Quick breakfasts, heartier lunches/dinners
 4. Appealing and achievable for home cooking
-5. Include calorie estimates for each meal
 
 CRITICAL: Your response must be PURE JSON starting with { and ending with }.
 NO markdown, NO code blocks, NO backticks, NO Unicode characters, NO emojis, NO text before or after the JSON. Use only ASCII characters.
@@ -1482,25 +1173,11 @@ NO markdown, NO code blocks, NO backticks, NO Unicode characters, NO emojis, NO 
   "home_meals": [
     {
       "name": "Mediterranean Quinoa Bowl",
-      "description": "Fresh quinoa with cherry tomatoes, cucumber, feta, and olive oil dressing. Perfect for a light yet satisfying lunch.",
-      "calories": 485,
-      "protein": 18,
-      "carbs": 52,
-      "fat": 22,
-      "cuisine_type": "Mediterranean",
-      "protein_source": "quinoa",
-      "cooking_method": "assembly"
+      "description": "Fresh quinoa with cherry tomatoes, cucumber, feta, and olive oil dressing. Perfect for a light yet satisfying lunch."
     },
     {
-      "name": "Thai Coconut Curry Chicken",
-      "description": "Fragrant Thai green curry with chicken, vegetables, and coconut milk over jasmine rice.",
-      "calories": 620,
-      "protein": 35,
-      "carbs": 45,
-      "fat": 28,
-      "cuisine_type": "Thai",
-      "protein_source": "chicken",
-      "cooking_method": "simmered"
+      "name": "Protein Smoothie Bowl",
+      "description": "Thick smoothie base topped with granola, berries, and nuts. Quick energizing breakfast."
     }
   ]
 }`;
@@ -1575,28 +1252,12 @@ ${JSON.stringify(homeMeals, null, 2)}
 AVAILABLE RESTAURANTS TO USE:
 ${JSON.stringify(restaurantMeals.map(r => ({ name: r.restaurant, description: r.restaurant_description })).slice(0, 5), null, 2)}
 
-STRICT VARIETY ENFORCEMENT ACROSS ALL 4 DAYS:
-1. ZERO DUPLICATE CUISINES: Every meal must be from a completely different cuisine type
-2. ZERO DUPLICATE PROTEINS: Every meal must use a different protein source
-3. ZERO DUPLICATE COOKING METHODS: Every meal must use different cooking techniques
-4. ZERO SIMILAR DISHES: No two meals can be similar (no pasta + noodles, no burgers + sandwiches)
-5. MANDATORY CALORIE DATA: Every single meal option must include accurate calories, protein, carbs, and fat
-
 TASK:
-Create a comprehensive 4-day meal plan with MAXIMUM VARIETY across all 36 total meal options.
+Create a comprehensive 4-day meal plan with multiple options for each meal slot.
 For each breakfast/lunch/dinner, provide:
-1. One primary option with full nutrition data
-2. 2 alternative options with full nutrition data
-3. 2-3 extraRestaurantOptions (restaurant discoveries without prices but with estimated calories)
-
-MANDATORY NUTRITION REQUIREMENTS (NO EXCEPTIONS):
-- Every single meal option MUST include: calories (number), protein (number), carbs (number), fat (number)
-- ALL nutrition values must be realistic numbers, never null, never missing
-- Breakfast: 300-500 cal (rounded to nearest 25), 15-30g protein, 30-60g carbs, 10-25g fat
-- Lunch: 450-700 cal (rounded to nearest 25), 25-40g protein, 40-80g carbs, 15-35g fat
-- Dinner: 550-850 cal (rounded to nearest 25), 30-50g protein, 50-100g carbs, 20-40g fat
-- If nutrition data unavailable, estimate based on typical values for that dish type
-- REJECT any meal option that lacks complete nutrition data
+1. One primary option
+2. 2 alternative options
+3. 2-3 extraRestaurantOptions (restaurant discoveries without prices)
 
 IMPORTANT: For all restaurant options, include ordering URLs and menu source information from the restaurant meals data above.
 
@@ -1605,7 +1266,7 @@ CRITICAL: For extraRestaurantOptions, ONLY use restaurants from the AVAILABLE RE
 ✅ ONLY USE ACTUAL NAMES: Use ONLY the exact restaurant names from the AVAILABLE RESTAURANTS list above (e.g., "Ricco Mediterranean", "Itria", "Terzo", etc.)
 ⚠️ IF NO RESTAURANTS AVAILABLE: If the AVAILABLE RESTAURANTS list is empty, return an empty array [] for extraRestaurantOptions instead of making up names.
 
-Use restaurant meals where available, and fill with diverse home meal options. ENSURE NO TWO MEALS ARE SIMILAR ACROSS THE ENTIRE 4-DAY PLAN.
+Use restaurant meals where available, and fill with diverse home meal options.
 
 CRITICAL: Your response must be PURE JSON starting with { and ending with }.
 NO markdown, NO code blocks, NO backticks, NO Unicode characters, NO emojis, NO text before or after the JSON. Use only ASCII characters.
@@ -1616,10 +1277,10 @@ NO markdown, NO code blocks, NO backticks, NO Unicode characters, NO emojis, NO 
       "day": 1,
       "day_name": "${todayName}",
       "breakfast": {
-        "primary": {"source": "home", "name": "Meal Name", "description": "Brief description", "calories": 380, "protein": 25, "carbs": 35, "fat": 15},
+        "primary": {"source": "home", "name": "Meal Name", "description": "Brief description"},
         "alternatives": [
-          {"source": "home", "name": "Alternative 1", "description": "Brief description", "calories": 350, "protein": 20, "carbs": 40, "fat": 12},
-          {"source": "restaurant", "restaurant": "Name", "dish": "Dish", "price": 12.99, "calories": 420, "protein": 22, "carbs": 38, "fat": 18}
+          {"source": "home", "name": "Alternative 1", "description": "Brief description"},
+          {"source": "restaurant", "restaurant": "Name", "dish": "Dish", "price": 12.99}
         ],
         "extraRestaurantOptions": [
           {"restaurant": "ACTUAL_RESTAURANT_NAME_FROM_LIST", "dish": "Specific dish name", "description": "Brief description without price"},
@@ -1627,10 +1288,10 @@ NO markdown, NO code blocks, NO backticks, NO Unicode characters, NO emojis, NO 
         ]
       },
       "lunch": {
-        "primary": {"source": "restaurant", "restaurant": "Name", "restaurant_description": "Brief description", "dish": "Dish", "dish_description": "Brief description", "price": 18.49, "calories": 650, "protein": 35, "carbs": 45, "fat": 28, "orderingUrl": "https://doordash.com/restaurant-link", "menuSourceUrl": "https://doordash.com/menu-source", "menuSourceName": "DoorDash"},
+        "primary": {"source": "restaurant", "restaurant": "Name", "restaurant_description": "Brief description", "dish": "Dish", "dish_description": "Brief description", "price": 18.49, "orderingUrl": "https://doordash.com/restaurant-link", "menuSourceUrl": "https://doordash.com/menu-source", "menuSourceName": "DoorDash"},
         "alternatives": [
-          {"source": "home", "name": "Alternative 1", "description": "Brief description", "calories": 580, "protein": 30, "carbs": 50, "fat": 25},
-          {"source": "restaurant", "restaurant": "Different Restaurant", "dish": "Alternative Dish", "price": 16.99, "calories": 720, "protein": 40, "carbs": 52, "fat": 32, "orderingUrl": "https://doordash.com/restaurant-link", "menuSourceUrl": "https://doordash.com/menu-source", "menuSourceName": "DoorDash"}
+          {"source": "home", "name": "Alternative 1", "description": "Brief description"},
+          {"source": "restaurant", "restaurant": "Different Restaurant", "dish": "Alternative Dish", "price": 16.99, "orderingUrl": "https://doordash.com/restaurant-link", "menuSourceUrl": "https://doordash.com/menu-source", "menuSourceName": "DoorDash"}
         ],
         "extraRestaurantOptions": [
           {"restaurant": "ACTUAL_RESTAURANT_NAME_FROM_LIST", "dish": "Specific lunch dish", "description": "Brief description without price"},
@@ -1638,10 +1299,10 @@ NO markdown, NO code blocks, NO backticks, NO Unicode characters, NO emojis, NO 
         ]
       },
       "dinner": {
-        "primary": {"source": "home", "name": "Meal Name", "description": "Brief description", "calories": 720, "protein": 42, "carbs": 55, "fat": 30},
+        "primary": {"source": "home", "name": "Meal Name", "description": "Brief description"},
         "alternatives": [
-          {"source": "restaurant", "restaurant": "Name", "dish": "Dish", "price": 22.99, "calories": 850, "protein": 45, "carbs": 60, "fat": 38, "orderingUrl": "https://doordash.com/restaurant-link", "menuSourceUrl": "https://doordash.com/menu-source", "menuSourceName": "DoorDash"},
-          {"source": "home", "name": "Alternative 2", "description": "Brief description", "calories": 680, "protein": 38, "carbs": 50, "fat": 28}
+          {"source": "restaurant", "restaurant": "Name", "dish": "Dish", "price": 22.99, "orderingUrl": "https://doordash.com/restaurant-link", "menuSourceUrl": "https://doordash.com/menu-source", "menuSourceName": "DoorDash"},
+          {"source": "home", "name": "Alternative 2", "description": "Brief description"}
         ],
         "extraRestaurantOptions": [
           {"restaurant": "ACTUAL_RESTAURANT_NAME_FROM_LIST", "dish": "Specific dinner dish", "description": "Brief description without price"},
@@ -1672,10 +1333,8 @@ NO markdown, NO code blocks, NO backticks, NO Unicode characters, NO emojis, NO 
         messages: [
           {
             role: 'system',
-            content: `You are a professional nutritionist organizing comprehensive meal plans with accurate calorie data. Requirements:
+            content: `You are a professional nutritionist organizing comprehensive meal plans. Requirements:
             1. VALID JSON ONLY - start with { end with }
-            2. MANDATORY CALORIES: Every meal option MUST include calories, protein, carbs, fat
-            3. EXTREME VARIETY: Zero duplicate cuisines, proteins, or cooking methods across all 36 meal options
             2. Use ONLY ASCII characters - NO Unicode, emojis, or special characters
             3. Use ONLY verified restaurant and home meal data provided
             4. Every option must explain health benefits for user's goal
@@ -1769,18 +1428,18 @@ Return ONLY this JSON:
   "dailyFat": ${macroTargets?.fat || 65},
   "mealTargets": {
     "breakfast": {
-      "calories": ${Math.round(targetCalories * 0.25 / 25) * 25},
-      "calorieRange": [${Math.round(targetCalories * 0.22 / 25) * 25}, ${Math.round(targetCalories * 0.28 / 25) * 25}],
+      "calories": ${Math.round(targetCalories * 0.25)},
+      "calorieRange": [${Math.round(targetCalories * 0.22)}, ${Math.round(targetCalories * 0.28)}],
       "protein": ${Math.round((macroTargets?.protein || 150) * 0.25)}
     },
     "lunch": {
-      "calories": ${Math.round(targetCalories * 0.35 / 25) * 25},
-      "calorieRange": [${Math.round(targetCalories * 0.32 / 25) * 25}, ${Math.round(targetCalories * 0.38 / 25) * 25}],
+      "calories": ${Math.round(targetCalories * 0.35)},
+      "calorieRange": [${Math.round(targetCalories * 0.32)}, ${Math.round(targetCalories * 0.38)}],
       "protein": ${Math.round((macroTargets?.protein || 150) * 0.35)}
     },
     "dinner": {
-      "calories": ${Math.round(targetCalories * 0.40 / 25) * 25},
-      "calorieRange": [${Math.round(targetCalories * 0.37 / 25) * 25}, ${Math.round(targetCalories * 0.43 / 25) * 25}],
+      "calories": ${Math.round(targetCalories * 0.40)},
+      "calorieRange": [${Math.round(targetCalories * 0.37)}, ${Math.round(targetCalories * 0.43)}],
       "protein": ${Math.round((macroTargets?.protein || 150) * 0.40)}
     }
   },
@@ -1829,9 +1488,9 @@ Return ONLY this JSON:
       dailyCarbs: macroTargets?.carbs || 200,
       dailyFat: macroTargets?.fat || 65,
       mealTargets: {
-        breakfast: { calories: Math.round(targetCalories * 0.25 / 25) * 25, calorieRange: [Math.round(targetCalories * 0.22 / 25) * 25, Math.round(targetCalories * 0.28 / 25) * 25], protein: Math.round((macroTargets?.protein || 150) * 0.25) },
-        lunch: { calories: Math.round(targetCalories * 0.35 / 25) * 25, calorieRange: [Math.round(targetCalories * 0.32 / 25) * 25, Math.round(targetCalories * 0.38 / 25) * 25], protein: Math.round((macroTargets?.protein || 150) * 0.35) },
-        dinner: { calories: Math.round(targetCalories * 0.40 / 25) * 25, calorieRange: [Math.round(targetCalories * 0.37 / 25) * 25, Math.round(targetCalories * 0.43 / 25) * 25], protein: Math.round((macroTargets?.protein || 150) * 0.40) }
+        breakfast: { calories: Math.round(targetCalories * 0.25), calorieRange: [Math.round(targetCalories * 0.22), Math.round(targetCalories * 0.28)], protein: Math.round((macroTargets?.protein || 150) * 0.25) },
+        lunch: { calories: Math.round(targetCalories * 0.35), calorieRange: [Math.round(targetCalories * 0.32), Math.round(targetCalories * 0.38)], protein: Math.round((macroTargets?.protein || 150) * 0.35) },
+        dinner: { calories: Math.round(targetCalories * 0.40), calorieRange: [Math.round(targetCalories * 0.37), Math.round(targetCalories * 0.43)], protein: Math.round((macroTargets?.protein || 150) * 0.40) }
       },
       weeklyGuidance: `Balance ${surveyData.mealsOutPerWeek || 7} restaurant meals with home cooking for optimal nutrition`
     };
@@ -1971,12 +1630,9 @@ USER PREFERENCES:
 REQUIREMENTS:
 1. Each meal MUST hit its calorie target (±50 calories)
 2. Focus on whole foods and balanced nutrition
-3. ENSURE MAXIMUM VARIETY - no repeated ingredients or similar dishes across all 4 days
-4. Use diverse cuisines (Italian, Mexican, Asian, Mediterranean, American, etc.)
-5. Vary cooking methods (grilled, baked, stir-fried, roasted, steamed, etc.)
-6. Include different protein sources for each day (chicken, fish, beef, plant-based, eggs, etc.)
-7. Provide realistic home cooking recipes with varied complexity
-8. Consider prep time and difficulty - mix easy and moderate recipes
+3. Include variety across the 4 days
+4. Provide realistic home cooking recipes
+5. Consider prep time and difficulty
 
 Return ONLY this JSON:
 {

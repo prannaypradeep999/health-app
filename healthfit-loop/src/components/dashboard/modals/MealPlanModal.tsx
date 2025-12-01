@@ -19,6 +19,8 @@ interface MealOption {
   restaurantName?: string;
   dishName?: string;
   description?: string;
+  goalReasoning?: string; // Added: Why this meal supports user's goals
+  why_perfect_for_goal?: string; // Legacy field name for backward compatibility
   estimatedPrice?: number;
   deliveryTime?: string;
   recipeName?: string;
@@ -548,6 +550,18 @@ export default function MealPlanModal({ surveyData, isGuest, onClose }: MealPlan
                                           <p className="text-sm font-medium text-blue-800 leading-relaxed">
                                             ✨ {option.description}
                                           </p>
+                                        </div>
+                                      )}
+
+                                      {/* Goal-Based Reasoning */}
+                                      {(option.goalReasoning || option.why_perfect_for_goal) && (
+                                        <div className="mb-3 p-3 bg-green-50 border-l-4 border-green-500 rounded">
+                                          <div className="flex items-start space-x-2">
+                                            <Target className="w-4 h-4 text-green-600 mt-0.5 flex-shrink-0" />
+                                            <p className="text-sm font-medium text-green-800 leading-relaxed">
+                                              {option.goalReasoning || option.why_perfect_for_goal}
+                                            </p>
+                                          </div>
                                         </div>
                                       )}
 
