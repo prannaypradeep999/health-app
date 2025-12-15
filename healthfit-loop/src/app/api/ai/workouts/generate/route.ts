@@ -125,9 +125,8 @@ export async function POST(req: NextRequest) {
     } catch (error) {
       console.log(`[WORKOUT-GENERATION] 📄 Empty request body, using defaults`);
     }
-    const { backgroundGeneration, testSurveyData } = requestData as {
+    const { backgroundGeneration } = requestData as {
       backgroundGeneration?: boolean;
-      testSurveyData?: any;
     };
     const cookieStore = await cookies();
     const userId = cookieStore.get('user_id')?.value;
@@ -155,11 +154,7 @@ export async function POST(req: NextRequest) {
       });
     }
 
-    // Allow test data for development
-    if (!surveyData && testSurveyData) {
-      console.log('[WORKOUT-GENERATION] 🧪 Using test survey data for development');
-      surveyData = testSurveyData;
-    }
+    // Removed testSurveyData development feature
 
     if (!surveyData) {
       console.log('[WORKOUT-GENERATION] ❌ No survey data found');

@@ -1764,24 +1764,24 @@ TASK: Provide refined daily and per-meal calorie targets with 10% buffer zones f
 Return ONLY this JSON:
 {
   "dailyCalories": ${targetCalories},
-  "dailyProtein": ${macroTargets?.protein || 150},
+  "dailyProtein": ${macroTargets?.protein || Math.round((macroTargets?.calories || 2000) * 0.25 / 4)},
   "dailyCarbs": ${macroTargets?.carbs || 200},
   "dailyFat": ${macroTargets?.fat || 65},
   "mealTargets": {
     "breakfast": {
       "calories": ${Math.round(targetCalories * 0.25 / 25) * 25},
       "calorieRange": [${Math.round(targetCalories * 0.22 / 25) * 25}, ${Math.round(targetCalories * 0.28 / 25) * 25}],
-      "protein": ${Math.round((macroTargets?.protein || 150) * 0.25)}
+      "protein": ${Math.round((macroTargets?.protein || Math.round((targetCalories || 2000) * 0.25 / 4)) * 0.25)}
     },
     "lunch": {
       "calories": ${Math.round(targetCalories * 0.35 / 25) * 25},
       "calorieRange": [${Math.round(targetCalories * 0.32 / 25) * 25}, ${Math.round(targetCalories * 0.38 / 25) * 25}],
-      "protein": ${Math.round((macroTargets?.protein || 150) * 0.35)}
+      "protein": ${Math.round((macroTargets?.protein || Math.round((targetCalories || 2000) * 0.25 / 4)) * 0.35)}
     },
     "dinner": {
       "calories": ${Math.round(targetCalories * 0.40 / 25) * 25},
       "calorieRange": [${Math.round(targetCalories * 0.37 / 25) * 25}, ${Math.round(targetCalories * 0.43 / 25) * 25}],
-      "protein": ${Math.round((macroTargets?.protein || 150) * 0.40)}
+      "protein": ${Math.round((macroTargets?.protein || Math.round((targetCalories || 2000) * 0.25 / 4)) * 0.40)}
     }
   },
   "weeklyGuidance": "Brief guidance for weekly meal planning approach based on user's ${surveyData.mealsOutPerWeek || 7} meals out per week"
@@ -1825,13 +1825,13 @@ Return ONLY this JSON:
     // Return fallback targets
     return {
       dailyCalories: targetCalories,
-      dailyProtein: macroTargets?.protein || 150,
+      dailyProtein: macroTargets?.protein || Math.round((targetCalories || 2000) * 0.25 / 4),
       dailyCarbs: macroTargets?.carbs || 200,
       dailyFat: macroTargets?.fat || 65,
       mealTargets: {
-        breakfast: { calories: Math.round(targetCalories * 0.25 / 25) * 25, calorieRange: [Math.round(targetCalories * 0.22 / 25) * 25, Math.round(targetCalories * 0.28 / 25) * 25], protein: Math.round((macroTargets?.protein || 150) * 0.25) },
-        lunch: { calories: Math.round(targetCalories * 0.35 / 25) * 25, calorieRange: [Math.round(targetCalories * 0.32 / 25) * 25, Math.round(targetCalories * 0.38 / 25) * 25], protein: Math.round((macroTargets?.protein || 150) * 0.35) },
-        dinner: { calories: Math.round(targetCalories * 0.40 / 25) * 25, calorieRange: [Math.round(targetCalories * 0.37 / 25) * 25, Math.round(targetCalories * 0.43 / 25) * 25], protein: Math.round((macroTargets?.protein || 150) * 0.40) }
+        breakfast: { calories: Math.round(targetCalories * 0.25 / 25) * 25, calorieRange: [Math.round(targetCalories * 0.22 / 25) * 25, Math.round(targetCalories * 0.28 / 25) * 25], protein: Math.round((macroTargets?.protein || Math.round((targetCalories || 2000) * 0.25 / 4)) * 0.25) },
+        lunch: { calories: Math.round(targetCalories * 0.35 / 25) * 25, calorieRange: [Math.round(targetCalories * 0.32 / 25) * 25, Math.round(targetCalories * 0.38 / 25) * 25], protein: Math.round((macroTargets?.protein || Math.round((targetCalories || 2000) * 0.25 / 4)) * 0.35) },
+        dinner: { calories: Math.round(targetCalories * 0.40 / 25) * 25, calorieRange: [Math.round(targetCalories * 0.37 / 25) * 25, Math.round(targetCalories * 0.43 / 25) * 25], protein: Math.round((macroTargets?.protein || Math.round((targetCalories || 2000) * 0.25 / 4)) * 0.40) }
       },
       weeklyGuidance: `Balance ${surveyData.mealsOutPerWeek || 7} restaurant meals with home cooking for optimal nutrition`
     };

@@ -67,7 +67,7 @@ export class PexelsClient {
     const { cuisineType, mealType, searchTerms, description } = options;
     const normalizedKey = normalizeDishName(dishName);
 
-    console.log(`[PEXELS] Getting image for "${dishName}" → normalized: "${normalizedKey}"`);
+    // Removed verbose logging for production
 
     // Try cache first
     try {
@@ -76,7 +76,7 @@ export class PexelsClient {
       });
 
       if (cached) {
-        console.log(`[PEXELS] ✅ Cache hit for "${normalizedKey}"`);
+        // Cache hit - removed verbose logging
 
         // Update cache usage stats
         await prisma.foodImage.update({
@@ -98,7 +98,7 @@ export class PexelsClient {
       console.error('[PEXELS] Cache lookup error:', error);
     }
 
-    console.log(`[PEXELS] 🔍 Cache miss for "${normalizedKey}", fetching from API...`);
+    // Cache miss - fetching from API
 
     // Build search queries - prefer AI-generated search terms, then fallback to simple approaches
     const searchQueries = this.buildSearchQueries(dishName, cuisineType, mealType, searchTerms);
@@ -109,7 +109,7 @@ export class PexelsClient {
         const imageUrl = await this.searchPexels(searchQuery);
 
         if (imageUrl) {
-          console.log(`[PEXELS] ✅ Found image with query: "${searchQuery}"`);
+          // Found image - removed verbose logging
 
           // Cache the result using upsert to handle unique constraint conflicts
           try {
@@ -132,7 +132,7 @@ export class PexelsClient {
                 dishCategory: searchTerms ? 'ai_categorized' : null
               }
             });
-            console.log(`[PEXELS] 💾 Cached image for "${normalizedKey}"`);
+            // Successfully cached image
           } catch (cacheError) {
             console.error('[PEXELS] Failed to cache image:', cacheError);
           }
@@ -151,7 +151,7 @@ export class PexelsClient {
     }
 
     // Ultimate fallback - use a generic food image
-    console.log(`[PEXELS] ⚠️ No images found, using fallback for "${dishName}"`);
+    // No images found, using fallback
     const fallbackUrl = this.getFallbackImage(mealType);
 
     // Cache the fallback too to avoid repeated API calls

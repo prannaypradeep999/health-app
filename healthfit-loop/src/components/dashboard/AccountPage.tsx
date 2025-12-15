@@ -91,7 +91,7 @@ export function AccountPage({ user, onNavigate }: AccountPageProps) {
               <div className="flex items-start justify-between">
                 <div className="flex-1">
                   <h2 className="text-2xl font-bold text-gray-900 mb-1">{user?.name || "User Name"}</h2>
-                  <p className="text-gray-600 mb-4">{user?.email || "user@example.com"}</p>
+                  <p className="text-gray-600 mb-4">{user?.email || ""}</p>
                   <div className="flex flex-wrap items-center gap-3">
                     <Badge className="bg-[#c1272d] text-white px-3 py-1 text-sm">
                       Free Plan
@@ -266,15 +266,38 @@ export function AccountPage({ user, onNavigate }: AccountPageProps) {
           <Button
             variant="ghost"
             className="w-full text-red-600 hover:text-red-700 hover:bg-red-50 py-3 text-base font-semibold"
-            onClick={() => {
-              // Clear cookies and redirect to home
-              document.cookie = 'guest_session=; Max-Age=0; path=/';
-              document.cookie = 'survey_id=; Max-Age=0; path=/';
-              window.location.href = '/';
+            onClick={async () => {
+              try {
+                // Check if user is logged in (has user_id cookie)
+                const hasUserAccount = document.cookie.includes('user_id=');
+
+                if (hasUserAccount) {
+                  // Logged in user - call logout API
+                  await fetch('/api/auth/logout', {
+                    method: 'POST',
+                    credentials: 'include'
+                  });
+                } else {
+                  // Guest user - just clear guest cookies
+                  document.cookie = 'guest_session=; Max-Age=0; path=/';
+                  document.cookie = 'survey_id=; Max-Age=0; path=/';
+                }
+
+                // Redirect to home
+                window.location.href = '/';
+              } catch (error) {
+                console.error('Logout error:', error);
+                // Fallback - clear all cookies and redirect
+                document.cookie = 'auth_session=; Max-Age=0; path=/';
+                document.cookie = 'user_id=; Max-Age=0; path=/';
+                document.cookie = 'guest_session=; Max-Age=0; path=/';
+                document.cookie = 'survey_id=; Max-Age=0; path=/';
+                window.location.href = '/';
+              }
             }}
           >
             <LogOut className="w-5 h-5 mr-2" />
-            Start Over
+            {user?.email ? 'Sign Out' : 'Start Over'}
           </Button>
         </div>
 

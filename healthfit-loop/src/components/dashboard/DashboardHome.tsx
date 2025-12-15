@@ -19,7 +19,6 @@ import {
   User,
   MapPin
 } from "lucide-react";
-// import ModernMealPlanModal from "./modals/ModernMealPlanModal";
 
 interface DashboardHomeProps {
   user: any;
@@ -29,9 +28,11 @@ interface DashboardHomeProps {
     workoutsGenerated: boolean;
     restaurantsDiscovered: boolean;
   };
+  isGuest?: boolean;
+  onShowAccountModal?: () => void;
 }
 
-export function DashboardHome({ user, onNavigate, generationStatus }: DashboardHomeProps) {
+export function DashboardHome({ user, onNavigate, generationStatus, isGuest, onShowAccountModal }: DashboardHomeProps) {
   const [mealData, setMealData] = useState<any>(null);
   const [consumedMeals, setConsumedMeals] = useState<any>(null);
   const [workoutProgress, setWorkoutProgress] = useState<any>(null);
@@ -521,12 +522,12 @@ export function DashboardHome({ user, onNavigate, generationStatus }: DashboardH
   const todaysMeals = getTodaysMeals();
   const todaysWorkout = getTodaysWorkout();
 
-  // Get nutrition targets from meal plan data or user data
+  // Get nutrition targets from meal plan data or user data (no fallbacks - user must have survey data)
   const nutritionTargets = mealData?.mealPlan?.nutritionTargets || user?.macroTargets || {
-    dailyCalories: 2200,
-    dailyProtein: 165,
-    dailyCarbs: 275,
-    dailyFat: 73
+    dailyCalories: user?.calorieTarget || 0,
+    dailyProtein: 0,
+    dailyCarbs: 0,
+    dailyFat: 0
   };
 
   // Use real eaten calories from checkbox tracking
@@ -555,6 +556,34 @@ export function DashboardHome({ user, onNavigate, generationStatus }: DashboardH
 
   return (
     <div className="min-h-screen bg-[#fafafa]">
+      {/* Guest User Banner */}
+      {isGuest && (
+        <div className="bg-gradient-to-r from-blue-50 to-indigo-50 border-b border-blue-200 px-4 py-3">
+          <div className="max-w-7xl mx-auto flex items-center justify-between">
+            <div className="flex items-center space-x-3">
+              <div className="w-8 h-8 bg-blue-100 rounded-full flex items-center justify-center">
+                <User className="w-4 h-4 text-blue-600" />
+              </div>
+              <div>
+                <p className="text-sm font-medium text-blue-900">
+                  You're browsing as a guest
+                </p>
+                <p className="text-xs text-blue-700">
+                  Create an account to save your progress and access all features
+                </p>
+              </div>
+            </div>
+            <Button
+              onClick={onShowAccountModal}
+              size="sm"
+              className="bg-blue-600 hover:bg-blue-700 text-white text-xs px-3 py-1.5"
+            >
+              Create Account
+            </Button>
+          </div>
+        </div>
+      )}
+
       {/* Header */}
       <div className="bg-gradient-to-r from-white to-gray-50 border-b border-gray-200 px-4 sm:px-6 lg:px-8 py-6 sm:py-8 shadow-sm">
         <div className="max-w-7xl mx-auto flex items-center justify-between">

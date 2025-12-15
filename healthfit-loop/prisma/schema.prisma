@@ -16,12 +16,18 @@ model User {
   createdAt           DateTime             @default(now())
   updatedAt           DateTime             @updatedAt
   activeSurveyId      String?              @unique
+  emailVerified       Boolean              @default(false)
+  lastLoginAt         DateTime?
+  passwordResetExpiry DateTime?
+  passwordResetToken  String?              @unique
+  verificationToken   String?              @unique
   mealConsumptionLogs MealConsumptionLog[]
   mealFeedback        MealFeedback[]
   mealPlans           MealPlan[]
   surveys             SurveyResponse[]
   activeSurvey        SurveyResponse?      @relation("ActiveSurvey", fields: [activeSurveyId], references: [id])
   userPreferences     UserFoodPreferences?
+  sessions            UserSession[]
   workoutLogs         WorkoutLog[]
   workoutPlans        WorkoutPlan[]
   workoutProgress     WorkoutProgress[]
@@ -44,10 +50,6 @@ model SurveyResponse {
   country                String     @default("United States")
   goal                   HealthGoal
   activityLevel          String
-  sportsInterests        String     @default("")
-  fitnessTimeline        String     @default("")
-  monthlyFoodBudget      Int        @default(200)
-  monthlyFitnessBudget   Int        @default(50)
   dietPrefs              String[]
   mealsOutPerWeek        Int
   distancePreference     String     @default("medium")
@@ -55,13 +57,17 @@ model SurveyResponse {
   preferredFoods         String[]   @default([])
   workoutPreferencesJson Json?
   biomarkerJson          Json?
-  uploadedFiles          String[]   @default([])
-  preferredNutrients     String[]   @default([])
   source                 String     @default("web")
   isGuest                Boolean    @default(true)
   sessionId              String?
   createdAt              DateTime   @default(now())
   updatedAt              DateTime   @updatedAt
+  fitnessTimeline        String     @default("")
+  monthlyFitnessBudget   Int        @default(50)
+  monthlyFoodBudget      Int        @default(200)
+  sportsInterests        String     @default("")
+  preferredNutrients     String[]   @default([])
+  uploadedFiles          String[]   @default([])
   user                   User?      @relation(fields: [userId], references: [id])
   activeForUser          User?      @relation("ActiveSurvey")
 
@@ -356,6 +362,18 @@ model WorkoutProgress {
   @@index([userId])
   @@index([workoutPlanId])
   @@index([weekOf])
+}
+
+model UserSession {
+  id        String   @id @default(cuid())
+  userId    String
+  sessionId String   @unique
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([sessionId])
 }
 
 enum HealthGoal {

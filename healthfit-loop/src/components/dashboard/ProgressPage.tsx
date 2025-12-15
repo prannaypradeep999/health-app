@@ -33,46 +33,78 @@ export function ProgressPage({ onNavigate }: ProgressPageProps) {
   const [renphoConnected, setRenphoConnected] = useState(false);
   const [ouraConnected, setOuraConnected] = useState(false);
 
-  // Mock data for charts
-  const weeklyData = [
-    { day: 'Mon', workouts: 1, calories: 2100 },
-    { day: 'Tue', workouts: 0, calories: 2250 },
-    { day: 'Wed', workouts: 1, calories: 2050 },
-    { day: 'Thu', workouts: 1, calories: 2180 },
-    { day: 'Fri', workouts: 0, calories: 2300 },
-    { day: 'Sat', workouts: 1, calories: 2000 },
-    { day: 'Sun', workouts: 0, calories: 2150 }
-  ];
+  // Get real progress data from localStorage or show empty states
+  const getProgressData = () => {
+    try {
+      const mealLogs = JSON.parse(localStorage.getItem('mealConsumptionLogs') || '{}');
+      const workoutLogs = JSON.parse(localStorage.getItem('workoutLogs') || '{}');
 
-  const monthlyWeight = [
-    { week: 'Week 1', weight: 165 },
-    { week: 'Week 2', weight: 164 },
-    { week: 'Week 3', weight: 163 },
-    { week: 'Week 4', weight: 162 }
-  ];
+      // Calculate basic stats from real user activity
+      const totalMealsLogged = Object.keys(mealLogs).length;
+      const totalWorkoutsLogged = Object.keys(workoutLogs).length;
 
-  const achievements = [
-    { id: 1, title: "7-Day Streak", description: "Completed workouts for 7 days straight", earned: true, progress: 100 },
-    { id: 2, title: "Meal Plan Master", description: "Followed meal plan for 5 days", earned: true, progress: 100 },
-    { id: 3, title: "Consistency Champion", description: "30 days of tracking", earned: false, progress: 73 },
-    { id: 4, title: "Strength Builder", description: "Increased weight in all exercises", earned: false, progress: 45 }
-  ];
-
-  const weeklyStats = {
-    workoutsCompleted: 4,
-    workoutsPlanned: 5,
-    mealPlanAdherence: 85,
-    avgCalories: 2150,
-    avgCaloriesBurned: 420,
-    streakDays: 7,
-    totalActiveMinutes: 180,
-    avgActiveMinutes: 26,
-    steps: 8542
+      return {
+        hasData: totalMealsLogged > 0 || totalWorkoutsLogged > 0,
+        mealsLogged: totalMealsLogged,
+        workoutsLogged: totalWorkoutsLogged
+      };
+    } catch (error) {
+      return { hasData: false, mealsLogged: 0, workoutsLogged: 0 };
+    }
   };
 
-  // Long-term goal
-  const goalType = "Lose 10 pounds in 3 months";
-  const currentDay = 12;
+  const progressData = getProgressData();
+
+  // Empty state for when user hasn't started tracking yet
+  if (!progressData.hasData) {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-neutral-50 via-red-50/15 to-purple-50/10">
+        {/* Header */}
+        <div className="bg-white border-b border-neutral-200 p-6">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center">
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => onNavigate("dashboard")}
+                className="mr-3 text-neutral-600"
+              >
+                <ArrowLeft className="w-5 h-5" />
+              </Button>
+              <div>
+                <h1 className="text-2xl font-medium text-neutral-900">Progress</h1>
+                <p className="text-sm text-neutral-600">Track your health journey</p>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* Empty State */}
+        <div className="max-w-lg mx-auto px-6 py-16 text-center">
+          <BarChart3 className="w-16 h-16 text-gray-400 mx-auto mb-6" />
+          <h2 className="text-xl font-medium text-gray-900 mb-4">Start Tracking Your Progress</h2>
+          <p className="text-gray-600 mb-8">
+            Complete workouts and log meals to see your progress charts and achievements here.
+          </p>
+          <div className="space-y-3">
+            <Button
+              onClick={() => onNavigate("meal-plan")}
+              className="w-full bg-[#c1272d] hover:bg-red-700 text-white"
+            >
+              View Meal Plan
+            </Button>
+            <Button
+              onClick={() => onNavigate("workout-plan")}
+              variant="outline"
+              className="w-full border-purple-300 text-purple-700 hover:bg-purple-50"
+            >
+              View Workout Plan
+            </Button>
+          </div>
+        </div>
+      </div>
+    );
+  }
   const totalDays = 90;
   const weightLost = 3;
   const weightGoal = 10;

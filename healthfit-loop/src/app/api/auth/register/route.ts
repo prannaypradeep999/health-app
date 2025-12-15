@@ -1,16 +1,14 @@
 import { NextResponse } from 'next/server';
-import { prisma } from '@/lib/db';
-import { hashPassword, createToken, setAuthCookie } from '@/lib/auth';
-import { cookies } from 'next/headers';
+import { createUser, createSession, setAuthCookie, migrateGuestToUser, AuthError } from '@/lib/auth';
 
-export async function POST(req: Request) {
+export async function POST(request: Request) {
   try {
-    const { email, password, linkSurvey } = await req.json();
+    const { email, password, firstName, lastName, preserveGuestData } = await request.json();
 
     // Validate input
-    if (!email || !password) {
+    if (!email || !password || !firstName || !lastName) {
       return NextResponse.json(
-        { error: 'Email and password are required' },
+        { error: 'All fields are required' },
         { status: 400 }
       );
     }
@@ -22,77 +20,30 @@ export async function POST(req: Request) {
       );
     }
 
-    // Check if user already exists
-    const existingUser = await prisma.user.findUnique({
-      where: { email }
+    // Create user
+    const user = await createUser({
+      email,
+      password,
+      firstName,
+      lastName
     });
 
-    if (existingUser) {
-      return NextResponse.json(
-        { error: 'An account with this email already exists' },
-        { status: 400 }
-      );
-    }
+    // Create session
+    const sessionId = await createSession(user.id);
 
-    // Get guest survey if exists
-    const cookieStore = await cookies();  // ✅ ADD AWAIT
-    const surveyId = cookieStore.get('survey_id')?.value;
-    let guestSurvey = null;
-
-    if (linkSurvey && surveyId) {
-      guestSurvey = await prisma.surveyResponse.findUnique({
-        where: { 
-          id: surveyId,
-          isGuest: true 
-        }
-      });
-    }
-
-    // Hash password
-    const hashedPassword = await hashPassword(password);
-
-    // Create user and link survey if exists
-    const user = await prisma.user.create({
-      data: {
-        email,
-        password: hashedPassword,
-        firstName: guestSurvey?.firstName || email.split('@')[0],
-        lastName: guestSurvey?.lastName || '',
-        activeSurveyId: guestSurvey?.id
-      }
-    });
-
-    // Update survey to link it to user
-    if (guestSurvey) {
-      await prisma.surveyResponse.update({
-        where: { id: guestSurvey.id },
-        data: {
-          userId: user.id,
-          isGuest: false
-        }
-      });
-    }
-
-    // Create JWT token
-    const token = await createToken(user.id);
-    
     // Set auth cookie
-    await setAuthCookie(token);  // ✅ ADD AWAIT if setAuthCookie uses cookies()
-    
-    // Set user_id cookie for quick access
-    cookieStore.set('user_id', user.id, {
-      httpOnly: true,
-      secure: process.env.NODE_ENV === 'production',
-      sameSite: 'lax',
-      maxAge: 60 * 60 * 24 * 7
-    });
+    await setAuthCookie(sessionId);
 
-    // Clear guest cookies
-    cookieStore.delete('guest_session');
-    cookieStore.delete('survey_id');
+    // Migrate any guest data if requested
+    if (preserveGuestData) {
+      await migrateGuestToUser(sessionId, user.id);
+      console.log(`[Auth] Guest data migrated for user: ${user.email}`);
+    }
 
-    return NextResponse.json({ 
-      ok: true,
+    console.log(`[Auth] User registered successfully: ${user.email}`);
+
+    return NextResponse.json({
+      success: true,
       user: {
         id: user.id,
         email: user.email,
@@ -100,8 +51,20 @@ export async function POST(req: Request) {
         lastName: user.lastName
       }
     });
-  } catch (err) {
-    console.error('[POST /api/auth/register] Error:', err);
-    return NextResponse.json({ error: 'Server error' }, { status: 500 });
+
+  } catch (error) {
+    console.error('[Auth] Registration error:', error);
+
+    if (error instanceof AuthError) {
+      return NextResponse.json(
+        { error: error.message },
+        { status: error.code === 'USER_EXISTS' ? 409 : 400 }
+      );
+    }
+
+    return NextResponse.json(
+      { error: 'Failed to create account' },
+      { status: 500 }
+    );
   }
 }

@@ -114,8 +114,29 @@ export async function POST(req: Request) {
       maxAge: 60 * 60 * 24 * 7
     });
 
-    // Check if this is step 6 completion to trigger workout generation
-    if (payload.currentStep === 6) {
+    // Check if this is step 5 completion to trigger meal generation
+    if (payload.currentStep === 5) {
+      console.log('[MEAL-TRIGGER] 🍽️ Step 5 completed - triggering background meal generation');
+      console.log('[MEAL-TRIGGER] 📊 Survey data for meal generation:', {
+        surveyId: survey.id,
+        sessionId,
+        goal: parsed.data.goal,
+        city: parsed.data.city,
+        state: parsed.data.state,
+        cuisines: parsed.data.preferredCuisines?.length || 0,
+        foods: parsed.data.preferredFoods?.length || 0,
+        distancePreference: parsed.data.distancePreference
+      });
+
+      // Trigger background meal generation (non-blocking)
+      const protocol = req.headers.get('x-forwarded-proto') || 'http';
+      const host = req.headers.get('host') || 'localhost:3000';
+      const baseUrl = `${protocol}://${host}`;
+
+      triggerMealGeneration(survey.id, sessionId, parsed.data, baseUrl).catch(error => {
+        console.error('[MEAL-TRIGGER] ❌ Background meal generation failed:', error);
+      });
+    } else if (payload.currentStep === 6) {
       console.log('[WORKOUT-TRIGGER] 🏋️ Step 6 completed - triggering background workout generation');
       console.log('[WORKOUT-TRIGGER] 📊 Survey data for workout generation:', {
         surveyId: survey.id,
@@ -135,29 +156,7 @@ export async function POST(req: Request) {
         console.error('[WORKOUT-TRIGGER] ❌ Background workout generation failed:', error);
       });
     } else if (!payload.currentStep) {
-      console.log('[FINAL] 🎯 Final survey submission - triggering BOTH meal and workout generation');
-      console.log('[FINAL] 📊 Survey data for generation:', {
-        surveyId: survey.id,
-        sessionId,
-        goal: parsed.data.goal,
-        city: parsed.data.city,
-        state: parsed.data.state,
-        cuisines: parsed.data.preferredCuisines?.length || 0,
-        distancePreference: parsed.data.distancePreference
-      });
-
-      // Trigger both meal and workout generation (non-blocking)
-      // Use dynamic base URL from request headers
-      const protocol = req.headers.get('x-forwarded-proto') || 'http';
-      const host = req.headers.get('host') || 'localhost:3000';
-      const baseUrl = `${protocol}://${host}`;
-
-      Promise.all([
-        triggerMealGeneration(survey.id, sessionId, parsed.data, baseUrl),
-        triggerBackgroundWorkoutGeneration(survey.id, sessionId, parsed.data, baseUrl)
-      ]).catch(error => {
-        console.error('[FINAL] ❌ Generation failed:', error);
-      });
+      console.log('[FINAL] 🎯 Final survey submission - both meal and workout generation already triggered in previous steps');
     } else {
       console.log(`[PROGRESSIVE] ℹ️ Step ${payload.currentStep || 'final'} completed - no background processes triggered`);
     }

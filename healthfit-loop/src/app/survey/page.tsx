@@ -10,7 +10,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 import { Slider } from '@/components/ui/slider';
 import { Progress } from '@/components/ui/progress';
-import { ArrowRight, Target, Activity, DollarSign, Utensils, Apple, Dumbbell, FlaskConical, ChevronLeft, ChevronRight, Upload } from 'lucide-react';
+import { ArrowRight, Target, Activity, DollarSign, Utensils, Apple, Dumbbell, FlaskConical, ChevronLeft, ChevronRight, Upload, Shield } from 'lucide-react';
 import Logo from '@/components/logo';
 
 // Survey data interface from existing survey
@@ -40,6 +40,7 @@ interface SurveyData {
   dietPrefs: string[];
   preferredCuisines: string[];
   preferredFoods: string[];
+  customFoodInput: string;
   uploadedFiles: string[];
   preferredNutrients: string[];
   biomarkers: {
@@ -185,6 +186,7 @@ function OnboardingSteps({ onComplete, onBack }: OnboardingStepsProps) {
     dietPrefs: [],
     preferredCuisines: [],
     preferredFoods: [], // Start with no foods selected
+    customFoodInput: '',
     uploadedFiles: [],
     preferredNutrients: [],
     biomarkers: {},
@@ -236,13 +238,16 @@ function OnboardingSteps({ onComplete, onBack }: OnboardingStepsProps) {
     { value: '600_plus', label: '$600+/mo' }
   ];
 
-  const cuisineOptions = [
+  const initialCuisineOptions = [
     'Mediterranean', 'Italian', 'Mexican', 'Chinese',
-    'Japanese', 'Thai', 'Indian', 'Middle Eastern',
-    'American', 'Healthy Bowls', 'Korean', 'Vietnamese',
-    'Greek', 'French', 'Spanish', 'Caribbean',
-    'Brazilian', 'Turkish', 'Ethiopian', 'Moroccan',
-    'German', 'British', 'Fusion', 'Vegan'
+    'Japanese', 'Thai', 'Indian', 'Middle Eastern'
+  ];
+
+  const additionalCuisineOptions = [
+    'American', 'Korean', 'Vietnamese', 'Greek',
+    'French', 'Spanish', 'Caribbean', 'Brazilian',
+    'Turkish', 'Ethiopian', 'Moroccan', 'German',
+    'British', 'Fusion', 'Vegan'
   ];
 
 
@@ -438,59 +443,6 @@ function OnboardingSteps({ onComplete, onBack }: OnboardingStepsProps) {
                 />
               </div>
 
-              {/* Full Address Section */}
-              <div className="space-y-4 border-t pt-4">
-                <h3 className="text-sm font-medium text-gray-700">Address</h3>
-                <div>
-                  <Label className="text-gray-700 mb-2 block">Street Address</Label>
-                  <Input
-                    value={formData.streetAddress}
-                    onChange={(e) => updateFormData("streetAddress", e.target.value)}
-                    placeholder="123 Main Street"
-                    className="border-gray-300 focus:border-red-500 bg-white text-gray-900 placeholder:text-gray-500"
-                  />
-                </div>
-                <div className="grid grid-cols-2 gap-4">
-                  <div>
-                    <Label className="text-gray-700 mb-2 block">City</Label>
-                    <Input
-                      value={formData.city}
-                      onChange={(e) => updateFormData("city", e.target.value)}
-                      placeholder="New York"
-                      className="border-gray-300 focus:border-red-500 bg-white text-gray-900 placeholder:text-gray-500"
-                    />
-                  </div>
-                  <div>
-                    <Label className="text-gray-700 mb-2 block">State</Label>
-                    <Input
-                      value={formData.state}
-                      onChange={(e) => updateFormData("state", e.target.value)}
-                      placeholder="NY"
-                      className="border-gray-300 focus:border-red-500 bg-white text-gray-900 placeholder:text-gray-500"
-                    />
-                  </div>
-                </div>
-                <div className="grid grid-cols-2 gap-4">
-                  <div>
-                    <Label className="text-gray-700 mb-2 block">ZIP Code</Label>
-                    <Input
-                      value={formData.zipCode}
-                      onChange={(e) => updateFormData("zipCode", e.target.value)}
-                      placeholder="10001"
-                      className="border-gray-300 focus:border-red-500 bg-white text-gray-900 placeholder:text-gray-500"
-                    />
-                  </div>
-                  <div>
-                    <Label className="text-gray-700 mb-2 block">Country</Label>
-                    <Input
-                      value={formData.country}
-                      onChange={(e) => updateFormData("country", e.target.value)}
-                      placeholder="United States"
-                      className="border-gray-300 focus:border-red-500 bg-white text-gray-900 placeholder:text-gray-500"
-                    />
-                  </div>
-                </div>
-              </div>
             </div>
           </div>
         );
@@ -505,12 +457,12 @@ function OnboardingSteps({ onComplete, onBack }: OnboardingStepsProps) {
             </div>
             <div>
               <Label className="text-neutral-700 mb-4 block">Primary goals (select all that apply)</Label>
-              <div className="grid grid-cols-2 gap-3">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 {goals.map((goal) => (
                   <Button
                     key={goal.value}
                     variant={formData.goal === goal.value ? "default" : "outline"}
-                    className={`h-auto p-4 text-left transition-all duration-200 ${
+                    className={`h-auto p-4 text-center transition-all duration-200 ${
                       formData.goal === goal.value
                         ? "bg-red-600 text-white"
                         : "border-gray-300 hover:border-gray-400 bg-white text-gray-900 hover:bg-gray-50"
@@ -527,11 +479,34 @@ function OnboardingSteps({ onComplete, onBack }: OnboardingStepsProps) {
               <RadioGroup value={formData.activityLevel} onValueChange={(value) => updateFormData("activityLevel", value)}>
                 <div className="space-y-3">
                   {activityLevels.map((option) => (
-                    <div key={option.value} className="flex items-center space-x-3 p-3 rounded-lg border border-gray-300 bg-white">
+                    <div
+                      key={option.value}
+                      className={`flex items-center space-x-3 p-3 rounded-lg border transition-all duration-200 cursor-pointer ${
+                        formData.activityLevel === option.value
+                          ? "border-red-500 bg-red-50 shadow-sm"
+                          : "border-gray-300 bg-white hover:border-gray-400 hover:bg-gray-50"
+                      }`}
+                      onClick={() => updateFormData("activityLevel", option.value)}
+                    >
                       <RadioGroupItem value={option.value} id={option.value} />
                       <div>
-                        <Label htmlFor={option.value} className="font-medium text-gray-900">{option.label}</Label>
-                        <p className="text-sm text-gray-600">{option.desc}</p>
+                        <Label
+                          htmlFor={option.value}
+                          className={`font-medium cursor-pointer ${
+                            formData.activityLevel === option.value
+                              ? "text-red-900"
+                              : "text-gray-900"
+                          }`}
+                        >
+                          {option.label}
+                        </Label>
+                        <p className={`text-sm ${
+                          formData.activityLevel === option.value
+                            ? "text-red-700"
+                            : "text-gray-600"
+                        }`}>
+                          {option.desc}
+                        </p>
                       </div>
                     </div>
                   ))}
@@ -568,7 +543,7 @@ function OnboardingSteps({ onComplete, onBack }: OnboardingStepsProps) {
               <p className="text-gray-600">Help us recommend options within your range</p>
             </div>
             <div>
-              <Label className="text-neutral-700 mb-4 block">Monthly food budget: ${Array.isArray(formData.monthlyFoodBudget) ? formData.monthlyFoodBudget[0] : formData.monthlyFoodBudget}</Label>
+              <Label className="text-neutral-700 mb-4 block">Monthly food budget: ${Array.isArray(formData.monthlyFoodBudget) ? formData.monthlyFoodBudget[0] : formData.monthlyFoodBudget}{Array.isArray(formData.monthlyFoodBudget) ? (formData.monthlyFoodBudget[0] >= 1000 ? '+' : '') : (formData.monthlyFoodBudget >= 1000 ? '+' : '')}</Label>
               <Slider
                 value={Array.isArray(formData.monthlyFoodBudget) ? formData.monthlyFoodBudget : [formData.monthlyFoodBudget as number]}
                 onValueChange={(value) => updateFormData("monthlyFoodBudget", value[0])}
@@ -579,7 +554,7 @@ function OnboardingSteps({ onComplete, onBack }: OnboardingStepsProps) {
               />
               <div className="flex justify-between text-sm text-neutral-500">
                 <span>$0</span>
-                <span>$1000</span>
+                <span>$1000+</span>
               </div>
             </div>
             <div>
@@ -648,18 +623,98 @@ function OnboardingSteps({ onComplete, onBack }: OnboardingStepsProps) {
             {/* Available Cuisines Section */}
             <div>
               <Label className="text-neutral-700 mb-3 block">Available cuisines:</Label>
-              <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-2">
-                {cuisineOptions
+
+              {/* Initial Options */}
+              <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-2 mb-4">
+                {initialCuisineOptions
                   .filter(cuisine => !formData.preferredCuisines.includes(cuisine))
                   .map((cuisine) => (
                     <button
-                      key={`available-${cuisine}`}
+                      key={`initial-${cuisine}`}
                       onClick={() => toggleArrayItem("preferredCuisines", cuisine)}
                       className="px-3 py-2 text-sm rounded-lg border border-gray-300 bg-white text-gray-900 hover:border-gray-400 hover:bg-gray-50 transition-all duration-200 transform hover:scale-105 focus:outline-none focus:ring-2 focus:ring-red-500 focus:ring-offset-2 text-center min-h-[44px] flex items-center justify-center"
                     >
                       {cuisine}
                     </button>
                   ))}
+              </div>
+
+              {/* Show additional options when user has selected at least one cuisine */}
+              {formData.preferredCuisines.length > 0 && (
+                <div>
+                  <Label className="text-neutral-700 mb-3 block text-sm">More options:</Label>
+                  <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-2">
+                    {additionalCuisineOptions
+                      .filter(cuisine => !formData.preferredCuisines.includes(cuisine))
+                      .map((cuisine) => (
+                        <button
+                          key={`additional-${cuisine}`}
+                          onClick={() => toggleArrayItem("preferredCuisines", cuisine)}
+                          className="px-3 py-2 text-sm rounded-lg border border-gray-300 bg-white text-gray-900 hover:border-gray-400 hover:bg-gray-50 transition-all duration-200 transform hover:scale-105 focus:outline-none focus:ring-2 focus:ring-red-500 focus:ring-offset-2 text-center min-h-[44px] flex items-center justify-center"
+                        >
+                          {cuisine}
+                        </button>
+                      ))}
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {/* Address Section for Restaurant Recommendations */}
+            <div className="space-y-4 border-t pt-6">
+              <div className="text-center">
+                <h3 className="text-lg font-medium text-gray-900 mb-2">Your Location</h3>
+                <p className="text-sm text-gray-600">Needed to give you recommendations around you</p>
+              </div>
+
+              <div>
+                <Label className="text-gray-700 mb-2 block">Address</Label>
+                <Input
+                  value={formData.streetAddress}
+                  onChange={(e) => updateFormData("streetAddress", e.target.value)}
+                  placeholder="Enter your address"
+                  className="border-gray-300 focus:border-red-500 bg-white text-gray-900 placeholder:text-gray-500"
+                />
+              </div>
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <Label className="text-gray-700 mb-2 block">City</Label>
+                  <Input
+                    value={formData.city}
+                    onChange={(e) => updateFormData("city", e.target.value)}
+                    placeholder="New York"
+                    className="border-gray-300 focus:border-red-500 bg-white text-gray-900 placeholder:text-gray-500"
+                  />
+                </div>
+                <div>
+                  <Label className="text-gray-700 mb-2 block">State</Label>
+                  <Input
+                    value={formData.state}
+                    onChange={(e) => updateFormData("state", e.target.value)}
+                    placeholder="NY"
+                    className="border-gray-300 focus:border-red-500 bg-white text-gray-900 placeholder:text-gray-500"
+                  />
+                </div>
+              </div>
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <Label className="text-gray-700 mb-2 block">ZIP Code</Label>
+                  <Input
+                    value={formData.zipCode}
+                    onChange={(e) => updateFormData("zipCode", e.target.value)}
+                    placeholder="10001"
+                    className="border-gray-300 focus:border-red-500 bg-white text-gray-900 placeholder:text-gray-500"
+                  />
+                </div>
+                <div>
+                  <Label className="text-gray-700 mb-2 block">Country</Label>
+                  <Input
+                    value={formData.country}
+                    onChange={(e) => updateFormData("country", e.target.value)}
+                    placeholder="United States"
+                    className="border-gray-300 focus:border-red-500 bg-white text-gray-900 placeholder:text-gray-500"
+                  />
+                </div>
               </div>
             </div>
 
@@ -739,6 +794,68 @@ function OnboardingSteps({ onComplete, onBack }: OnboardingStepsProps) {
                   ))}
               </div>
             </div>
+
+            {/* Custom Food Input */}
+            <div className="border-t pt-6">
+              <Label className="text-neutral-700 mb-3 block">Don't see something you like? Add custom foods:</Label>
+              <div className="flex gap-2">
+                <Input
+                  value={formData.customFoodInput}
+                  onChange={(e) => updateFormData("customFoodInput", e.target.value)}
+                  placeholder="e.g., quinoa bowls, acai, tempeh..."
+                  className="flex-1 border-gray-300 focus:border-red-500 bg-white text-gray-900 placeholder:text-gray-500"
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter' && formData.customFoodInput.trim()) {
+                      e.preventDefault();
+                      const customFood = formData.customFoodInput.trim();
+                      if (!formData.preferredFoods.includes(customFood)) {
+                        updateFormData("preferredFoods", [...formData.preferredFoods, customFood]);
+                        updateFormData("customFoodInput", "");
+                      }
+                    }
+                  }}
+                />
+                <Button
+                  type="button"
+                  onClick={() => {
+                    const customFood = formData.customFoodInput.trim();
+                    if (customFood && !formData.preferredFoods.includes(customFood)) {
+                      updateFormData("preferredFoods", [...formData.preferredFoods, customFood]);
+                      updateFormData("customFoodInput", "");
+                    }
+                  }}
+                  className="bg-red-600 hover:bg-red-700 text-white px-4"
+                  disabled={!formData.customFoodInput.trim()}
+                >
+                  Add
+                </Button>
+              </div>
+              <p className="text-xs text-gray-500 mt-2">Press Enter or click Add to include your custom food</p>
+            </div>
+
+            {/* Diet Preferences */}
+            <div className="border-t pt-6">
+              <Label className="text-neutral-700 mb-3 block">Any dietary preferences or restrictions?</Label>
+              <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+                {[
+                  'Vegetarian', 'Vegan', 'Gluten-Free', 'Dairy-Free',
+                  'Keto', 'Paleo', 'Low-Carb', 'Mediterranean',
+                  'Intermittent Fasting', 'Low-Sodium', 'Pescatarian', 'Halal'
+                ].map((dietPref) => (
+                  <button
+                    key={dietPref}
+                    onClick={() => toggleArrayItem("dietPrefs", dietPref)}
+                    className={`px-3 py-2 text-sm rounded-lg border transition-all duration-200 transform hover:scale-105 focus:outline-none focus:ring-2 focus:ring-red-500 focus:ring-offset-2 text-center min-h-[44px] flex items-center justify-center ${
+                      formData.dietPrefs.includes(dietPref)
+                        ? "bg-red-600 text-white border-red-600"
+                        : "border-gray-300 bg-white text-gray-900 hover:border-gray-400 hover:bg-gray-50"
+                    }`}
+                  >
+                    {dietPref}
+                  </button>
+                ))}
+              </div>
+            </div>
           </div>
         );
 
@@ -776,10 +893,10 @@ function OnboardingSteps({ onComplete, onBack }: OnboardingStepsProps) {
               />
             </div>
             <div>
-              <Label className="text-neutral-700 mb-4 block">Available days</Label>
+              <Label className="text-neutral-700 mb-4 block">Preferred days for workouts</Label>
 
-              {/* Flexible Option */}
-              <div className="mb-4">
+              {/* Flexible Options */}
+              <div className="mb-4 space-y-3">
                 <Button
                   variant={formData.workoutPreferences.availableDays.length === 7 ? "default" : "outline"}
                   className={`w-full h-12 transition-all duration-200 ${
@@ -794,7 +911,24 @@ function OnboardingSteps({ onComplete, onBack }: OnboardingStepsProps) {
                     updateFormData("workoutPreferences", { ...formData.workoutPreferences, availableDays: updated });
                   }}
                 >
-                  I'm flexible (any day works)
+                  I'm flexible - any day works
+                </Button>
+
+                <Button
+                  variant={JSON.stringify(formData.workoutPreferences.availableDays.sort()) === JSON.stringify(["Mon", "Tue", "Wed", "Thu", "Fri"]) ? "default" : "outline"}
+                  className={`w-full h-12 transition-all duration-200 ${
+                    JSON.stringify(formData.workoutPreferences.availableDays.sort()) === JSON.stringify(["Mon", "Tue", "Wed", "Thu", "Fri"])
+                      ? "bg-red-600 text-white"
+                      : "border-gray-300 hover:border-gray-400 bg-white text-gray-900 hover:bg-gray-50"
+                  }`}
+                  onClick={() => {
+                    const weekdays = ["Mon", "Tue", "Wed", "Thu", "Fri"];
+                    const isWeekdays = JSON.stringify(formData.workoutPreferences.availableDays.sort()) === JSON.stringify(weekdays);
+                    const updated = isWeekdays ? [] : weekdays;
+                    updateFormData("workoutPreferences", { ...formData.workoutPreferences, availableDays: updated });
+                  }}
+                >
+                  Weekdays only (Mon-Fri)
                 </Button>
               </div>
 
@@ -819,6 +953,34 @@ function OnboardingSteps({ onComplete, onBack }: OnboardingStepsProps) {
                   >
                     {day}
                   </Button>
+                ))}
+              </div>
+            </div>
+            <div>
+              <Label className="text-neutral-700 mb-4 block">What types of workouts do you enjoy? (select all that apply)</Label>
+              <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+                {[
+                  'Cardio', 'Strength Training', 'HIIT', 'Walking',
+                  'Running', 'Yoga', 'Pilates', 'Swimming',
+                  'Cycling', 'Dancing', 'Sports', 'Outdoor Activities'
+                ].map((workoutType) => (
+                  <button
+                    key={workoutType}
+                    onClick={() => {
+                      const currentTypes = formData.workoutPreferences.workoutTypes;
+                      const updated = currentTypes.includes(workoutType)
+                        ? currentTypes.filter(t => t !== workoutType)
+                        : [...currentTypes, workoutType];
+                      updateFormData("workoutPreferences", { ...formData.workoutPreferences, workoutTypes: updated });
+                    }}
+                    className={`px-3 py-2 text-sm rounded-lg border transition-all duration-200 transform hover:scale-105 focus:outline-none focus:ring-2 focus:ring-red-500 focus:ring-offset-2 text-center min-h-[44px] flex items-center justify-center ${
+                      formData.workoutPreferences.workoutTypes.includes(workoutType)
+                        ? "bg-red-600 text-white border-red-600"
+                        : "border-gray-300 bg-white text-gray-900 hover:border-gray-400 hover:bg-gray-50"
+                    }`}
+                  >
+                    {workoutType}
+                  </button>
                 ))}
               </div>
             </div>
@@ -865,6 +1027,21 @@ function OnboardingSteps({ onComplete, onBack }: OnboardingStepsProps) {
               <FlaskConical className="w-12 h-12 text-purple-600 mx-auto mb-4" />
               <h2 className="text-2xl font-medium text-gray-900 mb-2">Health Metrics</h2>
               <p className="text-gray-600">Optional data to enhance your plan (skip if unavailable)</p>
+            </div>
+
+            {/* HIPAA Compliance Disclaimer */}
+            <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 mb-6">
+              <div className="flex items-start space-x-3">
+                <Shield className="w-5 h-5 text-blue-600 mt-0.5 flex-shrink-0" />
+                <div className="text-sm">
+                  <p className="font-medium text-blue-900 mb-1">Privacy & Health Information Notice</p>
+                  <p className="text-blue-700 leading-relaxed">
+                    This application is not HIPAA-compliant and should not be used for storing sensitive medical information.
+                    Any health data you provide is for personalized fitness and nutrition recommendations only.
+                    For medical advice, please consult with qualified healthcare professionals.
+                  </p>
+                </div>
+              </div>
             </div>
 
             {/* Section 1 - File Upload */}
@@ -921,13 +1098,19 @@ function OnboardingSteps({ onComplete, onBack }: OnboardingStepsProps) {
             {/* Section 2 - Nutrient Selection */}
             <div className="space-y-4">
               <div>
-                <Label className="text-neutral-700 mb-3 block">Do you prefer foods rich in any of these nutrients?</Label>
-                <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
-                  {['Biotin', 'Iron', 'Vitamin B12', 'Vitamin D', 'Vitamin C', 'Calcium'].map((nutrient) => (
+                <Label className="text-neutral-700 mb-3 block">What kinds of foods nutrient-wise do you prefer?</Label>
+                <p className="text-sm text-gray-500 mb-4">Select nutrients you'd like to prioritize in your meal recommendations</p>
+                <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3">
+                  {[
+                    'Biotin-rich', 'Iron-rich', 'Vitamin B12', 'Vitamin D',
+                    'Vitamin C', 'Calcium', 'Omega-3', 'Magnesium',
+                    'Zinc', 'Folate', 'Vitamin A', 'Potassium',
+                    'Fiber-rich', 'Antioxidant-rich', 'Protein-rich', 'Probiotic'
+                  ].map((nutrient) => (
                     <button
                       key={nutrient}
                       onClick={() => toggleArrayItem("preferredNutrients", nutrient)}
-                      className={`px-4 py-3 text-sm rounded-lg border transition-all duration-200 transform hover:scale-105 focus:outline-none focus:ring-2 focus:ring-red-500 focus:ring-offset-2 min-h-[48px] flex items-center justify-center text-center ${
+                      className={`px-3 py-3 text-sm rounded-lg border transition-all duration-200 transform hover:scale-105 focus:outline-none focus:ring-2 focus:ring-red-500 focus:ring-offset-2 min-h-[52px] flex items-center justify-center text-center ${
                         formData.preferredNutrients.includes(nutrient)
                           ? "bg-red-600 text-white border-red-600"
                           : "border-gray-300 bg-white text-gray-900 hover:border-gray-400 hover:bg-gray-50"

@@ -45,7 +45,11 @@
       "Bash(open \"http://localhost:3001\")",
       "Bash(npm start)",
       "Read(//private/tmp/**)",
-      "Bash(open \"http://localhost:3004/dashboard\")"
+      "Bash(open \"http://localhost:3004/dashboard\")",
+      "Bash(open \"http://localhost:3002\")",
+      "Bash(tree:*)",
+      "Bash(git restore:*)",
+      "Bash(xargs cat:*)"
     ],
     "deny": [],
     "ask": []

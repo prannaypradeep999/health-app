@@ -1,11 +1,10 @@
 import { NextResponse } from 'next/server';
-import { prisma } from '@/lib/db';
-import { verifyPassword, createToken, setAuthCookie } from '@/lib/auth';
+import { authenticateUser, createSession, setAuthCookie, AuthError } from '@/lib/auth';
 import { cookies } from 'next/headers';
 
-export async function POST(req: Request) {
+export async function POST(request: Request) {
   try {
-    const { email, password } = await req.json();
+    const { email, password } = await request.json();
 
     // Validate input
     if (!email || !password) {
@@ -15,60 +14,53 @@ export async function POST(req: Request) {
       );
     }
 
-    // Find user
-    const user = await prisma.user.findUnique({
-      where: { email },
-      include: { activeSurvey: true }
-    });
+    // Authenticate user
+    const user = await authenticateUser(email, password);
 
-    if (!user) {
-      return NextResponse.json(
-        { error: 'Invalid email or password' },
-        { status: 401 }
-      );
-    }
+    // Create session
+    const sessionId = await createSession(user.id);
 
-    // Verify password
-    const isValid = await verifyPassword(password, user.password);
-
-    if (!isValid) {
-      return NextResponse.json(
-        { error: 'Invalid email or password' },
-        { status: 401 }
-      );
-    }
-
-    // Create JWT token
-    const token = await createToken(user.id);
-    
     // Set auth cookie
-    await setAuthCookie(token);  // ✅ ADD AWAIT
-    
-    // Set user_id cookie for quick access
-    const cookieStore = await cookies();  // ✅ ADD AWAIT
+    await setAuthCookie(sessionId);
+
+    // Set user_id cookie for backward compatibility
+    const cookieStore = await cookies();
     cookieStore.set('user_id', user.id, {
       httpOnly: true,
       secure: process.env.NODE_ENV === 'production',
       sameSite: 'lax',
-      maxAge: 60 * 60 * 24 * 7
+      maxAge: 30 * 24 * 60 * 60 // 30 days
     });
 
     // Clear any guest cookies
     cookieStore.delete('guest_session');
     cookieStore.delete('survey_id');
 
-    return NextResponse.json({ 
-      ok: true,
+    console.log(`[Auth] User logged in successfully: ${user.email}`);
+
+    return NextResponse.json({
+      success: true,
       user: {
         id: user.id,
         email: user.email,
         firstName: user.firstName,
-        lastName: user.lastName,
-        hasSurvey: !!user.activeSurvey
+        lastName: user.lastName
       }
     });
-  } catch (err) {
-    console.error('[POST /api/auth/login] Error:', err);
-    return NextResponse.json({ error: 'Server error' }, { status: 500 });
+
+  } catch (error) {
+    console.error('[Auth] Login error:', error);
+
+    if (error instanceof AuthError) {
+      return NextResponse.json(
+        { error: error.message },
+        { status: 401 }
+      );
+    }
+
+    return NextResponse.json(
+      { error: 'Failed to sign in' },
+      { status: 500 }
+    );
   }
 }

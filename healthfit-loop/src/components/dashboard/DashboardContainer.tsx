@@ -8,6 +8,7 @@ import { ProgressPage } from './ProgressPage';
 import { AccountPage } from './AccountPage';
 import { LoadingPage } from './LoadingPage';
 import { calculateTargetCalories, calculateMacroTargets } from '@/lib/utils/nutrition';
+import AccountCreationModal from './modals/AccountCreationModal';
 
 type Screen = 'dashboard' | 'meal-plan' | 'workout-plan' | 'progress' | 'account';
 
@@ -30,6 +31,8 @@ interface SurveyData {
   zipCode: string;
   activityLevel: string;
   createdAt: string;
+  isGuest?: boolean;
+  userId?: string | null;
 }
 
 interface GenerationStatus {
@@ -47,11 +50,14 @@ export function DashboardContainer({ initialScreen = 'dashboard' }: DashboardCon
     restaurantsDiscovered: false
   });
   const [loading, setLoading] = useState(true);
+  const [showAccountModal, setShowAccountModal] = useState(false);
 
   useEffect(() => {
     fetchSurveyData();
     checkGenerationStatus();
   }, []);
+
+  // Removed auto-modal - keep banner only for less intrusive UX
 
   useEffect(() => {
     // Poll for generation status updates every 5 seconds if meals aren't generated yet
@@ -110,70 +116,115 @@ export function DashboardContainer({ initialScreen = 'dashboard' }: DashboardCon
     return <LoadingPage />;
   }
 
-  // Calculate nutrition targets
-  const nutritionTargets = surveyData ? calculateMacroTargets({
+  // Don't render dashboard without survey data - redirect to survey instead
+  if (!surveyData) {
+    return (
+      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+        <div className="text-center">
+          <h2 className="text-xl font-medium text-gray-900 mb-4">No Survey Data Found</h2>
+          <p className="text-gray-600 mb-6">Please complete the survey to access your dashboard.</p>
+          <button
+            onClick={() => window.location.href = '/survey'}
+            className="px-6 py-3 bg-red-600 text-white rounded-lg hover:bg-red-700"
+          >
+            Complete Survey
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  // Calculate nutrition targets from real survey data
+  const nutritionTargets = calculateMacroTargets({
     age: surveyData.age,
     sex: surveyData.sex,
     height: surveyData.height,
     weight: surveyData.weight,
     activityLevel: surveyData.activityLevel,
     goal: surveyData.goal
-  }) : { calories: 2200, protein: 0, carbs: 0, fat: 0 };
+  });
 
   const userData = {
-    name: surveyData ? `${surveyData.firstName} ${surveyData.lastName}` : 'User',
-    email: surveyData?.email || 'user@example.com',
-    location: surveyData ? `${surveyData.city}, ${surveyData.state}` : 'Location',
-    zipCode: surveyData?.zipCode || '',
-    goal: surveyData?.goal || 'fitness',
-    activityLevel: surveyData?.activityLevel || 'moderate',
+    name: `${surveyData.firstName} ${surveyData.lastName}`,
+    email: surveyData.email,
+    location: `${surveyData.city}, ${surveyData.state}`,
+    zipCode: surveyData.zipCode,
+    goal: surveyData.goal,
+    activityLevel: surveyData.activityLevel,
     calorieTarget: nutritionTargets.calories,
     macroTargets: nutritionTargets
   };
 
-  switch (currentScreen) {
-    case 'dashboard':
-      return (
-        <DashboardHome
-          user={userData}
-          onNavigate={handleNavigate}
-          generationStatus={generationStatus}
-        />
-      );
-    case 'meal-plan':
-      return (
-        <MealPlanPage
-          onNavigate={handleNavigate}
-          generationStatus={generationStatus}
-        />
-      );
-    case 'workout-plan':
-      return (
-        <WorkoutPlanPage
-          onNavigate={handleNavigate}
-          generationStatus={generationStatus}
-        />
-      );
-    case 'progress':
-      return (
-        <ProgressPage
-          onNavigate={handleNavigate}
-        />
-      );
-    case 'account':
-      return (
-        <AccountPage
-          user={userData}
-          onNavigate={handleNavigate}
-        />
-      );
-    default:
-      return (
-        <DashboardHome
-          user={userData}
-          onNavigate={handleNavigate}
-          generationStatus={generationStatus}
-        />
-      );
-  }
+  const renderScreen = () => {
+    switch (currentScreen) {
+      case 'dashboard':
+        return (
+          <DashboardHome
+            user={userData}
+            onNavigate={handleNavigate}
+            generationStatus={generationStatus}
+            isGuest={surveyData?.isGuest}
+            onShowAccountModal={() => setShowAccountModal(true)}
+          />
+        );
+      case 'meal-plan':
+        return (
+          <MealPlanPage
+            onNavigate={handleNavigate}
+            generationStatus={generationStatus}
+            isGuest={surveyData?.isGuest}
+            onShowAccountModal={() => setShowAccountModal(true)}
+          />
+        );
+      case 'workout-plan':
+        return (
+          <WorkoutPlanPage
+            onNavigate={handleNavigate}
+            generationStatus={generationStatus}
+            isGuest={surveyData?.isGuest}
+            onShowAccountModal={() => setShowAccountModal(true)}
+          />
+        );
+      case 'progress':
+        return (
+          <ProgressPage
+            onNavigate={handleNavigate}
+            isGuest={surveyData?.isGuest}
+            onShowAccountModal={() => setShowAccountModal(true)}
+          />
+        );
+      case 'account':
+        return (
+          <AccountPage
+            user={userData}
+            onNavigate={handleNavigate}
+          />
+        );
+      default:
+        return (
+          <DashboardHome
+            user={userData}
+            onNavigate={handleNavigate}
+            generationStatus={generationStatus}
+            isGuest={surveyData?.isGuest}
+            onShowAccountModal={() => setShowAccountModal(true)}
+          />
+        );
+    }
+  };
+
+  return (
+    <>
+      {renderScreen()}
+      <AccountCreationModal
+        isOpen={showAccountModal}
+        onClose={() => setShowAccountModal(false)}
+        guestData={{
+          email: surveyData?.email,
+          firstName: surveyData?.firstName,
+          lastName: surveyData?.lastName
+        }}
+      />
+    </>
+  );
 }

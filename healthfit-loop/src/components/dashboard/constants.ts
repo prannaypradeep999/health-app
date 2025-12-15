@@ -13,42 +13,4 @@ export const colors = {
   };
   
   
-  export const sampleWorkoutPlan = [
-    { 
-      day: 'Monday', 
-      workout: 'Upper Body Strength', 
-      duration: '45 min', 
-      focus: 'Chest, shoulders, triceps'
-    },
-    { 
-      day: 'Tuesday', 
-      workout: 'Cardio HIIT', 
-      duration: '30 min', 
-      focus: 'Fat burning and endurance'
-    }
-  ];
-  
-  export const subscriptionPlans = [
-    {
-      id: 1,
-      name: 'Essential',
-      price: 5.99,
-      features: ['Grocery list', 'Gym recommendations', 'Running paths', 'Progress tracking'],
-      bgColor: '#4338CA'
-    },
-    {
-      id: 2,
-      name: 'Premium',
-      price: 9.99,
-      features: ['All Essential features', 'Restaurant ordering with macros', 'Delivery links', 'Workout adjustments'],
-      bgColor: 'linear-gradient(135deg, #4338CA 0%, #DC2626 100%)',
-      popular: true
-    },
-    {
-      id: 3,
-      name: 'Pro',
-      price: 14.99,
-      features: ['All Premium features', 'Photo meal tracking', 'Daily adjustments', 'Weather-based plans'],
-      bgColor: '#DC2626'
-    }
-  ];
+  // Removed unused sampleWorkoutPlan and subscriptionPlans - not implemented in current app
