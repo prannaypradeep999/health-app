@@ -15,7 +15,7 @@ export async function GET(req: NextRequest) {
     }
 
     let startDate: Date;
-    let endDate: Date = new Date();
+    const endDate: Date = new Date();
 
     switch (timeframe) {
       case 'current_week':

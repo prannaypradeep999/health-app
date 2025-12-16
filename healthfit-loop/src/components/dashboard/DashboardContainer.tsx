@@ -7,7 +7,7 @@ import { WorkoutPlanPage } from './WorkoutPlanPage';
 import { ProgressPage } from './ProgressPage';
 import { AccountPage } from './AccountPage';
 import { LoadingPage } from './LoadingPage';
-import { calculateTargetCalories, calculateMacroTargets } from '@/lib/utils/nutrition';
+import { calculateMacroTargets } from '@/lib/utils/nutrition';
 import AccountCreationModal from './modals/AccountCreationModal';
 
 type Screen = 'dashboard' | 'meal-plan' | 'workout-plan' | 'progress' | 'account';

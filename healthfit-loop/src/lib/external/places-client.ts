@@ -29,7 +29,7 @@ export class GooglePlacesClient {
     try {
       const detailsUrl = `${this.baseUrl}/details/json?place_id=${placeId}&fields=name,formatted_address,formatted_phone_number,opening_hours,price_level,rating,reviews,website,business_status,editorial_summary,types,user_ratings_total&key=${this.apiKey}`;
 
-      const response = await fetch(detailsUrl);
+      const response = await fetch(detailsUrl);∏
       const data = await response.json();
 
       if (data.status !== 'OK') {

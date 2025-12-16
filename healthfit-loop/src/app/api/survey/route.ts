@@ -215,55 +215,6 @@ export async function GET(req: Request) {
 }
 
 // Progressive generation functions
-async function triggerBackgroundRestaurantDiscovery(surveyId: string, sessionId: string, surveyData: any, baseUrl: string) {
-  const startTime = Date.now();
-  try {
-    console.log('[PROGRESSIVE] 🚀 Starting background restaurant discovery for survey:', surveyId);
-    console.log('[PROGRESSIVE] 🌐 Making fetch request to restaurant discovery endpoint...');
-
-    // baseUrl is now passed as parameter
-
-    const fetchStartTime = Date.now();
-    const response = await fetch(`${baseUrl}/api/ai/restaurants/discover`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Cookie': `survey_id=${surveyId}; guest_session=${sessionId}`
-      },
-      body: JSON.stringify({ surveyData })
-    });
-    const fetchTime = Date.now() - fetchStartTime;
-
-    if (response.ok) {
-      const result = await response.json();
-      const totalTime = Date.now() - startTime;
-      console.log('[PROGRESSIVE] ✅ Restaurant discovery completed:', {
-        success: result.success,
-        restaurantCount: result.restaurantCount,
-        timings: result.timings,
-        totalBackgroundTime: totalTime
-      });
-      console.log('[PROGRESSIVE] 📈 Performance:', {
-        fetchTime: `${fetchTime}ms`,
-        totalTime: `${totalTime}ms`,
-        timeBreakdown: result.timings
-      });
-    } else {
-      const totalTime = Date.now() - startTime;
-      console.error('[PROGRESSIVE] ❌ Restaurant discovery failed:', {
-        status: response.status,
-        statusText: response.statusText,
-        totalTime: `${totalTime}ms`
-      });
-    }
-  } catch (error) {
-    const totalTime = Date.now() - startTime;
-    console.error('[PROGRESSIVE] ❌ Restaurant discovery error:', {
-      error: error.message,
-      totalTime: `${totalTime}ms`
-    });
-  }
-}
 
 async function triggerBackgroundWorkoutGeneration(surveyId: string, sessionId: string, surveyData: any, baseUrl: string) {
   const startTime = Date.now();
