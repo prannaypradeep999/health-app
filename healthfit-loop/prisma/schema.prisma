@@ -31,6 +31,8 @@ model User {
   workoutLogs         WorkoutLog[]
   workoutPlans        WorkoutPlan[]
   workoutProgress     WorkoutProgress[]
+  foodProfiles        FoodProfile[]
+  workoutProfiles     WorkoutProfile[]
 }
 
 model SurveyResponse {
@@ -51,7 +53,8 @@ model SurveyResponse {
   goal                   HealthGoal
   activityLevel          String
   dietPrefs              String[]
-  mealsOutPerWeek        Int
+  weeklyMealSchedule     Json?
+  mealsOutPerWeek        Int        @default(7)
   distancePreference     String     @default("medium")
   preferredCuisines      String[]   @default([])
   preferredFoods         String[]   @default([])
@@ -374,6 +377,36 @@ model UserSession {
 
   @@index([userId])
   @@index([sessionId])
+}
+
+model FoodProfile {
+  id             String   @id @default(cuid())
+  userId         String?
+  surveyId       String
+  profileContent String
+  isApproved     Boolean  @default(false)
+  userEdits      String?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+  user           User?    @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([surveyId])
+}
+
+model WorkoutProfile {
+  id             String   @id @default(cuid())
+  userId         String?
+  surveyId       String
+  profileContent String
+  isApproved     Boolean  @default(false)
+  userEdits      String?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+  user           User?    @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([surveyId])
 }
 
 enum HealthGoal {

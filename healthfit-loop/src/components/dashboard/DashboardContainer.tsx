@@ -39,6 +39,8 @@ interface GenerationStatus {
   mealsGenerated: boolean;
   workoutsGenerated: boolean;
   restaurantsDiscovered: boolean;
+  homeMealsGenerated: boolean;
+  restaurantMealsGenerated: boolean;
 }
 
 export function DashboardContainer({ initialScreen = 'dashboard' }: DashboardContainerProps) {
@@ -47,9 +49,12 @@ export function DashboardContainer({ initialScreen = 'dashboard' }: DashboardCon
   const [generationStatus, setGenerationStatus] = useState<GenerationStatus>({
     mealsGenerated: false,
     workoutsGenerated: false,
-    restaurantsDiscovered: false
+    restaurantsDiscovered: false,
+    homeMealsGenerated: false,
+    restaurantMealsGenerated: false
   });
   const [loading, setLoading] = useState(true);
+  const [navigating, setNavigating] = useState(false);
   const [showAccountModal, setShowAccountModal] = useState(false);
 
   useEffect(() => {
@@ -60,16 +65,28 @@ export function DashboardContainer({ initialScreen = 'dashboard' }: DashboardCon
   // Removed auto-modal - keep banner only for less intrusive UX
 
   useEffect(() => {
-    // Poll for generation status updates every 5 seconds if meals aren't generated yet
-    if (!generationStatus.mealsGenerated) {
+    // Poll for generation status updates - different intervals based on what's still pending
+    const shouldPoll = !generationStatus.mealsGenerated ||
+                      !generationStatus.workoutsGenerated ||
+                      (generationStatus.homeMealsGenerated && !generationStatus.restaurantMealsGenerated);
+
+    if (shouldPoll) {
+      // More frequent polling if restaurants are still being discovered
+      const pollFrequency = generationStatus.homeMealsGenerated && !generationStatus.restaurantMealsGenerated ? 3000 : 5000;
+
       const pollInterval = setInterval(() => {
-        console.log('Polling for meal generation status...');
+        console.log('Polling for generation status...', {
+          meals: generationStatus.mealsGenerated,
+          workouts: generationStatus.workoutsGenerated,
+          home: generationStatus.homeMealsGenerated,
+          restaurants: generationStatus.restaurantMealsGenerated
+        });
         checkGenerationStatus();
-      }, 5000);
+      }, pollFrequency);
 
       return () => clearInterval(pollInterval);
     }
-  }, [generationStatus.mealsGenerated]);
+  }, [generationStatus.mealsGenerated, generationStatus.workoutsGenerated, generationStatus.homeMealsGenerated, generationStatus.restaurantMealsGenerated]);
 
   const fetchSurveyData = async () => {
     try {
@@ -85,7 +102,7 @@ export function DashboardContainer({ initialScreen = 'dashboard' }: DashboardCon
 
   const checkGenerationStatus = async () => {
     try {
-      // Simple check - just see if APIs return data
+      // Check if APIs return data and analyze meal plan structure
       const [mealsResponse, workoutsResponse] = await Promise.all([
         fetch('/api/ai/meals/current'),
         fetch('/api/ai/workouts/current')
@@ -94,12 +111,80 @@ export function DashboardContainer({ initialScreen = 'dashboard' }: DashboardCon
       const mealsGenerated = mealsResponse.ok;
       const workoutsGenerated = workoutsResponse.ok;
 
-      console.log(`Generation status: meals=${mealsGenerated}, workouts=${workoutsGenerated}`);
+      let homeMealsGenerated = false;
+      let restaurantMealsGenerated = false;
+      let restaurantsDiscovered = false;
+
+      // If meals exist, check if it's a split pipeline result
+      if (mealsGenerated) {
+        try {
+          const mealsData = await mealsResponse.json();
+          const mealPlan = mealsData.mealPlan?.planData;
+
+          // Check for 7-day structured format first
+          if (mealPlan?.days && Array.isArray(mealPlan.days) && mealPlan.format === '7-day-structured') {
+            console.log(`[DashboardContainer] Detected 7-day structured meal plan with ${mealPlan.days.length} days`);
+
+            // Check each day for home and restaurant meals
+            let homeCount = 0;
+            let restaurantCount = 0;
+
+            mealPlan.days.forEach(day => {
+              Object.values(day.meals || {}).forEach(meal => {
+                if (meal) {
+                  if (meal.source === 'home') homeCount++;
+                  if (meal.source === 'restaurant') restaurantCount++;
+                }
+              });
+            });
+
+            homeMealsGenerated = homeCount > 0;
+            restaurantMealsGenerated = restaurantCount > 0;
+
+            console.log(`[DashboardContainer] 7-day plan analysis: ${homeCount} home meals, ${restaurantCount} restaurant meals`);
+
+          } else if (mealPlan?.weeklyPlan && Array.isArray(mealPlan.weeklyPlan)) {
+            // Legacy format - check for home meals in the weekly plan
+            const homeMeals = mealPlan.weeklyPlan.filter(meal => meal.source === 'home');
+            homeMealsGenerated = homeMeals.length > 0;
+          }
+
+          // Check for restaurant meals
+          if (mealPlan?.restaurantMeals && Array.isArray(mealPlan.restaurantMeals)) {
+            restaurantMealsGenerated = mealPlan.restaurantMeals.length > 0;
+            restaurantsDiscovered = restaurantMealsGenerated;
+          } else {
+            // Check meal plan metadata for restaurant status
+            const metadata = mealPlan?.metadata || mealsData.mealPlan?.userContext?.metadata;
+            if (metadata?.restaurantsStatus === 'pending') {
+              restaurantsDiscovered = false;
+              restaurantMealsGenerated = false;
+            } else if (metadata?.restaurantsStatus === 'completed') {
+              restaurantsDiscovered = true;
+              restaurantMealsGenerated = true;
+            } else {
+              // Legacy check - assume complete if meals exist
+              restaurantsDiscovered = mealsGenerated;
+              restaurantMealsGenerated = mealsGenerated;
+            }
+          }
+        } catch (parseError) {
+          console.error('Failed to parse meals data:', parseError);
+          // Fallback to legacy behavior
+          restaurantsDiscovered = mealsGenerated;
+          homeMealsGenerated = mealsGenerated;
+          restaurantMealsGenerated = mealsGenerated;
+        }
+      }
+
+      console.log(`Generation status: meals=${mealsGenerated}, workouts=${workoutsGenerated}, home=${homeMealsGenerated}, restaurants=${restaurantMealsGenerated}`);
 
       setGenerationStatus({
         mealsGenerated,
         workoutsGenerated,
-        restaurantsDiscovered: mealsGenerated
+        restaurantsDiscovered,
+        homeMealsGenerated,
+        restaurantMealsGenerated
       });
     } catch (error) {
       console.error('Failed to check generation status:', error);
@@ -108,8 +193,17 @@ export function DashboardContainer({ initialScreen = 'dashboard' }: DashboardCon
     }
   };
 
-  const handleNavigate = (screen: Screen) => {
-    setCurrentScreen(screen);
+  const handleNavigate = async (screen: Screen) => {
+    // Don't navigate if already on the same screen
+    if (currentScreen === screen) return;
+
+    setNavigating(true);
+
+    // Small delay to show loading state, then switch
+    setTimeout(() => {
+      setCurrentScreen(screen);
+      setNavigating(false);
+    }, 100);
   };
 
   if (loading) {
@@ -156,6 +250,11 @@ export function DashboardContainer({ initialScreen = 'dashboard' }: DashboardCon
   };
 
   const renderScreen = () => {
+    // Show loading during navigation
+    if (navigating) {
+      return <LoadingPage />;
+    }
+
     switch (currentScreen) {
       case 'dashboard':
         return (

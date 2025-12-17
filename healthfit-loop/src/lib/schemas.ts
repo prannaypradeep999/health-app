@@ -22,7 +22,13 @@ export const SurveySchema = z.object({
   monthlyFoodBudget: z.number().int().min(0).max(1000).default(200),
   monthlyFitnessBudget: z.number().int().min(0).max(500).default(50),
   dietPrefs: z.array(z.string()).default([]),
-  mealsOutPerWeek: z.number().int().min(0).max(21).default(7),
+  weeklyMealSchedule: z.record(
+    z.object({
+      breakfast: z.enum(['no-meal', 'home', 'restaurant']),
+      lunch: z.enum(['no-meal', 'home', 'restaurant']),
+      dinner: z.enum(['no-meal', 'home', 'restaurant'])
+    })
+  ).optional(),
   distancePreference: z.enum(['close', 'medium', 'far']).default('medium'),
 
   // New cuisine and food preferences

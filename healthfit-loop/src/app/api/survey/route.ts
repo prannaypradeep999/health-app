@@ -51,7 +51,7 @@ export async function POST(req: Request) {
       monthlyFoodBudget,
       monthlyFitnessBudget,
       dietPrefs,
-      mealsOutPerWeek,
+      weeklyMealSchedule,
       distancePreference,
       preferredCuisines,
       preferredFoods,
@@ -61,6 +61,24 @@ export async function POST(req: Request) {
       biomarkers,
       source,
     } = parsed.data;
+
+    // Calculate mealsOutPerWeek from weeklyMealSchedule
+    function countRestaurantMeals(weeklyMealSchedule: any): number {
+      if (!weeklyMealSchedule || typeof weeklyMealSchedule !== 'object') {
+        return 7; // Default fallback
+      }
+
+      let count = 0;
+      Object.values(weeklyMealSchedule).forEach((dayMeals: any) => {
+        if (dayMeals?.breakfast === 'restaurant') count++;
+        if (dayMeals?.lunch === 'restaurant') count++;
+        if (dayMeals?.dinner === 'restaurant') count++;
+      });
+
+      return count;
+    }
+
+    const mealsOutPerWeek = countRestaurantMeals(weeklyMealSchedule);
 
     const survey = await prisma.surveyResponse.create({
       data: {
@@ -85,7 +103,8 @@ export async function POST(req: Request) {
         monthlyFoodBudget: monthlyFoodBudget || 200,
         monthlyFitnessBudget: monthlyFitnessBudget || 50,
         dietPrefs: dietPrefs || [],
-        mealsOutPerWeek: mealsOutPerWeek || 0,
+        weeklyMealSchedule: weeklyMealSchedule || null,
+        mealsOutPerWeek,
         distancePreference: distancePreference || 'medium',
         preferredCuisines: preferredCuisines || [],
         preferredFoods: preferredFoods || [],
@@ -114,10 +133,10 @@ export async function POST(req: Request) {
       maxAge: 60 * 60 * 24 * 7
     });
 
-    // Check if this is step 5 completion to trigger meal generation
+    // Check if this is step 5 completion to trigger SPLIT meal generation
     if (payload.currentStep === 5) {
-      console.log('[MEAL-TRIGGER] 🍽️ Step 5 completed - triggering background meal generation');
-      console.log('[MEAL-TRIGGER] 📊 Survey data for meal generation:', {
+      console.log('[MEAL-TRIGGER-SPLIT] 🍽️ Step 5 completed - triggering SPLIT meal generation pipeline');
+      console.log('[MEAL-TRIGGER-SPLIT] 📊 Survey data for meal generation:', {
         surveyId: survey.id,
         sessionId,
         goal: parsed.data.goal,
@@ -128,13 +147,13 @@ export async function POST(req: Request) {
         distancePreference: parsed.data.distancePreference
       });
 
-      // Trigger background meal generation (non-blocking)
+      // Trigger SPLIT pipeline: Home meals first (fast), then restaurants (background)
       const protocol = req.headers.get('x-forwarded-proto') || 'http';
       const host = req.headers.get('host') || 'localhost:3000';
       const baseUrl = `${protocol}://${host}`;
 
-      triggerMealGeneration(survey.id, sessionId, parsed.data, baseUrl).catch(error => {
-        console.error('[MEAL-TRIGGER] ❌ Background meal generation failed:', error);
+      triggerSplitMealGeneration(survey.id, sessionId, parsed.data, baseUrl).catch(error => {
+        console.error('[MEAL-TRIGGER-SPLIT] ❌ Background split meal generation failed:', error);
       });
     } else if (payload.currentStep === 6) {
       console.log('[WORKOUT-TRIGGER] 🏋️ Step 6 completed - triggering background workout generation');
@@ -308,6 +327,88 @@ async function triggerMealGeneration(surveyId: string, sessionId: string, survey
   } catch (error) {
     const totalTime = Date.now() - startTime;
     console.error('[FINAL] ❌ Meal generation error:', {
+      error: error.message,
+      totalTime: `${totalTime}ms`
+    });
+  }
+}
+
+// NEW: Split meal generation pipeline - Home meals first (fast), then restaurants (background)
+async function triggerSplitMealGeneration(surveyId: string, sessionId: string, surveyData: any, baseUrl: string) {
+  const startTime = Date.now();
+  try {
+    console.log('[SPLIT-MEAL] 🚀 Starting split meal generation pipeline...');
+
+    // Phase 1: Generate home meals first (fast - ~40s)
+    console.log('[SPLIT-MEAL] 🏠 Phase 1: Generating home meals (fast)...');
+    const homeMealsStartTime = Date.now();
+
+    const homeMealsResponse = await fetch(`${baseUrl}/api/ai/meals/generate-home`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Cookie': `survey_id=${surveyId}; guest_session=${sessionId}`
+      },
+      body: JSON.stringify({ backgroundGeneration: true })
+    });
+
+    const homeMealsTime = Date.now() - homeMealsStartTime;
+
+    if (homeMealsResponse.ok) {
+      const homeMealsResult = await homeMealsResponse.json();
+      console.log('[SPLIT-MEAL] ✅ Phase 1 completed - Home meals generated:', {
+        success: homeMealsResult.success,
+        homeMealsCount: homeMealsResult.timings?.homeMealsGenerated || 0,
+        time: `${homeMealsTime}ms`
+      });
+
+      // Phase 2: Generate restaurant meals in background (slow - ~120s)
+      console.log('[SPLIT-MEAL] 🏪 Phase 2: Starting background restaurant generation...');
+
+      // Start restaurant generation but don't wait for it (fire-and-forget)
+      fetch(`${baseUrl}/api/ai/meals/generate-restaurants`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Cookie': `survey_id=${surveyId}; guest_session=${sessionId}`
+        },
+        body: JSON.stringify({ backgroundGeneration: true })
+      }).then(async (restaurantResponse) => {
+        const restaurantTime = Date.now() - startTime;
+        if (restaurantResponse.ok) {
+          const restaurantResult = await restaurantResponse.json();
+          console.log('[SPLIT-MEAL] ✅ Phase 2 completed - Restaurant meals generated:', {
+            success: restaurantResult.success,
+            restaurantMealsCount: restaurantResult.restaurantMeals?.length || 0,
+            totalTime: `${restaurantTime}ms`
+          });
+        } else {
+          console.error('[SPLIT-MEAL] ❌ Phase 2 failed - Restaurant generation failed:', {
+            status: restaurantResponse.status,
+            totalTime: `${restaurantTime}ms`
+          });
+        }
+      }).catch(error => {
+        const restaurantTime = Date.now() - startTime;
+        console.error('[SPLIT-MEAL] ❌ Phase 2 error - Restaurant generation error:', {
+          error: error.message,
+          totalTime: `${restaurantTime}ms`
+        });
+      });
+
+      console.log('[SPLIT-MEAL] 🎯 Split pipeline initiated successfully - Home meals ready, restaurants generating in background');
+
+    } else {
+      const totalTime = Date.now() - startTime;
+      console.error('[SPLIT-MEAL] ❌ Phase 1 failed - Home meal generation failed:', {
+        status: homeMealsResponse.status,
+        statusText: homeMealsResponse.statusText,
+        totalTime: `${totalTime}ms`
+      });
+    }
+  } catch (error) {
+    const totalTime = Date.now() - startTime;
+    console.error('[SPLIT-MEAL] ❌ Split pipeline error:', {
       error: error.message,
       totalTime: `${totalTime}ms`
     });

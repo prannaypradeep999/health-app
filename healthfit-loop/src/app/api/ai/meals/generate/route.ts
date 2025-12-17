@@ -5,6 +5,37 @@ import { googlePlacesClient } from '@/lib/external/places-client';
 import { TavilyClient } from 'tavily';
 import { pexelsClient } from '@/lib/external/pexels-client';
 import { calculateMacroTargets, UserProfile } from '@/lib/utils/nutrition';
+import {
+  createRestaurantSelectionPrompt,
+  createExtractionUrlSelectionPrompt,
+  createMenuAnalysisPrompt,
+  createDeliveryPlatformAnalysisPrompt,
+  createRestaurantMealSelectionPrompt,
+  createHomeMealGenerationPrompt,
+  createMealPlanOrganizationPrompt,
+  createNutritionTargetRefinementPrompt,
+  createRestaurantNutritionAnalysisPrompt,
+  createHomeRecipeGenerationPrompt,
+  createMealPlanValidationPrompt,
+  type Restaurant,
+  type MenuExtractionContext
+} from '@/lib/ai/prompts';
+
+// Helper function to count restaurant meals from weekly schedule
+function countRestaurantMeals(weeklyMealSchedule: any): number {
+  if (!weeklyMealSchedule || typeof weeklyMealSchedule !== 'object') {
+    return 7; // Default fallback
+  }
+
+  let count = 0;
+  Object.values(weeklyMealSchedule).forEach((dayMeals: any) => {
+    if (dayMeals?.breakfast === 'restaurant') count++;
+    if (dayMeals?.lunch === 'restaurant') count++;
+    if (dayMeals?.dinner === 'restaurant') count++;
+  });
+
+  return count;
+}
 
 // Helper function to clean and repair JSON responses from GPT
 function cleanJsonResponse(content: string): any {
@@ -281,14 +312,14 @@ export async function POST(req: NextRequest) {
     console.log('\n🍽️ ===== 4-DAY MEAL PLAN WITH IMAGES ===== 🍽️');
     console.log(JSON.stringify(enhancedMealPlan, null, 2));
     console.log('🍽️ ============= END 4-DAY MEAL PLAN ============= 🍽️\n');
-
     // Save to database
     try {
-      console.log(`[DATABASE] 💾 Saving meal plan to database for survey: ${surveyData.id}`);
+      console.log(`[DATABASE] 💾 Saving meal plan to database for survey: ${surveyData.id}, userId: ${userId || 'null'}`);
+      console.log(`[DATABASE] 🔍 Using identifiers - surveyId: ${surveyData.id}, userId: ${userId || 'null'}`);
       const weekOfDate = new Date();
       weekOfDate.setHours(0, 0, 0, 0);
 
-      await prisma.mealPlan.create({
+      const createdMealPlan = await prisma.mealPlan.create({
         data: {
           surveyId: surveyData.id,
           userId: userId || null,
@@ -298,7 +329,7 @@ export async function POST(req: NextRequest) {
           regenerationCount: 1
         }
       });
-      console.log(`[DATABASE] ✅ Meal plan saved successfully`);
+      console.log(`[DATABASE] ✅ Meal plan saved successfully with ID: ${createdMealPlan.id}, surveyId: ${createdMealPlan.surveyId}`);
     } catch (dbError) {
       console.error(`[DATABASE] ❌ Failed to save meal plan:`, dbError);
       // Continue anyway since we have the data
@@ -416,36 +447,7 @@ async function findAndSelectBestRestaurants(surveyData: any): Promise<any[]> {
 async function selectBestRestaurantsWithGPT(restaurants: any[], surveyData: any): Promise<any[]> {
   try {
 
-    const prompt = `You are a health-focused meal planning assistant. Analyze the following restaurants and select the best 5 that match the user's health goals and dietary preferences.
-
-USER PROFILE:
-- Goal: ${surveyData.goal}
-- Dietary Preferences: ${(surveyData.dietPrefs || []).join(', ') || 'None specified'}
-- Preferred Cuisines: ${(surveyData.preferredCuisines || []).join(', ')}
-- Monthly Food Budget: $${surveyData.monthlyFoodBudget || 200}
-- Distance Preference: ${surveyData.distancePreference}
-
-RESTAURANTS TO CHOOSE FROM:
-${restaurants.map((r, i) => {
-  return `${i + 1}. ${r.name} (${r.cuisine}) - Rating: ${r.rating}/5, Price Level: ${r.priceLevel}/4
-     Address: ${r.address}
-     ${r.description ? `Description: ${r.description}` : ''}`;
-}).join('\n\n')}
-
-**SELECTION CRITERIA (CRITICAL - FOLLOW EXACTLY):**
-1. **MUST** align with user's health goal (${surveyData.goal})
-2. **MUST** respect dietary restrictions: ${(surveyData.dietPrefs || []).join(', ') || 'None'}
-3. **MUST** be reasonably priced for monthly food budget: $${surveyData.monthlyFoodBudget || 200} (avoid expensive fine dining, focus on affordable options)
-4. **MUST** be well-known, established restaurants that actually exist and are operational
-5. **SHOULD** include variety of cuisines from user's preferences
-6. **SHOULD** have good ratings (4.0+ preferred) and reasonable price level (1-3, avoid 4)
-7. **PRIORITIZE** restaurants known for healthier options and affordable pricing
-
-CRITICAL: Your response must be PURE JSON ONLY. Do not include any markdown formatting, code blocks, backticks, or text before/after the JSON. Start your response with [ and end with ]. No code blocks, no explanations, no additional text.
-
-Please respond with ONLY a JSON array containing exactly 5 restaurant objects with these fields: name, cuisine, rating, priceLevel, address, placeId, city, zipCode. Extract the city and zipCode from the address field.
-
-REMINDER: Response must start with [ and end with ] - pure JSON array only.`;
+    const prompt = createRestaurantSelectionPrompt(restaurants, surveyData);
 
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), 300000); // 5 minute timeout
@@ -563,22 +565,7 @@ async function selectBestExtractionUrl(extractionUrls: any[], restaurant: any): 
   if (extractionUrls.length === 0) return null;
   if (extractionUrls.length === 1) return extractionUrls[0].url;
 
-  const prompt = `Select the best URL for menu extraction for ${restaurant.name}.
-
-RESTAURANT: ${restaurant.name} (${restaurant.cuisine})
-LOCATION: ${restaurant.city}
-
-URLs:
-${extractionUrls.map((r, i) => `${i + 1}. ${r.url}
-Title: ${r.title || 'No title'}
-Content: ${r.content?.substring(0, 100) || 'No content'}`).join('\n\n')}
-
-PRIORITY:
-1. Restaurant official website menu page
-2. PDF menu files
-3. Pages with menu items and prices
-
-Return ONLY the number (1-${extractionUrls.length}) of the best URL. If none good, return 0.`;
+  const prompt = createExtractionUrlSelectionPrompt(extractionUrls, restaurant);
 
   try {
     const response = await fetch('https://api.openai.com/v1/chat/completions', {
@@ -777,39 +764,15 @@ async function analyzeExtractedMenuWithGPT(restaurant: any, tavilyResponse: any,
     const extractionUrl = tavilyResponse.extractionUrl || '';
     const orderingUrl = tavilyResponse.orderingUrl || extractionUrl;
 
-    const prompt = `Analyze this restaurant menu and extract specific menu items with prices and calories.
-
-Restaurant: ${restaurantName} (${restaurantCuisine})
-Location: ${restaurantCity}
-User Goal: ${userGoal}
-Current Hour: ${currentHour}
-
-Menu Content:
-${menuContent}
-
-Extract 8-12 menu items with exact names, prices, and estimated calories.
-Focus on diverse options that help with ${userGoal}.
-Look for breakfast, lunch, and dinner options with variety in proteins and cooking methods.
-
-Return JSON with this structure:
-{
-  "description": "Restaurant description",
-  "orderingUrl": "${orderingUrl}",
-  "menuSourceUrl": "${extractionUrl}",
-  "recommendedItems": [
-    {
-      "name": "Exact menu item name",
-      "exactPrice": "$12.99 or null",
-      "description": "Why this helps with ${userGoal}",
-      "estimatedCalories": 450,
-      "estimatedProtein": 35,
-      "estimatedCarbs": 25,
-      "estimatedFat": 20
-    }
-  ]
-}
-
-Return ONLY valid JSON.`;
+    const menuContext = {
+      restaurantName,
+      restaurantCuisine,
+      restaurantCity,
+      content: menuContent,
+      currentHour,
+      now
+    };
+    const prompt = createMenuAnalysisPrompt(menuContext);
 
     const response = await fetch('https://api.openai.com/v1/chat/completions', {
       method: 'POST',
@@ -1105,88 +1068,7 @@ async function analyzeMenuWithGPT(restaurant: any, tavilyResponse: any, surveyDa
     const now = new Date();
     const currentHour = now.getHours();
 
-    const prompt = `You are analyzing real delivery platform data for ${restaurant.name}. Extract EXACT menu items and prices from the search results.
-
-CURRENT TIME: ${now.toISOString()} (Hour: ${currentHour})
-- If hour 6-11: Focus on breakfast items
-- If hour 11-16: Focus on lunch items
-- If hour 16-22: Focus on dinner items
-- If hour 22-6: Only suggest items if restaurant is 24-hour
-
-USER PREFERENCES:
-- Goal: ${surveyData.goal}
-- Dietary restrictions: ${(surveyData.dietPrefs || []).join(', ') || 'None'}
-- Preferred cuisines: ${(surveyData.preferredCuisines || []).join(', ')}
-- Monthly food budget: $${surveyData.monthlyFoodBudget || 200} (prioritize affordable, reasonable pricing)
-
-DELIVERY PLATFORM SEARCH RESULTS:
-${JSON.stringify(tavilyResponse, null, 2)}
-
-AVAILABLE VERIFIED ORDERING URLS:
-${tavilyResponse.validOrderingUrls?.map(url => `- ${url.platform}: ${url.url}`).join('\n') || 'No direct ordering URLs found'}
-
-PRIMARY ORDERING URL: ${tavilyResponse.primaryOrderingUrl || 'None found'}
-
-CRITICAL EXTRACTION RULES (NO EXCEPTIONS):
-1. SCAN the search results content for EXACT menu item names and prices
-2. Look for patterns like: "Caesar Salad $12.99", "Grilled Chicken Bowl - $15.50", etc.
-3. Extract menu items that match the current meal timing (breakfast/lunch/dinner)
-4. PRIORITIZE AFFORDABLE OPTIONS - avoid expensive items, stick to reasonable pricing for $${surveyData.monthlyFoodBudget || 200} monthly food budget
-5. USE ONLY the verified ordering URLs listed above - DO NOT create or modify URLs
-6. PRIORITY: Use store/restaurant pages over generic dish pages
-7. CREATE compelling descriptions explaining WHY each dish helps achieve the user's ${surveyData.goal} goal
-8. If specific menu items not found, suggest 2-3 typical affordable dishes for this restaurant type with health benefits
-9. DO NOT return error unless NO valid restaurant URLs found
-
-URL SELECTION RULES:
-- MUST use only URLs from the "AVAILABLE VERIFIED ORDERING URLS" list above
-- Primary preference: ${tavilyResponse.primaryOrderingUrl || 'First available URL'}
-- Secondary: First URL from validOrderingUrls list
-- NEVER create or modify URLs - use exact URLs provided
-
-MENU ITEM EXTRACTION STRATEGY:
-- Search result content for: "item name" + "$" + price
-- Look for menu sections: "Entrees", "Salads", "Sandwiches", etc.
-- Find items that fit user's dietary restrictions and goals
-- Prioritize items appropriate for current hour (${currentHour})
-
-PRICE PARSING PATTERNS:
-- "$XX.XX" (exact price)
-- "Starting at $XX"
-- "From $XX.XX"
-- Price ranges like "$12-15"
-
-CRITICAL: Response must be valid JSON only. Use ONLY ASCII characters - NO Unicode, emojis, or special characters.
-
-Required JSON response:
-{
-  "description": "Brief restaurant description from search results",
-  "orderingUrl": "EXACT URL from AVAILABLE VERIFIED ORDERING URLS list above",
-  "menuSourceUrl": "EXACT URL from AVAILABLE VERIFIED ORDERING URLS list above",
-  "menuSourceName": "Platform name (DoorDash/UberEats/GrubHub/Postmates)",
-  "isOpen": true/false (if hours mentioned in results),
-  "currentHour": ${currentHour},
-  "itemsCount": number,
-  "exactPrices": number,
-  "urlValidation": {
-    "usedPrimaryUrl": true/false,
-    "selectedUrl": "EXACT selected URL",
-    "platform": "Platform name"
-  },
-  "recommendedItems": [
-    {
-      "name": "EXACT menu item name from search results OR typical dish for this restaurant",
-      "exactPrice": "$XX.XX format or null if not found",
-      "priceRange": "$$" (if exact price not available),
-      "description": "Compelling description explaining HOW this dish helps achieve ${surveyData.goal}. NO QUOTES - write as direct statements. Example: This grilled chicken bowl is packed with plenty of lean protein to fuel your workouts and support muscle recovery. The quinoa provides complex carbs for sustained energy, while the vegetables deliver essential micronutrients for optimal performance.",
-      "healthBenefits": "Specific benefits for ${surveyData.goal} goal - mention high protein, good calories, and key nutrients without exact numbers",
-      "mealTiming": "breakfast/lunch/dinner",
-      "sourceUrl": "EXACT URL from AVAILABLE VERIFIED ORDERING URLS list",
-      "platform": "DoorDash/UberEats/GrubHub/Postmates",
-      "why_perfect_for_goal": "1-2 sentence explanation of why this specific dish supports ${surveyData.goal} - mention protein richness, calorie appropriateness, and beneficial nutrients"
-    }
-  ]
-}`;
+    const prompt = createDeliveryPlatformAnalysisPrompt(restaurant, tavilyResponse, currentHour, now);
 
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), 300000); // 5 minute timeout
@@ -1333,63 +1215,9 @@ async function selectRestaurantMeals(restaurantMenuData: any[], surveyData: any)
   const todayName = today.toLocaleDateString('en-US', { weekday: 'long' });
 
   try {
-    const prompt = `Select 7-10 restaurant meals for a 4-day period starting TODAY (${todayName}).
-
-TODAY IS: ${todayName} (this is day 1)
-Day 1 = ${todayName}
-Day 2 = ${new Date(today.getTime() + 24*60*60*1000).toLocaleDateString('en-US', { weekday: 'long' })}
-Day 3 = ${new Date(today.getTime() + 2*24*60*60*1000).toLocaleDateString('en-US', { weekday: 'long' })}
-Day 4 = ${new Date(today.getTime() + 3*24*60*60*1000).toLocaleDateString('en-US', { weekday: 'long' })}
-
-USER PREFERENCES:
-- Goal: ${surveyData.goal}
-- Dietary restrictions: ${(surveyData.dietPrefs || []).join(', ') || 'None'}
-- Monthly food budget: $${surveyData.monthlyFoodBudget || 200}
-- Preferred cuisines: ${(surveyData.preferredCuisines || []).join(', ')}
-
-AVAILABLE RESTAURANTS & MENUS:
-${JSON.stringify(restaurantMenuData, null, 2)}
-
-STRICT VARIETY REQUIREMENTS:
-1. ZERO DUPLICATE CUISINES: Each selected meal must be from a completely different cuisine type
-2. ZERO DUPLICATE RESTAURANTS: Each meal must be from a different restaurant
-3. ZERO DUPLICATE PROTEIN SOURCES: Vary protein across all meals (chicken, fish, beef, pork, vegetarian, seafood, etc.)
-4. ZERO SIMILAR DISH TYPES: No pasta + noodles, no burgers + sandwiches, etc.
-
-TASK:
-1. Select EXACTLY 7-10 specific dishes from DIFFERENT restaurants with DIFFERENT cuisines
-2. Assign each to day 1-4 and meal type (lunch or dinner only)
-3. MANDATORY: Each meal must have estimated calories included
-4. Verify each selection is completely unique in cuisine, restaurant, protein, and dish type
-5. Match user's dietary restrictions and goals
-6. Include restaurant description and dish description from the menu data
-7. IMPORTANT: Include ordering URLs and menu source information from the menu data
-
-CRITICAL: Your response must be PURE JSON starting with { and ending with }.
-NO markdown, NO code blocks, NO backticks, NO Unicode characters, NO emojis, NO text before or after the JSON. Use only ASCII characters.
-
-{
-  "restaurant_meals": [
-    {
-      "day": 1,
-      "meal_type": "lunch",
-      "restaurant": "Exact Restaurant Name",
-      "restaurant_description": "Brief description of the restaurant from menu data",
-      "dish": "Exact Dish Name from Menu",
-      "dish_description": "Description of the dish from menu data",
-      "price": 18.49,
-      "calories": 650,
-      "protein": 35,
-      "carbs": 45,
-      "fat": 28,
-      "cuisine_type": "Italian",
-      "protein_source": "chicken",
-      "orderingUrl": "Ordering URL from menu data (DoorDash, UberEats, etc.)",
-      "menuSourceUrl": "URL where menu was verified",
-      "menuSourceName": "Name of menu source (e.g., DoorDash, Restaurant Website)"
-    }
-  ]
-}`;
+    // Create nutrition targets object - we'll need to get this from context
+    const nutritionTargets = { dailyTargets: { calories: 2000 }, mealTargets: { breakfast: { calories: 400 }, lunch: { calories: 600 }, dinner: { calories: 800 } } };
+    const prompt = createRestaurantMealSelectionPrompt(todayName, surveyData, restaurantMenuData, nutritionTargets);
 
     const response = await fetch('https://api.openai.com/v1/chat/completions', {
       method: 'POST',
@@ -1755,7 +1583,7 @@ ${JSON.stringify({
   activityLevel: surveyData.activityLevel,
   fitnessTimeline: surveyData.fitnessTimeline,
   monthlyFoodBudget: surveyData.monthlyFoodBudget,
-  mealsOutPerWeek: surveyData.mealsOutPerWeek,
+  weeklyMealSchedule: surveyData.weeklyMealSchedule,
   dietPrefs: surveyData.dietPrefs
 }, null, 2)}
 
@@ -1784,7 +1612,7 @@ Return ONLY this JSON:
       "protein": ${Math.round((macroTargets?.protein || Math.round((targetCalories || 2000) * 0.25 / 4)) * 0.40)}
     }
   },
-  "weeklyGuidance": "Brief guidance for weekly meal planning approach based on user's ${surveyData.mealsOutPerWeek || 7} meals out per week"
+  "weeklyGuidance": "Brief guidance for weekly meal planning approach based on user's ${countRestaurantMeals(surveyData.weeklyMealSchedule)} meals out per week"
 }`;
 
     const response = await fetch('https://api.openai.com/v1/chat/completions', {
@@ -1833,7 +1661,7 @@ Return ONLY this JSON:
         lunch: { calories: Math.round(targetCalories * 0.35 / 25) * 25, calorieRange: [Math.round(targetCalories * 0.32 / 25) * 25, Math.round(targetCalories * 0.38 / 25) * 25], protein: Math.round((macroTargets?.protein || Math.round((targetCalories || 2000) * 0.25 / 4)) * 0.35) },
         dinner: { calories: Math.round(targetCalories * 0.40 / 25) * 25, calorieRange: [Math.round(targetCalories * 0.37 / 25) * 25, Math.round(targetCalories * 0.43 / 25) * 25], protein: Math.round((macroTargets?.protein || Math.round((targetCalories || 2000) * 0.25 / 4)) * 0.40) }
       },
-      weeklyGuidance: `Balance ${surveyData.mealsOutPerWeek || 7} restaurant meals with home cooking for optimal nutrition`
+      weeklyGuidance: `Follow your planned weekly schedule with ${countRestaurantMeals(surveyData.weeklyMealSchedule)} restaurant meals balanced with home cooking for optimal nutrition`
     };
   }
 }
@@ -2049,7 +1877,8 @@ SELECTED MEALS:
 ${JSON.stringify(selectedMeals, null, 2)}
 
 USER GOAL: ${surveyData.goal}
-MEALS OUT PER WEEK: ${surveyData.mealsOutPerWeek || 7}
+WEEKLY MEAL SCHEDULE: ${JSON.stringify(surveyData.weeklyMealSchedule, null, 2)}
+RESTAURANT MEALS COUNT: ${countRestaurantMeals(surveyData.weeklyMealSchedule)}
 
 VALIDATION TASKS:
 1. Check if daily calorie targets are being met (±10%)
@@ -2192,8 +2021,8 @@ async function generateFast4DayMealPlan(restaurantMenuData: any[], surveyData: a
 
 
 // Strategic distribution guidance based on eating out preference
-function getStrategicDistribution(mealsOutPerWeek: number) {
-  if (mealsOutPerWeek <= 7) {
+function getStrategicDistribution(restaurantMealsCount: number) {
+  if (restaurantMealsCount <= 7) {
     return {
       priority: ['dinner', 'lunch', 'breakfast'],
       pattern: 'spread_across_days',
@@ -2201,7 +2030,7 @@ function getStrategicDistribution(mealsOutPerWeek: number) {
       focus: 'dinners_first',
       guidance: 'Prioritize dinners (social), some lunches (convenience), avoid restaurant breakfasts'
     };
-  } else if (mealsOutPerWeek <= 14) {
+  } else if (restaurantMealsCount <= 14) {
     return {
       priority: ['dinner', 'lunch', 'breakfast'],
       pattern: 'cover_all_dinners_plus_lunches',
@@ -2236,7 +2065,7 @@ ${JSON.stringify({
   goal: surveyData.goal,
   activityLevel: surveyData.activityLevel,
   monthlyFoodBudget: surveyData.monthlyFoodBudget,
-  mealsOutPerWeek: surveyData.mealsOutPerWeek,
+  weeklyMealSchedule: surveyData.weeklyMealSchedule,
   dietPrefs: surveyData.dietPrefs,
   preferredCuisines: surveyData.preferredCuisines,
   preferredFoods: surveyData.preferredFoods,
@@ -2251,7 +2080,7 @@ FORMAT: Write in 2nd person ("you") as if speaking directly to the user. Be spec
 INCLUDE:
 1. NUTRITION PHILOSOPHY: Based on their goal (${surveyData.goal}) and activity level
 2. BUDGET STRATEGY: How to maximize $${surveyData.monthlyFoodBudget}/month effectively
-3. EATING PATTERN: Strategic approach to ${surveyData.mealsOutPerWeek} meals out per week
+3. WEEKLY SCHEDULE: Strategic approach to your planned ${countRestaurantMeals(surveyData.weeklyMealSchedule)} restaurant meals based on your weekly schedule
 4. CUISINE & FOOD PREFERENCES: How to leverage their favorite foods
 5. DIETARY CONSIDERATIONS: Any restrictions and how to work with them
 6. DAILY NUTRITION PRIORITIES: What to focus on each day

@@ -45,6 +45,18 @@ export async function GET() {
     console.log(`[MealCurrent] Query result: ${mealPlan ? 'Found meal plan' : 'No meal plan found'}`);
 
     if (!mealPlan) {
+      // Debug: Check what meal plans exist at all
+      const allMealPlans = await prisma.mealPlan.findMany({
+        select: {
+          id: true,
+          surveyId: true,
+          userId: true,
+          createdAt: true
+        },
+        orderBy: { createdAt: 'desc' },
+        take: 5
+      });
+      console.log('[MealCurrent] Debug - Recent meal plans in database:', allMealPlans);
       console.log('[MealCurrent] No meal plan found in database');
       return NextResponse.json(
         { error: 'No meal plan found' },
@@ -103,19 +115,82 @@ export async function GET() {
       }
     }
 
-    // Super simple: just return the data directly like workouts
+    // Handle both legacy and new 7-day structured formats
     const userContext = mealPlan.userContext as any;
+
+    let weeklyPlan = [];
+    let restaurantMeals = userContext?.restaurantMeals || [];
+    let metadata = userContext?.metadata || {};
+    let days = userContext?.days || [];
+
+    // Check if this is the new 7-day structured format
+    if (days.length > 0 && days[0]?.day && days[0]?.meals) {
+      console.log(`[MealCurrent] Using new 7-day structured format with ${days.length} days`);
+
+      // Extract all meals from the 7-day structure for compatibility
+      days.forEach(dayData => {
+        Object.entries(dayData.meals).forEach(([mealType, meal]) => {
+          if (meal) {
+            weeklyPlan.push({
+              ...meal,
+              day: dayData.day,
+              mealType: mealType,
+              date: dayData.date
+            });
+          }
+        });
+      });
+
+      // Return the new structured format
+      const mealData = {
+        id: mealPlan.id,
+        weekOf: mealPlan.weekOf.toISOString().split('T')[0],
+        regenerationCount: mealPlan.regenerationCount,
+        planData: {
+          days: days, // 7-day calendar structure
+          weeklyPlan: weeklyPlan, // Flat array for compatibility
+          restaurantMeals: restaurantMeals,
+          metadata: metadata,
+          format: '7-day-structured'
+        },
+        nutritionTargets
+      };
+
+      console.log(`[MealCurrent] Returning 7-day structured plan: ${days.length} days, ${weeklyPlan.length} total meals (${restaurantMeals.length} restaurant)`);
+      return NextResponse.json({
+        success: true,
+        mealPlan: mealData
+      });
+    }
+
+    // Legacy format handling
+    console.log(`[MealCurrent] Using legacy format`);
+    weeklyPlan = userContext?.days || [];
+
+    // For legacy split pipeline, combine home meals and restaurant meals
+    if (userContext?.homeMeals && Array.isArray(userContext.homeMeals)) {
+      weeklyPlan = [...userContext.homeMeals];
+    }
+
+    // Add restaurant meals if they exist
+    if (restaurantMeals.length > 0) {
+      weeklyPlan = [...weeklyPlan, ...restaurantMeals];
+    }
+
     const mealData = {
       id: mealPlan.id,
       weekOf: mealPlan.weekOf.toISOString().split('T')[0],
       regenerationCount: mealPlan.regenerationCount,
       planData: {
-        weeklyPlan: userContext?.days || []
+        weeklyPlan: weeklyPlan,
+        restaurantMeals: restaurantMeals,
+        metadata: metadata,
+        format: 'legacy'
       },
       nutritionTargets
     };
 
-    console.log(`[MealCurrent] Returning ${mealData.planData.weeklyPlan.length} days with nutrition targets`);
+    console.log(`[MealCurrent] Returning legacy format: ${weeklyPlan.length} total meals (${restaurantMeals.length} restaurant) with nutrition targets`);
 
     return NextResponse.json({
       success: true,

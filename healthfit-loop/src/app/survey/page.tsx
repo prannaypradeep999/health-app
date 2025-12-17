@@ -12,9 +12,11 @@ import { Slider } from '@/components/ui/slider';
 import { Progress } from '@/components/ui/progress';
 import { ArrowRight, Target, Activity, DollarSign, Utensils, Apple, Dumbbell, FlaskConical, ChevronLeft, ChevronRight, Upload, Shield } from 'lucide-react';
 import Logo from '@/components/logo';
+import ProfileConfirmation from '@/components/dashboard/ProfileConfirmation';
 
 // Survey data interface from existing survey
 interface SurveyData {
+  id?: string;
   email: string;
   firstName: string;
   lastName: string;
@@ -35,7 +37,7 @@ interface SurveyData {
   fitnessTimeline: string;
   monthlyFoodBudget: number | '';
   monthlyFitnessBudget: number | '';
-  mealsOutPerWeek: number | '';
+  weeklyMealSchedule: Record<string, { breakfast: string; lunch: string; dinner: string }>;
   distancePreference: string;
   dietPrefs: string[];
   preferredCuisines: string[];
@@ -181,7 +183,15 @@ function OnboardingSteps({ onComplete, onBack }: OnboardingStepsProps) {
     fitnessTimeline: '',
     monthlyFoodBudget: 200,
     monthlyFitnessBudget: 50,
-    mealsOutPerWeek: 7,
+    weeklyMealSchedule: {
+      monday: { breakfast: 'home', lunch: 'home', dinner: 'home' },
+      tuesday: { breakfast: 'home', lunch: 'home', dinner: 'home' },
+      wednesday: { breakfast: 'home', lunch: 'restaurant', dinner: 'home' },
+      thursday: { breakfast: 'home', lunch: 'home', dinner: 'home' },
+      friday: { breakfast: 'home', lunch: 'restaurant', dinner: 'restaurant' },
+      saturday: { breakfast: 'home', lunch: 'home', dinner: 'restaurant' },
+      sunday: { breakfast: 'home', lunch: 'home', dinner: 'home' }
+    },
     distancePreference: 'medium',
     dietPrefs: [],
     preferredCuisines: [],
@@ -292,20 +302,106 @@ function OnboardingSteps({ onComplete, onBack }: OnboardingStepsProps) {
           fitnessTimeline: formData.fitnessTimeline || '',
           monthlyFoodBudget: Number(formData.monthlyFoodBudget) || 200,
           monthlyFitnessBudget: Number(formData.monthlyFitnessBudget) || 50,
-          dietPrefs: [],
-          mealsOutPerWeek: formData.mealsOutPerWeek || 7,
+          dietPrefs: formData.dietPrefs || [],
+          weeklyMealSchedule: formData.weeklyMealSchedule,
           distancePreference: formData.distancePreference || 'medium',
           preferredCuisines: formData.preferredCuisines || [],
           preferredFoods: formData.preferredFoods,
           uploadedFiles: formData.uploadedFiles,
-          preferredNutrients: formData.preferredNutrients
+          preferredNutrients: formData.preferredNutrients,
+          workoutPreferences: formData.workoutPreferences,
+          biomarkers: formData.biomarkers,
+          source: formData.source,
+          currentStep: 5
         };
 
-        // Show loading animation for 5 seconds to simulate meal generation
+        // Actually trigger meal generation
+        console.log('[Frontend] Triggering meal generation at step 5');
+        const response = await fetch('/api/survey', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(progressiveData)
+        });
+
+        if (!response.ok) {
+          throw new Error(`Meal generation API error: ${response.status}`);
+        }
+
+        const result = await response.json();
+        console.log('[Frontend] Meal generation triggered:', result);
+
+        // Show loading animation for 5 seconds while generation happens in background
         await new Promise(resolve => setTimeout(resolve, 5000));
 
       } catch (error) {
         console.error('[Progressive] Failed to start meal generation:', error);
+      } finally {
+        setIsGeneratingMeals(false);
+        setCurrentStep(currentStep + 1);
+      }
+      return;
+    }
+
+    // Show loading after step 6 (workout preferences completed)
+    if (currentStep === 6) {
+      setIsGeneratingMeals(true); // Reuse the loading state
+
+      try {
+        // Start workout generation with current form data
+        const progressiveData = {
+          email: formData.email || 'temp@example.com',
+          firstName: formData.firstName || 'User',
+          lastName: formData.lastName || '',
+          age: Number(formData.age) || 25,
+          sex: formData.sex || 'other',
+          height: Number(formData.height) || 70,
+          weight: Number(formData.weight) || 150,
+
+          // Full address fields
+          streetAddress: formData.streetAddress || '',
+          city: formData.city || '',
+          state: formData.state || '',
+          zipCode: formData.zipCode || '10001',
+          country: formData.country || 'United States',
+          goal: formData.goal || 'GENERAL_WELLNESS',
+          activityLevel: formData.activityLevel || 'MODERATELY_ACTIVE',
+          sportsInterests: formData.sportsInterests || '',
+          fitnessTimeline: formData.fitnessTimeline || '',
+          monthlyFoodBudget: Number(formData.monthlyFoodBudget) || 200,
+          monthlyFitnessBudget: Number(formData.monthlyFitnessBudget) || 50,
+          dietPrefs: formData.dietPrefs || [],
+          weeklyMealSchedule: formData.weeklyMealSchedule,
+          distancePreference: formData.distancePreference || 'medium',
+          preferredCuisines: formData.preferredCuisines || [],
+          preferredFoods: formData.preferredFoods,
+          uploadedFiles: formData.uploadedFiles,
+          preferredNutrients: formData.preferredNutrients,
+          workoutPreferences: formData.workoutPreferences,
+          biomarkers: formData.biomarkers,
+          source: formData.source,
+          currentStep: 6
+        };
+
+        // Actually trigger workout generation
+        console.log('[Frontend] Triggering workout generation at step 6');
+        const response = await fetch('/api/survey', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(progressiveData)
+        });
+
+        if (!response.ok) {
+          throw new Error(`Workout generation API error: ${response.status}`);
+        }
+
+        const result = await response.json();
+        console.log('[Frontend] Workout generation triggered:', result);
+
+        // Show loading animation for 3 seconds while generation happens in background
+        await new Promise(resolve => setTimeout(resolve, 3000));
+
+      } catch (error) {
+        console.error('[Progressive] Failed to start workout generation:', error);
       } finally {
         setIsGeneratingMeals(false);
         setCurrentStep(currentStep + 1);
@@ -573,18 +669,52 @@ function OnboardingSteps({ onComplete, onBack }: OnboardingStepsProps) {
               </div>
             </div>
             <div>
-              <Label className="text-neutral-700 mb-4 block">Meals out per week: {Array.isArray(formData.mealsOutPerWeek) ? formData.mealsOutPerWeek[0] : formData.mealsOutPerWeek}</Label>
-              <Slider
-                value={Array.isArray(formData.mealsOutPerWeek) ? formData.mealsOutPerWeek : [formData.mealsOutPerWeek as number]}
-                onValueChange={(value) => updateFormData("mealsOutPerWeek", value[0])}
-                max={21}
-                min={0}
-                step={1}
-                className="mb-6"
-              />
-              <div className="flex justify-between text-sm text-neutral-500">
-                <span>0</span>
-                <span>21</span>
+              <Label className="text-neutral-700 mb-4 block">Weekly meal schedule for Week 1:</Label>
+              <p className="text-sm text-neutral-600 mb-4">Plan where you'll get each meal - this helps us create the perfect mix of home recipes and restaurant recommendations.</p>
+
+              <div className="bg-white rounded-lg border border-neutral-200 overflow-hidden">
+                {/* Header */}
+                <div className="grid grid-cols-4 bg-neutral-50 border-b border-neutral-200">
+                  <div className="p-3 font-medium text-sm text-neutral-700">Day</div>
+                  <div className="p-3 font-medium text-sm text-neutral-700 text-center">Breakfast</div>
+                  <div className="p-3 font-medium text-sm text-neutral-700 text-center">Lunch</div>
+                  <div className="p-3 font-medium text-sm text-neutral-700 text-center">Dinner</div>
+                </div>
+
+                {/* Days */}
+                {Object.entries(formData.weeklyMealSchedule).map(([day, meals]) => (
+                  <div key={day} className="grid grid-cols-4 border-b border-neutral-100 last:border-b-0">
+                    <div className="p-3 font-medium text-sm text-neutral-800 capitalize bg-neutral-25 flex items-center">
+                      {day}
+                    </div>
+                    {(['breakfast', 'lunch', 'dinner'] as const).map((meal) => (
+                      <div key={meal} className="p-2">
+                        <select
+                          value={meals[meal]}
+                          onChange={(e) => {
+                            const newSchedule = {
+                              ...formData.weeklyMealSchedule,
+                              [day]: {
+                                ...formData.weeklyMealSchedule[day],
+                                [meal]: e.target.value
+                              }
+                            };
+                            updateFormData("weeklyMealSchedule", newSchedule);
+                          }}
+                          className="w-full p-2 text-xs border border-neutral-200 rounded focus:border-red-300 focus:outline-none bg-white"
+                        >
+                          <option value="no-meal">Skip</option>
+                          <option value="home">Home</option>
+                          <option value="restaurant">Restaurant</option>
+                        </select>
+                      </div>
+                    ))}
+                  </div>
+                ))}
+              </div>
+
+              <div className="mt-3 text-xs text-neutral-500">
+                💡 Tip: We'll suggest home recipes for "Home" meals and find great local restaurants for "Restaurant" meals
               </div>
             </div>
           </div>
@@ -1189,6 +1319,8 @@ function SurveyContent() {
   const searchParams = useSearchParams();
   const router = useRouter();
   const [showSteps, setShowSteps] = useState(false);
+  const [showProfileConfirmation, setShowProfileConfirmation] = useState(false);
+  const [surveyData, setSurveyData] = useState<SurveyData | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [message, setMessage] = useState<{ ok?: boolean; error?: string } | null>(null);
 
@@ -1210,65 +1342,82 @@ function SurveyContent() {
     setShowSteps(false);
   };
 
-  const handleComplete = async (surveyData: SurveyData) => {
+  const handleSurveyComplete = async (data: SurveyData) => {
+    // Submit survey data first to get survey ID, then show profile confirmation
     setMessage(null);
     setSubmitting(true);
 
     try {
       const biomarkers: Record<string, number> = {};
-      if (surveyData.biomarkers.cholesterol) biomarkers.cholesterol = surveyData.biomarkers.cholesterol;
-      if (surveyData.biomarkers.vitaminD) biomarkers.vitaminD = surveyData.biomarkers.vitaminD;
-      if (surveyData.biomarkers.iron) biomarkers.iron = surveyData.biomarkers.iron;
+      if (data.biomarkers.cholesterol) biomarkers.cholesterol = data.biomarkers.cholesterol;
+      if (data.biomarkers.vitaminD) biomarkers.vitaminD = data.biomarkers.vitaminD;
+      if (data.biomarkers.iron) biomarkers.iron = data.biomarkers.iron;
 
       const res = await fetch('/api/survey', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          email: surveyData.email,
-          firstName: surveyData.firstName,
-          lastName: surveyData.lastName,
-          age: Number(surveyData.age),
-          sex: surveyData.sex,
-          height: Number(surveyData.height),
-          weight: Number(surveyData.weight),
-
-          // Full address fields
-          streetAddress: surveyData.streetAddress,
-          city: surveyData.city,
-          state: surveyData.state,
-          zipCode: surveyData.zipCode,
-          country: surveyData.country,
-
-          goal: surveyData.goal,
-          activityLevel: surveyData.activityLevel,
-          sportsInterests: surveyData.sportsInterests,
-          fitnessTimeline: surveyData.fitnessTimeline,
-          monthlyFoodBudget: Number(surveyData.monthlyFoodBudget),
-          monthlyFitnessBudget: Number(surveyData.monthlyFitnessBudget),
-          mealsOutPerWeek: Number(surveyData.mealsOutPerWeek),
-          distancePreference: surveyData.distancePreference,
-          dietPrefs: surveyData.dietPrefs,
-          preferredCuisines: surveyData.preferredCuisines,
-          preferredFoods: surveyData.preferredFoods,
-          workoutPreferences: surveyData.workoutPreferences,
+          email: data.email,
+          firstName: data.firstName,
+          lastName: data.lastName,
+          age: Number(data.age),
+          sex: data.sex,
+          height: Number(data.height),
+          weight: Number(data.weight),
+          streetAddress: data.streetAddress,
+          city: data.city,
+          state: data.state,
+          zipCode: data.zipCode,
+          country: data.country,
+          goal: data.goal,
+          activityLevel: data.activityLevel,
+          sportsInterests: data.sportsInterests,
+          fitnessTimeline: data.fitnessTimeline,
+          monthlyFoodBudget: Number(data.monthlyFoodBudget),
+          monthlyFitnessBudget: Number(data.monthlyFitnessBudget),
+          weeklyMealSchedule: data.weeklyMealSchedule,
+          distancePreference: data.distancePreference,
+          dietPrefs: data.dietPrefs,
+          preferredCuisines: data.preferredCuisines,
+          preferredFoods: data.preferredFoods,
+          customFoodInput: data.customFoodInput,
+          uploadedFiles: data.uploadedFiles,
+          preferredNutrients: data.preferredNutrients,
           biomarkers,
-          source: surveyData.source,
-        }),
+          step: 'final'
+        })
       });
 
-      const data = await res.json();
-      if (!res.ok) throw new Error(data?.error || 'Server error');
+      if (!res.ok) {
+        const error = await res.text();
+        throw new Error(error);
+      }
 
-      console.log('[Survey] Survey completed successfully!');
-      setMessage({ ok: true });
+      const result = await res.json();
 
-      // Don't redirect anywhere - show completion message
+      // Store survey data with the returned survey ID
+      setSurveyData({ ...data, id: result.survey?.id });
+      setShowSteps(false);
+      setShowProfileConfirmation(true);
+
     } catch (error: unknown) {
-      const errorMessage = error instanceof Error ? error.message : 'Failed to submit';
+      const errorMessage = error instanceof Error ? error.message : 'Failed to submit survey';
       setMessage({ error: errorMessage });
     } finally {
       setSubmitting(false);
     }
+  };
+
+  const handleProfileConfirmationComplete = async () => {
+    if (!surveyData) return;
+
+    // Survey is already submitted, just navigate to dashboard
+    router.push('/dashboard');
+  };
+
+  const handleBackFromProfileConfirmation = () => {
+    setShowProfileConfirmation(false);
+    setShowSteps(true);
   };
 
   // Show completion message if survey was submitted successfully
@@ -1361,8 +1510,18 @@ function SurveyContent() {
     );
   }
 
+  if (showProfileConfirmation && surveyData) {
+    return (
+      <ProfileConfirmation
+        surveyData={surveyData}
+        onComplete={handleProfileConfirmationComplete}
+        onBack={handleBackFromProfileConfirmation}
+      />
+    );
+  }
+
   if (showSteps) {
-    return <OnboardingSteps onComplete={handleComplete} onBack={handleBack} />;
+    return <OnboardingSteps onComplete={handleSurveyComplete} onBack={handleBack} />;
   }
 
   return <OnboardingWelcome onStart={handleStart} />;

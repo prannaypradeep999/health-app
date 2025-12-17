@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/db';
+import { createRecipeGenerationPrompt } from '@/lib/ai/prompts';
 
 export async function POST(req: NextRequest) {
   try {
@@ -28,76 +29,7 @@ export async function POST(req: NextRequest) {
     console.log(`[RECIPE] 🍳 Generating new recipe for "${dishName}"`);
 
     // Generate comprehensive recipe with GPT
-    const recipePrompt = `You are a professional chef and nutritionist. Generate a comprehensive, detailed recipe for "${dishName}".
-
-DISH DETAILS:
-- Name: ${dishName}
-- Description: ${description || 'No description provided'}
-- Meal Type: ${mealType}
-
-REQUIREMENTS:
-1. Create a complete recipe with detailed ingredients and step-by-step instructions
-2. Include accurate nutritional information
-3. Provide a comprehensive grocery list with specific quantities
-4. Make it practical and achievable for home cooking
-5. Focus on fresh, healthy ingredients
-
-RESPONSE FORMAT - Return ONLY valid JSON:
-{
-  "name": "${dishName}",
-  "description": "Brief appetizing description of the dish",
-  "prepTime": "15 min",
-  "cookTime": "25 min",
-  "totalTime": "40 min",
-  "servings": 2,
-  "difficulty": "Easy|Medium|Hard",
-  "cuisine": "Type of cuisine",
-  "tags": ["healthy", "protein-rich", "quick"],
-  "groceryList": [
-    {
-      "ingredient": "Chicken breast",
-      "amount": "1 lb",
-      "category": "Meat",
-      "note": "boneless, skinless"
-    },
-    {
-      "ingredient": "Olive oil",
-      "amount": "2 tbsp",
-      "category": "Pantry",
-      "note": "extra virgin"
-    }
-  ],
-  "ingredients": [
-    "1 lb chicken breast, boneless and skinless",
-    "2 tbsp extra virgin olive oil",
-    "1 tsp salt",
-    "1/2 tsp black pepper"
-  ],
-  "instructions": [
-    "Preheat oven to 375°F (190°C).",
-    "Season chicken breast with salt and pepper on both sides.",
-    "Heat olive oil in an oven-safe skillet over medium-high heat.",
-    "Sear chicken breast for 3-4 minutes per side until golden brown.",
-    "Transfer skillet to preheated oven and bake for 15-20 minutes until internal temperature reaches 165°F (74°C).",
-    "Let rest for 5 minutes before slicing and serving."
-  ],
-  "nutrition": {
-    "calories": 320,
-    "protein": 45,
-    "carbs": 2,
-    "fat": 14,
-    "fiber": 0,
-    "sodium": 580
-  },
-  "tips": [
-    "Use a meat thermometer to ensure chicken is cooked through",
-    "Let chicken rest to retain juices"
-  ],
-  "storage": "Store leftovers in refrigerator for up to 3 days",
-  "reheatInstructions": "Reheat in 350°F oven for 10-12 minutes or microwave for 1-2 minutes"
-}
-
-CRITICAL: Response must be pure JSON starting with { and ending with }. No markdown, no explanations, no extra text.`;
+    const recipePrompt = createRecipeGenerationPrompt({ dishName, description, mealType });
 
     const response = await fetch('https://api.openai.com/v1/chat/completions', {
       method: 'POST',

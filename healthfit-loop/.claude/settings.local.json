@@ -49,7 +49,11 @@
       "Bash(open \"http://localhost:3002\")",
       "Bash(tree:*)",
       "Bash(git restore:*)",
-      "Bash(xargs cat:*)"
+      "Bash(xargs cat:*)",
+      "Bash(sed:*)",
+      "Bash(chmod:*)",
+      "WebFetch(domain:docs.perplexity.ai)",
+      "Bash(xargs:*)"
     ],
     "deny": [],
     "ask": []

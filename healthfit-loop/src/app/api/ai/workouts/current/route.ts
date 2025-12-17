@@ -43,6 +43,19 @@ export async function GET() {
     console.log(`[WorkoutCurrent] Query result: ${workoutPlan ? 'Found workout plan' : 'No workout plan found'}`);
 
     if (!workoutPlan) {
+      // Debug: Check what workout plans exist at all
+      const allWorkoutPlans = await prisma.workoutPlan.findMany({
+        select: {
+          id: true,
+          surveyId: true,
+          userId: true,
+          createdAt: true
+        },
+        orderBy: { createdAt: 'desc' },
+        take: 5
+      });
+      console.log('[WorkoutCurrent] Debug - Recent workout plans in database:', allWorkoutPlans);
+
       // Also check if there are ANY workout plans for debugging
       const anyPlan = await prisma.workoutPlan.findFirst({
         where: {
