@@ -3,6 +3,8 @@
 export interface Restaurant {
   name: string;
   address: string;
+  city?: string;           // FIX: Added city field
+  zipCode?: string;        // FIX: Added zipCode field
   rating: number;
   priceLevel: number;
   cuisine: string;
@@ -13,6 +15,12 @@ export interface Restaurant {
   businessStatus?: 'OPERATIONAL' | 'CLOSED_TEMPORARILY' | 'CLOSED_PERMANENTLY' | 'UNKNOWN';
   isPermClosed?: boolean;
   isTempClosed?: boolean;
+  website?: string;        // FIX: Added website field
+  description?: string;    // FIX: Added description field
+  types?: string[];        // FIX: Added types field
+  userRatingsTotal?: number; // FIX: Added userRatingsTotal field
+  editorialSummary?: string; // FIX: Added editorialSummary field
+  needsMenuAnalysis?: boolean; // FIX: Added needsMenuAnalysis field
 }
 
 export class GooglePlacesClient {
@@ -231,7 +239,7 @@ export class GooglePlacesClient {
         userRatingsTotal: details?.user_ratings_total || 0,
         editorialSummary: details?.editorial_summary?.overview,
         needsMenuAnalysis: true
-      } as Restaurant & { [key: string]: any };
+      };
 
     } catch (error) {
       console.warn(`[GooglePlaces] Error enriching ${place.name}:`, error);
@@ -249,23 +257,48 @@ export class GooglePlacesClient {
         cuisine: cuisine.toLowerCase(),
         placeId: place.place_id,
         needsMenuAnalysis: true
-      } as Restaurant & { [key: string]: any };
+      };
     }
   }
 
   private extractCityAndZip(address: string): { city: string; zipCode: string } {
+    // FIX: Improved city/zip extraction
     const addressParts = address.split(', ');
-
-    const city = addressParts.find(part =>
-      !part.match(/^\d/) &&
-      !part.includes('St') &&
-      !part.includes('Ave') &&
-      !part.includes('Blvd') &&
-      !part.match(/^[A-Z]{2}\s+\d{5}/)
-    ) || 'Unknown';
-
-    const zipMatch = address.match(/\b\d{5}\b/);
-    const zipCode = zipMatch ? zipMatch[0] : '00000';
+    
+    // Try to find city (usually the 2nd or 3rd part, before state)
+    let city = 'Unknown';
+    let zipCode = '00000';
+    
+    // Look for zip code pattern
+    const zipMatch = address.match(/\b\d{5}(-\d{4})?\b/);
+    if (zipMatch) {
+      zipCode = zipMatch[0].substring(0, 5); // Just first 5 digits
+    }
+    
+    // City is usually before the state abbreviation
+    // Pattern: "City, ST 12345" or "City, State 12345"
+    for (let i = 0; i < addressParts.length; i++) {
+      const part = addressParts[i].trim();
+      
+      // Skip if it's the street address (contains numbers at start or common street words)
+      if (/^\d/.test(part) || /\b(St|Ave|Blvd|Dr|Rd|Way|Ln|Ct|Pl)\b/i.test(part)) {
+        continue;
+      }
+      
+      // Skip if it contains the zip code
+      if (/\d{5}/.test(part)) {
+        continue;
+      }
+      
+      // Skip if it's just a state abbreviation or "USA"
+      if (/^[A-Z]{2}$/.test(part) || part === 'USA' || part === 'United States') {
+        continue;
+      }
+      
+      // This is likely the city
+      city = part;
+      break;
+    }
 
     return { city, zipCode };
   }

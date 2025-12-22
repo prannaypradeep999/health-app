@@ -7,8 +7,10 @@ import { WorkoutPlanPage } from './WorkoutPlanPage';
 import { ProgressPage } from './ProgressPage';
 import { AccountPage } from './AccountPage';
 import { LoadingPage } from './LoadingPage';
+import { MealPlanningPreview } from './MealPlanningPreview';
 import { calculateMacroTargets } from '@/lib/utils/nutrition';
 import AccountCreationModal from './modals/AccountCreationModal';
+import { UtensilsCrossed } from 'lucide-react';
 
 type Screen = 'dashboard' | 'meal-plan' | 'workout-plan' | 'progress' | 'account';
 
@@ -56,10 +58,27 @@ export function DashboardContainer({ initialScreen = 'dashboard' }: DashboardCon
   const [loading, setLoading] = useState(true);
   const [navigating, setNavigating] = useState(false);
   const [showAccountModal, setShowAccountModal] = useState(false);
+  const [showPlanningPreview, setShowPlanningPreview] = useState(false);
+  const [previewData, setPreviewData] = useState<any>(null);
+  const [loadingPreview, setLoadingPreview] = useState(false);
+  const [shouldShowInitialPreview, setShouldShowInitialPreview] = useState(false);
 
   useEffect(() => {
     fetchSurveyData();
     checkGenerationStatus();
+
+    // Check if user just completed survey (should show initial preview)
+    const urlParams = new URLSearchParams(window.location.search);
+    const justCompleted = urlParams.get('surveyCompleted');
+    console.log('[DashboardContainer] URL params check:', { justCompleted, href: window.location.href });
+    if (justCompleted === 'true') {
+      console.log('[DashboardContainer] Survey just completed, will show initial preview');
+      setShouldShowInitialPreview(true);
+      // Clean up URL
+      window.history.replaceState({}, '', window.location.pathname);
+    } else {
+      console.log('[DashboardContainer] No surveyCompleted flag found');
+    }
   }, []);
 
   // Removed auto-modal - keep banner only for less intrusive UX
@@ -94,6 +113,17 @@ export function DashboardContainer({ initialScreen = 'dashboard' }: DashboardCon
       if (response.ok) {
         const data = await response.json();
         setSurveyData(data.survey);
+
+        // If we should show initial preview and we have survey data, show it
+        console.log('[DashboardContainer] Preview trigger check:', { shouldShowInitialPreview, hasSurvey: !!data.survey });
+        if (shouldShowInitialPreview && data.survey) {
+          console.log('[DashboardContainer] Triggering initial preview for new user');
+          setTimeout(() => {
+            handleShowPlanningPreview(true);
+          }, 1000); // Small delay for smooth UX
+        } else {
+          console.log('[DashboardContainer] Preview trigger conditions not met:', { shouldShowInitialPreview, hasSurvey: !!data.survey });
+        }
       }
     } catch (error) {
       console.error('Failed to fetch survey data:', error);
@@ -122,7 +152,7 @@ export function DashboardContainer({ initialScreen = 'dashboard' }: DashboardCon
           const mealPlan = mealsData.mealPlan?.planData;
 
           // Check for 7-day structured format first
-          if (mealPlan?.days && Array.isArray(mealPlan.days) && mealPlan.format === '7-day-structured') {
+          if (mealPlan?.days && Array.isArray(mealPlan.days)) {
             console.log(`[DashboardContainer] Detected 7-day structured meal plan with ${mealPlan.days.length} days`);
 
             // Check each day for home and restaurant meals
@@ -147,6 +177,10 @@ export function DashboardContainer({ initialScreen = 'dashboard' }: DashboardCon
             // Legacy format - check for home meals in the weekly plan
             const homeMeals = mealPlan.weeklyPlan.filter(meal => meal.source === 'home');
             homeMealsGenerated = homeMeals.length > 0;
+
+            // Check for restaurant meals in legacy format
+            const restaurantMeals = mealPlan.weeklyPlan.filter(meal => meal.source === 'restaurant');
+            restaurantMealsGenerated = restaurantMeals.length > 0;
           }
 
           // Check for restaurant meals
@@ -204,6 +238,49 @@ export function DashboardContainer({ initialScreen = 'dashboard' }: DashboardCon
       setCurrentScreen(screen);
       setNavigating(false);
     }, 100);
+  };
+
+  const handleShowPlanningPreview = async (isInitial = false) => {
+    setLoadingPreview(true);
+    setShowPlanningPreview(true);
+
+    try {
+      const response = await fetch('/api/ai/meals/planning-preview', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' }
+      });
+
+      if (response.ok) {
+        const result = await response.json();
+        setPreviewData(result.data);
+        console.log('[DashboardContainer] Preview data loaded:', result.data);
+      } else {
+        console.error('Failed to generate preview');
+        setPreviewData(null);
+      }
+    } catch (error) {
+      console.error('Preview generation failed:', error);
+      setPreviewData(null);
+    } finally {
+      setLoadingPreview(false);
+    }
+  };
+
+  const handlePreviewClose = () => {
+    setShowPlanningPreview(false);
+  };
+
+  const handlePreviewApprove = async () => {
+    console.log('[DashboardContainer] User approved preview, using existing 7-day meal plan...');
+
+    try {
+      setShowPlanningPreview(false);
+      await checkGenerationStatus();
+      console.log('[DashboardContainer] Using existing 7-day meal plan successfully');
+    } catch (error) {
+      console.error('[DashboardContainer] Failed to refresh meal plan data:', error);
+      setShowPlanningPreview(false);
+    }
   };
 
   if (loading) {
@@ -315,6 +392,19 @@ export function DashboardContainer({ initialScreen = 'dashboard' }: DashboardCon
   return (
     <>
       {renderScreen()}
+
+      {/* Floating Preview Button */}
+      {!showPlanningPreview && (
+        <button
+          onClick={() => handleShowPlanningPreview()}
+          className="fixed bottom-6 right-6 w-14 h-14 bg-gradient-to-r from-[#c1272d] to-[#8b5cf6] hover:from-[#a1232a] hover:to-[#7c3aed] text-white rounded-full shadow-lg hover:shadow-xl transition-all duration-200 flex items-center justify-center z-40 group"
+          title="Quick Preview"
+        >
+          <UtensilsCrossed className="w-6 h-6" />
+        </button>
+      )}
+
+      {/* Account Creation Modal */}
       <AccountCreationModal
         isOpen={showAccountModal}
         onClose={() => setShowAccountModal(false)}
@@ -323,6 +413,15 @@ export function DashboardContainer({ initialScreen = 'dashboard' }: DashboardCon
           firstName: surveyData?.firstName,
           lastName: surveyData?.lastName
         }}
+      />
+
+      {/* Meal Planning Preview Modal */}
+      <MealPlanningPreview
+        isOpen={showPlanningPreview}
+        onClose={handlePreviewClose}
+        onApprove={handlePreviewApprove}
+        data={previewData}
+        loading={loadingPreview}
       />
     </>
   );

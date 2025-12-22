@@ -3,6 +3,7 @@
 import React, { useState, useEffect } from 'react';
 import FoodProfileScreen from './FoodProfileScreen';
 import WorkoutProfileScreen from './WorkoutProfileScreen';
+import { MealPlanningPreview } from './MealPlanningPreview';
 import { Loader2 } from 'lucide-react';
 
 interface ProfileConfirmationProps {
@@ -30,6 +31,9 @@ export default function ProfileConfirmation({ surveyData, onComplete, onBack }: 
   const [isLoading, setIsLoading] = useState(true);
   const [isGenerating, setIsGenerating] = useState(false);
   const [currentScreen, setCurrentScreen] = useState<'food' | 'workout'>('food');
+  const [showPlanningPreview, setShowPlanningPreview] = useState(false);
+  const [previewData, setPreviewData] = useState<any>(null);
+  const [loadingPreview, setLoadingPreview] = useState(false);
 
   // Generate profiles on component mount
   useEffect(() => {
@@ -39,28 +43,58 @@ export default function ProfileConfirmation({ surveyData, onComplete, onBack }: 
   const generateProfiles = async () => {
     setIsLoading(true);
     try {
-      console.log('[ProfileConfirmation] Generating both profiles in parallel');
+      console.log('[ProfileConfirmation] Checking for existing profiles first...');
 
-      // Generate both profiles in parallel
-      const [foodResponse, workoutResponse] = await Promise.all([
+      // First check if profiles already exist (they might have been generated in the survey)
+      const [existingFoodResponse, existingWorkoutResponse] = await Promise.all([
         fetch('/api/ai/profiles/food', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(surveyData)
+          method: 'GET',
+          headers: { 'Content-Type': 'application/json' }
         }),
         fetch('/api/ai/profiles/workout', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(surveyData)
+          method: 'GET',
+          headers: { 'Content-Type': 'application/json' }
         })
       ]);
 
-      const [foodResult, workoutResult] = await Promise.all([
-        foodResponse.json(),
-        workoutResponse.json()
-      ]);
+      let foodResult = null;
+      let workoutResult = null;
 
-      if (foodResult.success && workoutResult.success) {
+      // Use existing food profile if available
+      if (existingFoodResponse.ok) {
+        foodResult = await existingFoodResponse.json();
+        console.log('[ProfileConfirmation] Using existing food profile');
+      } else {
+        // Generate new food profile if none exists
+        console.log('[ProfileConfirmation] Generating new food profile');
+        const foodResponse = await fetch('/api/ai/profiles/food', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(surveyData)
+        });
+        if (foodResponse.ok) {
+          foodResult = await foodResponse.json();
+        }
+      }
+
+      // Use existing workout profile if available
+      if (existingWorkoutResponse.ok) {
+        workoutResult = await existingWorkoutResponse.json();
+        console.log('[ProfileConfirmation] Using existing workout profile');
+      } else {
+        // Generate new workout profile if none exists
+        console.log('[ProfileConfirmation] Generating new workout profile');
+        const workoutResponse = await fetch('/api/ai/profiles/workout', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(surveyData)
+        });
+        if (workoutResponse.ok) {
+          workoutResult = await workoutResponse.json();
+        }
+      }
+
+      if (foodResult?.success && workoutResult?.success) {
         setProfileData({
           foodProfile: foodResult.profile,
           workoutProfile: workoutResult.profile,
@@ -162,50 +196,37 @@ export default function ProfileConfirmation({ surveyData, onComplete, onBack }: 
       return;
     }
 
+    // Don't show preview here - use proper callback navigation
     setIsGenerating(true);
 
-    // Start actual generation in background but don't wait for it
     try {
-      // Trigger both meal and workout generation in background
-      Promise.all([
-        fetch('/api/ai/meals/generate', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            ...surveyData,
-            profileApproved: true,
-            foodProfileId: profileData.foodProfileId,
-            workoutProfileId: profileData.workoutProfileId
-          })
-        }),
-        fetch('/api/ai/workouts/generate', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            ...surveyData,
-            profileApproved: true,
-            workoutProfileId: profileData.workoutProfileId
-          })
-        })
-      ]).catch(error => {
-        console.error('Background generation error:', error);
-        // Don't block the user flow for background generation errors
-      });
+      // Trigger background generation (empty function but kept for consistency)
+      await startBackgroundGeneration();
 
-      // Redirect to dashboard after a brief moment
+      // Use proper callback navigation after delay for smooth UX
       setTimeout(() => {
         setIsGenerating(false);
-        onComplete(); // This should navigate to dashboard
+        onComplete();
       }, 1500);
 
     } catch (error) {
       console.error('Error starting generation:', error);
-      // Still redirect even if there's an error
+      // Still use callback even if there's an error
       setTimeout(() => {
         setIsGenerating(false);
         onComplete();
       }, 1000);
     }
+  };
+
+  const startBackgroundGeneration = async () => {
+    // Meal and workout generation were already triggered in survey steps 5 & 6
+    // No need to call generation APIs again here - just navigate to dashboard
+    console.log('[ProfileConfirmation] Generation was already triggered during survey - proceeding to dashboard');
+  };
+
+  const handlePreviewClose = () => {
+    setShowPlanningPreview(false);
   };
 
   // Handler functions for screen navigation
@@ -289,5 +310,16 @@ export default function ProfileConfirmation({ surveyData, onComplete, onBack }: 
     );
   }
 
-  return null;
+  return (
+    <>
+      {/* MealPlanningPreview Modal */}
+      <MealPlanningPreview
+        isOpen={showPlanningPreview}
+        onClose={handlePreviewClose}
+        onApprove={handlePreviewApprove}
+        data={previewData}
+        loading={loadingPreview}
+      />
+    </>
+  );
 }

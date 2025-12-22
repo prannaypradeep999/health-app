@@ -639,7 +639,7 @@ function OnboardingSteps({ onComplete, onBack }: OnboardingStepsProps) {
               <p className="text-gray-600">Help us recommend options within your range</p>
             </div>
             <div>
-              <Label className="text-neutral-700 mb-4 block">Monthly food budget: ${Array.isArray(formData.monthlyFoodBudget) ? formData.monthlyFoodBudget[0] : formData.monthlyFoodBudget}{Array.isArray(formData.monthlyFoodBudget) ? (formData.monthlyFoodBudget[0] >= 1000 ? '+' : '') : (formData.monthlyFoodBudget >= 1000 ? '+' : '')}</Label>
+              <Label className="text-neutral-700 mb-4 block">Monthly food budget: ${Array.isArray(formData.monthlyFoodBudget) ? formData.monthlyFoodBudget[0] : formData.monthlyFoodBudget}{Array.isArray(formData.monthlyFoodBudget) ? (formData.monthlyFoodBudget[0] >= 1000 ? '+' : '') : (Number(formData.monthlyFoodBudget) >= 1000 ? '+' : '')}</Label>
               <Slider
                 value={Array.isArray(formData.monthlyFoodBudget) ? formData.monthlyFoodBudget : [formData.monthlyFoodBudget as number]}
                 onValueChange={(value) => updateFormData("monthlyFoodBudget", value[0])}
@@ -1396,7 +1396,7 @@ function SurveyContent() {
       const result = await res.json();
 
       // Store survey data with the returned survey ID
-      setSurveyData({ ...data, id: result.survey?.id });
+      setSurveyData({ ...data, id: result.surveyId });
       setShowSteps(false);
       setShowProfileConfirmation(true);
 
@@ -1411,8 +1411,8 @@ function SurveyContent() {
   const handleProfileConfirmationComplete = async () => {
     if (!surveyData) return;
 
-    // Survey is already submitted, just navigate to dashboard
-    router.push('/dashboard');
+    // Survey is already submitted, navigate to dashboard with completion flag
+    router.push('/dashboard?surveyCompleted=true');
   };
 
   const handleBackFromProfileConfirmation = () => {

@@ -17,9 +17,14 @@ import {
   Dumbbell,
   User,
   MapPin,
-  Plus
+  Plus,
+  Calendar,
+  ShoppingCart,
+  UtensilsCrossed
 } from "lucide-react";
 import MealLogModal from "./modals/MealLogModal";
+import { GroceryListSection } from './GroceryListSection';
+import { RestaurantListSection } from './RestaurantListSection';
 
 interface MealPlanPageProps {
   onNavigate: (screen: string) => void;
@@ -31,7 +36,7 @@ interface MealPlanPageProps {
 }
 
 export function MealPlanPage({ onNavigate, generationStatus }: MealPlanPageProps) {
-  // Generate dynamic days starting from today (4-day plan like original)
+  // Generate dynamic days starting from today (7-day plan)
   const getDaysStartingFromToday = () => {
     const today = new Date();
     const dayNames = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'];
@@ -39,7 +44,7 @@ export function MealPlanPage({ onNavigate, generationStatus }: MealPlanPageProps
     const todayIndex = today.getDay();
 
     const orderedDays = [];
-    for (let i = 0; i < 4; i++) { // 4-day plan
+    for (let i = 0; i < 7; i++) { // 7-day plan
       const dayIndex = (todayIndex + i) % 7;
       orderedDays.push({
         id: dayNames[dayIndex],
@@ -64,6 +69,8 @@ export function MealPlanPage({ onNavigate, generationStatus }: MealPlanPageProps
   const [isInitialized, setIsInitialized] = useState(false);
   const [showLogModal, setShowLogModal] = useState(false);
   const [loggedMeals, setLoggedMeals] = useState<any[]>([]);
+  const [activeTab, setActiveTab] = useState<'meals' | 'grocery' | 'restaurants'>('meals');
+  const [checkedGroceryItems, setCheckedGroceryItems] = useState<{[key: string]: boolean}>({});
 
   const days = getDaysStartingFromToday();
 
@@ -141,30 +148,20 @@ export function MealPlanPage({ onNavigate, generationStatus }: MealPlanPageProps
     }
   };
 
-  // Get current day's meals - simplified like workouts
+  // Get current day's meals - 7-day structured format only
   const getCurrentMeals = () => {
-    if (mealData && mealData.mealPlan && mealData.mealPlan.planData && mealData.mealPlan.planData.weeklyPlan) {
-      console.log('Looking for meals for day:', selectedDay, 'in data:', mealData.mealPlan.planData.weeklyPlan);
+    if (mealData && mealData.mealPlan && mealData.mealPlan.planData && mealData.mealPlan.planData.days) {
+      console.log('Looking for meals for day:', selectedDay);
 
-      // Find which day number corresponds to our selected day
-      const selectedDayInfo = days.find(d => d.id === selectedDay);
-      const dayNumber = selectedDayInfo?.dayNumber || 1;
+      // Find the day object that matches our selected day
+      const dayData = mealData.mealPlan.planData.days.find((day: any) => day.day === selectedDay);
 
-      // Find the meal data for this day
-      const dayMeals = mealData.mealPlan.planData.weeklyPlan.find((day: any) => {
-        console.log('Checking day:', day.day, 'against dayNumber:', dayNumber);
-        return day.day === dayNumber;
-      });
-
-      if (dayMeals) {
-        console.log('Found meals for day:', dayMeals);
-        console.log('dayMeals.breakfast structure:', dayMeals.breakfast);
-        console.log('dayMeals.lunch structure:', dayMeals.lunch);
-        console.log('dayMeals.dinner structure:', dayMeals.dinner);
+      if (dayData && dayData.meals) {
+        console.log('Found day data:', dayData);
         return {
-          breakfast: dayMeals.breakfast,
-          lunch: dayMeals.lunch,
-          dinner: dayMeals.dinner
+          breakfast: dayData.meals.breakfast,
+          lunch: dayData.meals.lunch,
+          dinner: dayData.meals.dinner
         };
       }
     }
@@ -176,6 +173,15 @@ export function MealPlanPage({ onNavigate, generationStatus }: MealPlanPageProps
       lunch: null,
       dinner: null
     };
+  };
+
+  // Handle grocery item toggle
+  const handleGroceryItemToggle = (category: string, index: number) => {
+    const itemKey = `${category}-${index}`;
+    setCheckedGroceryItems(prev => ({
+      ...prev,
+      [itemKey]: !prev[itemKey]
+    }));
   };
 
   const currentMeals = getCurrentMeals();
@@ -348,13 +354,15 @@ export function MealPlanPage({ onNavigate, generationStatus }: MealPlanPageProps
     const [showRecipe, setShowRecipe] = useState(false);
     const [recipeData, setRecipeData] = useState<any>(null);
     const [loadingRecipe, setLoadingRecipe] = useState(false);
-    const [showAlternatives, setShowAlternatives] = useState(false);
+    const [selectedOption, setSelectedOption] = useState<'primary' | 'alternative'>('primary'); // NEW: Track selected option
     const [userRating, setUserRating] = useState(0);
     const [hoveredStar, setHoveredStar] = useState(0);
 
     if (!meal || !meal.primary) return null;
 
-    const allOptions = [meal.primary, ...(meal.alternatives || [])];
+    // Get the currently selected meal option
+    const currentMeal = selectedOption === 'primary' ? meal.primary : meal.alternative;
+    const hasAlternative = meal.alternative && meal.alternative.name && meal.alternative.name !== "Alternative not available";
 
     const handleRecipeClick = async (selectedMeal: any) => {
       const isRestaurant = selectedMeal.source === "restaurant";
@@ -405,6 +413,13 @@ export function MealPlanPage({ onNavigate, generationStatus }: MealPlanPageProps
 
     const handleRating = (rating: number) => {
       setUserRating(rating);
+    };
+
+    // NEW: Handle option toggle
+    const toggleOption = () => {
+      setSelectedOption(selectedOption === 'primary' ? 'alternative' : 'primary');
+      // Reset recipe data when switching options
+      setRecipeData(null);
     };
 
     const SingleMealOption = ({
@@ -567,49 +582,141 @@ export function MealPlanPage({ onNavigate, generationStatus }: MealPlanPageProps
 
     return (
       <>
-        <div className="space-y-3 mb-6">
-          {/* Primary Option */}
-          <SingleMealOption
-            mealOption={meal.primary}
-            optionIndex={0}
-            optionType="primary"
-          />
+        {/* NEW: Toggle/Switch Design */}
+        <div className="bg-white border-2 border-gray-200 rounded-2xl shadow-sm hover:shadow-md transition-all duration-300 overflow-hidden mb-6">
+          {/* Header with meal type */}
+          <div className="bg-gradient-to-r from-purple-50 to-blue-50 px-6 py-3 border-b border-gray-200">
+            <h3 className="text-lg font-bold text-gray-900 capitalize">{type}</h3>
+          </div>
 
-          {/* Show first alternative if exists */}
-          {meal.alternatives && meal.alternatives.length > 0 && (
-            <SingleMealOption
-              mealOption={meal.alternatives[0]}
-              isAlternative={true}
-              optionIndex={0}
-              optionType="alternative"
-            />
+          {/* Current Selected Meal Display */}
+          {currentMeal && (
+            <div className="p-6">
+              <div className="flex items-start space-x-4">
+                {/* Large Image */}
+                <div className="flex-shrink-0">
+                  <ImageWithFallback
+                    src={currentMeal.imageUrl || currentMeal.image || "https://images.unsplash.com/photo-1662993924949-2b2d68c08cee"}
+                    alt={currentMeal.name || currentMeal.dish || `${type} meal`}
+                    className="w-24 h-24 object-cover rounded-xl shadow-md"
+                  />
+                </div>
+
+                {/* Meal Details */}
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-start justify-between mb-3">
+                    <div className="flex-1">
+                      <h4 className="text-xl font-bold text-gray-900 mb-1">
+                        {currentMeal.source === 'restaurant' ? currentMeal.dish : currentMeal.name}
+                      </h4>
+                      <p className="text-sm text-gray-600 mb-2 leading-relaxed">
+                        {currentMeal.source === 'restaurant'
+                          ? (currentMeal.dish_description || currentMeal.description)
+                          : (currentMeal.description || currentMeal.dish_description)
+                        }
+                      </p>
+
+                      {/* Restaurant name for restaurant meals */}
+                      {currentMeal.source === 'restaurant' && currentMeal.restaurant && (
+                        <p className="text-sm font-medium text-purple-600 mb-2 flex items-center gap-1">
+                          🏪 {currentMeal.restaurant}
+                        </p>
+                      )}
+
+                      {/* Nutrition Info */}
+                      <div className="flex items-center gap-4 text-sm text-gray-600 mb-3">
+                        <div className="bg-green-50 px-2 py-1 rounded-lg border border-green-200">
+                          <span className="text-green-700 font-medium">{currentMeal.estimatedCalories || currentMeal.calories || 0} cal</span>
+                        </div>
+                        <div className="bg-blue-50 px-2 py-1 rounded-lg border border-blue-200">
+                          <span className="text-blue-700 font-medium">{currentMeal.protein || 0}g protein</span>
+                        </div>
+                        {currentMeal.source === 'restaurant' && currentMeal.price && (
+                          <div className="bg-yellow-50 px-2 py-1 rounded-lg border border-yellow-200">
+                            <span className="text-yellow-700 font-medium">${currentMeal.price}</span>
+                          </div>
+                        )}
+                      </div>
+
+                      {/* Action Buttons */}
+                      <div className="flex items-center gap-3">
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => handleRecipeClick(currentMeal)}
+                          disabled={loadingRecipe}
+                          className="bg-purple-50 border-purple-300 text-purple-700 hover:bg-purple-100 transition-colors"
+                        >
+                          {loadingRecipe ? (
+                            <div className="w-4 h-4 border-2 border-current border-t-transparent rounded-full animate-spin mr-2" />
+                          ) : null}
+                          {currentMeal.source === 'restaurant' ?
+                            <><ExternalLink className="w-4 h-4 mr-1" />Order Now</> :
+                            <><Star className="w-4 h-4 mr-1" />Recipe</>
+                          }
+                        </Button>
+
+                        {/* Mark as Eaten Button */}
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => toggleMealEaten(type, 0, selectedOption)}
+                          className={`transition-colors ${
+                            isMealEaten(type, 0, selectedOption)
+                              ? 'bg-green-50 border-green-300 text-green-700 hover:bg-green-100'
+                              : 'border-gray-300 text-gray-700 hover:bg-gray-50'
+                          }`}
+                        >
+                          {isMealEaten(type, 0, selectedOption) ? '✓ Eaten' : 'Mark Eaten'}
+                        </Button>
+                      </div>
+                    </div>
+
+                    {/* Selection Indicator */}
+                    <div className="flex items-center gap-2 ml-4">
+                      <div className={`px-3 py-1 rounded-full text-xs font-medium ${
+                        selectedOption === 'primary'
+                          ? 'bg-purple-100 text-purple-700 border border-purple-300'
+                          : 'bg-gray-100 text-gray-600 border border-gray-300'
+                      }`}>
+                        {selectedOption === 'primary' ?
+                          <><Star className="w-3 h-3 mr-1" />Selected</> :
+                          'Option'
+                        }
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
           )}
 
-          {/* Show more alternatives toggle */}
-          {meal.alternatives && meal.alternatives.length > 1 && (
-            <>
-              <button
-                onClick={() => setShowAlternatives(!showAlternatives)}
-                className="w-full p-2 text-xs text-gray-600 border border-dashed border-gray-300 rounded-lg hover:border-gray-400 hover:bg-gray-50 transition-colors"
-              >
-                {showAlternatives ? 'Hide' : 'Show'} {meal.alternatives.length - 1} more option{meal.alternatives.length > 2 ? 's' : ''}
-              </button>
-
-              {/* Additional alternatives */}
-              {showAlternatives && (
-                <div className="space-y-3">
-                  {meal.alternatives.slice(1).map((alt: any, index: number) => (
-                    <SingleMealOption
-                      key={index}
-                      mealOption={alt}
-                      isAlternative={true}
-                      optionIndex={index + 1}
-                      optionType="alternative"
-                    />
-                  ))}
+          {/* Toggle Switch - Only show if alternative exists */}
+          {hasAlternative && (
+            <div className="border-t border-gray-200 bg-gray-50 px-6 py-4">
+              <div className="flex items-center justify-between">
+                <div className="text-sm text-gray-600">
+                  Switch to: <span className="font-medium text-gray-900">{selectedOption === 'primary' ? meal.alternative?.name || meal.alternative?.dish : meal.primary?.name || meal.primary?.dish}</span>
                 </div>
-              )}
-            </>
+                <Button
+                  onClick={toggleOption}
+                  className="bg-gradient-to-r from-purple-500 to-blue-500 hover:from-purple-600 hover:to-blue-600 text-white border-0 shadow-md transition-all duration-200 hover:scale-105 flex items-center gap-2"
+                  size="sm"
+                >
+                  <ExternalLink className="w-4 h-4 mr-1" />
+                  Switch Option
+                </Button>
+              </div>
+            </div>
+          )}
+
+          {/* No Alternative Available Message */}
+          {!hasAlternative && (
+            <div className="border-t border-gray-200 bg-gray-50 px-6 py-3">
+              <p className="text-xs text-gray-500 italic text-center">
+                Only one option available for this meal
+              </p>
+            </div>
           )}
         </div>
 
@@ -866,9 +973,51 @@ export function MealPlanPage({ onNavigate, generationStatus }: MealPlanPageProps
         </div>
       </div>
 
+      {/* Tab Navigation */}
+      <div className="bg-white border-b border-gray-200 px-4 sm:px-6">
+        <div className="flex space-x-1 overflow-x-auto">
+          <button
+            onClick={() => setActiveTab('meals')}
+            className={`flex items-center gap-2 px-4 py-3 text-sm font-medium border-b-2 transition-colors ${
+              activeTab === 'meals'
+                ? 'border-[#c1272d] text-[#c1272d] bg-red-50/50'
+                : 'border-transparent text-gray-600 hover:text-gray-900 hover:border-gray-300'
+            }`}
+          >
+            <Calendar className="w-4 h-4" />
+            <span className="whitespace-nowrap">Weekly Plan</span>
+          </button>
+          <button
+            onClick={() => setActiveTab('grocery')}
+            className={`flex items-center gap-2 px-4 py-3 text-sm font-medium border-b-2 transition-colors ${
+              activeTab === 'grocery'
+                ? 'border-green-500 text-green-600 bg-green-50/50'
+                : 'border-transparent text-gray-600 hover:text-gray-900 hover:border-gray-300'
+            }`}
+          >
+            <ShoppingCart className="w-4 h-4" />
+            <span className="whitespace-nowrap">Grocery List</span>
+          </button>
+          <button
+            onClick={() => setActiveTab('restaurants')}
+            className={`flex items-center gap-2 px-4 py-3 text-sm font-medium border-b-2 transition-colors ${
+              activeTab === 'restaurants'
+                ? 'border-orange-500 text-orange-600 bg-orange-50/50'
+                : 'border-transparent text-gray-600 hover:text-gray-900 hover:border-gray-300'
+            }`}
+          >
+            <UtensilsCrossed className="w-4 h-4" />
+            <span className="whitespace-nowrap">Restaurants</span>
+          </button>
+        </div>
+      </div>
+
       <div className="p-4 sm:p-6">
-        {/* Week Navigation */}
-        <div className="mb-6">
+        {/* Meals Tab Content */}
+        {activeTab === 'meals' && (
+          <>
+            {/* Week Navigation */}
+            <div className="mb-6">
           <div className="flex justify-center space-x-2 overflow-x-auto pb-2 px-2">
             {days.map((day) => (
               <Button
@@ -1042,6 +1191,118 @@ export function MealPlanPage({ onNavigate, generationStatus }: MealPlanPageProps
             </div>
           )}
         </div>
+          </>
+        )}
+
+        {/* Grocery List Tab Content */}
+        {activeTab === 'grocery' && (
+          <GroceryListSection
+            groceryList={mealData?.mealPlan?.planData?.groceryList || { proteins: [], vegetables: [], grains: [], totalEstimatedCost: 0, weeklyBudgetUsed: '0%' }}
+            onItemToggle={handleGroceryItemToggle}
+            checkedItems={checkedGroceryItems}
+          />
+        )}
+
+        {/* Restaurants Tab Content */}
+        {activeTab === 'restaurants' && (
+          <RestaurantListSection
+            restaurants={(() => {
+              const restaurantMeals = mealData?.mealPlan?.planData?.restaurantMeals || [];
+              const restaurantMap = new Map();
+
+              // Aggregate all restaurant data and ordering links
+              restaurantMeals.forEach((meal: any) => {
+                const primaryRestaurant = meal.primary?.restaurant;
+                const altRestaurant = meal.alternative?.restaurant;
+
+
+                // Process primary restaurant
+                if (primaryRestaurant && meal.primary) {
+                  if (!restaurantMap.has(primaryRestaurant)) {
+                    restaurantMap.set(primaryRestaurant, {
+                      name: primaryRestaurant,
+                      cuisine: meal.primary.cuisine || 'Mixed',
+                      rating: 4.2,
+                      address: meal.primary.address || 'Address not available',
+                      city: meal.primary.city || '',
+                      orderingLinks: { ...meal.primary.orderingLinks },
+                      estimatedOrderTime: '25-40 min',
+                      sampleMenuItems: new Set([meal.primary.dish]),
+                      distance: 2.5
+                    });
+                  } else {
+                    // Merge ordering links and add menu items
+                    const existing = restaurantMap.get(primaryRestaurant);
+                    existing.orderingLinks = { ...existing.orderingLinks, ...meal.primary.orderingLinks };
+                    existing.sampleMenuItems.add(meal.primary.dish);
+                  }
+                }
+
+                // Process alternative restaurant (if different from primary)
+                if (altRestaurant && meal.alternative && altRestaurant !== primaryRestaurant) {
+                  if (!restaurantMap.has(altRestaurant)) {
+                    restaurantMap.set(altRestaurant, {
+                      name: altRestaurant,
+                      cuisine: meal.alternative.cuisine || 'Mixed',
+                      rating: 4.2,
+                      address: meal.alternative.address || 'Address not available',
+                      city: meal.alternative.city || '',
+                      orderingLinks: { ...meal.alternative.orderingLinks },
+                      estimatedOrderTime: '25-40 min',
+                      sampleMenuItems: new Set([meal.alternative.dish]),
+                      distance: 2.5
+                    });
+                  } else {
+                    // Merge ordering links and add menu items
+                    const existing = restaurantMap.get(altRestaurant);
+                    existing.orderingLinks = { ...existing.orderingLinks, ...meal.alternative.orderingLinks };
+                    existing.sampleMenuItems.add(meal.alternative.dish);
+                  }
+                }
+              });
+
+              // Helper to normalize ordering link keys to match what we can render
+              const normalizeOrderingLinks = (links: any) => {
+                if (!links) return {};
+                return {
+                  doordash: links.doordash || links.doorDash || links.DoorDash || links.door_dash || null,
+                  ubereats: links.ubereats || links.uberEats || links.UberEats || links.uber_eats || null,
+                  grubhub: links.grubhub || links.grubHub || links.GrubHub || links.grub_hub || null,
+                  direct: links.direct || links.website || links.order || links.orderUrl || links.order_url || links.menuUrl || links.menu_url || null,
+                };
+              };
+
+              // Convert to array and normalize ordering links
+              const restaurants = Array.from(restaurantMap.values()).map(restaurant => {
+                // Normalize the ordering links
+                const normalizedLinks = normalizeOrderingLinks(restaurant.orderingLinks);
+
+                // Only count links that have values AND have a matching button (known platforms)
+                const knownPlatforms = ['doordash', 'ubereats', 'grubhub', 'direct'];
+                const validLinksCount = knownPlatforms.filter(platform =>
+                  normalizedLinks[platform] &&
+                  String(normalizedLinks[platform]).trim() !== ''
+                ).length;
+
+                return {
+                  ...restaurant,
+                  orderingLinks: normalizedLinks,  // Use normalized links
+                  sampleMenuItems: Array.from(restaurant.sampleMenuItems).filter(Boolean),
+                  linksFound: validLinksCount
+                };
+              });
+
+
+              return restaurants;
+            })()}
+            metadata={{
+              generatedFor: 'User',
+              location: mealData?.mealPlan?.planData?.metadata?.location || 'Your area',
+              goal: mealData?.mealPlan?.planData?.metadata?.goal || 'wellness',
+              cuisines: mealData?.mealPlan?.planData?.metadata?.cuisines || []
+            }}
+          />
+        )}
       </div>
 
       {/* Bottom Navigation */}

@@ -70,7 +70,6 @@ export async function POST(request: NextRequest) {
 
   } catch (error) {
     console.error('[WORKOUT-ANALYSIS] ❌ Error:', error);
-
     // Fallback response
     return NextResponse.json({
       calories: 200,

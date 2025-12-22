@@ -53,7 +53,10 @@
       "Bash(sed:*)",
       "Bash(chmod:*)",
       "WebFetch(domain:docs.perplexity.ai)",
-      "Bash(xargs:*)"
+      "Bash(xargs:*)",
+      "WebSearch",
+      "Bash(npm run lint:*)",
+      "Bash(rm:*)"
     ],
     "deny": [],
     "ask": []

@@ -6,6 +6,73 @@ import { nanoid } from 'nanoid';
 
 export const runtime = 'nodejs';
 
+/**
+ * Survey API Route
+ * 
+ * CHANGES MADE:
+ * - Extracted buildSurveyData() helper to reduce code duplication
+ * - Moved countRestaurantMeals() to top level
+ * - Step 5: Now AWAITS home meal generation before returning (was fire-and-forget)
+ * - Step 5: Restaurant generation still runs in background (fire-and-forget)
+ * - Removed dead triggerMealGeneration() function (was never called)
+ * - Fixed all error.message TypeScript issues with proper type guards
+ * - Removed unused surveyData parameter from triggerBackgroundWorkoutGeneration
+ */
+
+// Helper function to build survey data object (reduces duplication)
+function buildSurveyData(data: any, sessionId: string, mealsOutPerWeek: number) {
+  return {
+    email: data.email || '',
+    firstName: data.firstName || '',
+    lastName: data.lastName || '',
+    age: data.age || 0,
+    sex: data.sex || '',
+    height: Number(data.height) || 0,
+    weight: data.weight || 0,
+    streetAddress: data.streetAddress || '',
+    city: data.city || '',
+    state: data.state || '',
+    zipCode: data.zipCode || '',
+    country: data.country || 'United States',
+    goal: data.goal,
+    activityLevel: data.activityLevel || '',
+    sportsInterests: data.sportsInterests || '',
+    fitnessTimeline: data.fitnessTimeline || '',
+    monthlyFoodBudget: data.monthlyFoodBudget || 200,
+    monthlyFitnessBudget: data.monthlyFitnessBudget || 50,
+    dietPrefs: data.dietPrefs || [],
+    weeklyMealSchedule: data.weeklyMealSchedule || null,
+    mealsOutPerWeek,
+    distancePreference: data.distancePreference || 'medium',
+    preferredCuisines: data.preferredCuisines || [],
+    preferredFoods: data.preferredFoods || [],
+    uploadedFiles: data.uploadedFiles || [],
+    preferredNutrients: data.preferredNutrients || [],
+    workoutPreferencesJson: data.workoutPreferences || undefined,
+    biomarkerJson: data.biomarkers || undefined,
+    source: data.source || 'web',
+    isGuest: true,
+    sessionId,
+    userId: null
+  };
+}
+
+// Helper function to count restaurant meals from schedule
+function countRestaurantMeals(weeklyMealSchedule: any): number {
+  if (!weeklyMealSchedule || typeof weeklyMealSchedule !== 'object') {
+    return 7; // Default fallback
+  }
+
+  let count = 0;
+  Object.values(weeklyMealSchedule).forEach((dayMeals: any) => {
+    if (dayMeals?.breakfast === 'restaurant') count++;
+    if (dayMeals?.lunch === 'restaurant') count++;
+    if (dayMeals?.dinner === 'restaurant') count++;
+  });
+
+  return count;
+}
+
 export async function POST(req: Request) {
   try {
     const payload = await req.json();
@@ -29,96 +96,27 @@ export async function POST(req: Request) {
       sessionId = nanoid();
     }
 
-    const {
-      email,
-      firstName,
-      lastName,
-      age,
-      sex,
-      height,
-      weight,
+    const mealsOutPerWeek = countRestaurantMeals(parsed.data.weeklyMealSchedule);
+    const surveyFields = buildSurveyData(parsed.data, sessionId, mealsOutPerWeek);
 
-      // Full address fields
-      streetAddress,
-      city,
-      state,
-      zipCode,
-      country,
-      goal,
-      activityLevel,
-      sportsInterests,
-      fitnessTimeline,
-      monthlyFoodBudget,
-      monthlyFitnessBudget,
-      dietPrefs,
-      weeklyMealSchedule,
-      distancePreference,
-      preferredCuisines,
-      preferredFoods,
-      uploadedFiles,
-      preferredNutrients,
-      workoutPreferences,
-      biomarkers,
-      source,
-    } = parsed.data;
-
-    // Calculate mealsOutPerWeek from weeklyMealSchedule
-    function countRestaurantMeals(weeklyMealSchedule: any): number {
-      if (!weeklyMealSchedule || typeof weeklyMealSchedule !== 'object') {
-        return 7; // Default fallback
-      }
-
-      let count = 0;
-      Object.values(weeklyMealSchedule).forEach((dayMeals: any) => {
-        if (dayMeals?.breakfast === 'restaurant') count++;
-        if (dayMeals?.lunch === 'restaurant') count++;
-        if (dayMeals?.dinner === 'restaurant') count++;
-      });
-
-      return count;
-    }
-
-    const mealsOutPerWeek = countRestaurantMeals(weeklyMealSchedule);
-
-    const survey = await prisma.surveyResponse.create({
-      data: {
-        email: email || '',
-        firstName: firstName || '',
-        lastName: lastName || '',
-        age: age || 0,
-        sex: sex || '',
-        height: Number(height) || 0,
-        weight: weight || 0,
-
-        // Full address fields
-        streetAddress: streetAddress || '',
-        city: city || '',
-        state: state || '',
-        zipCode: zipCode || '',
-        country: country || 'United States',
-        goal,
-        activityLevel: activityLevel || '',
-        sportsInterests: sportsInterests || '',
-        fitnessTimeline: fitnessTimeline || '',
-        monthlyFoodBudget: monthlyFoodBudget || 200,
-        monthlyFitnessBudget: monthlyFitnessBudget || 50,
-        dietPrefs: dietPrefs || [],
-        weeklyMealSchedule: weeklyMealSchedule || null,
-        mealsOutPerWeek,
-        distancePreference: distancePreference || 'medium',
-        preferredCuisines: preferredCuisines || [],
-        preferredFoods: preferredFoods || [],
-        uploadedFiles: uploadedFiles || [],
-        preferredNutrients: preferredNutrients || [],
-        workoutPreferencesJson: workoutPreferences || undefined,
-        biomarkerJson: biomarkers || undefined,
-        source: source || 'web',
-        isGuest: true,
-        sessionId,
-        userId: null
-      }
+    // Check if survey already exists for this session
+    const existingSurvey = await prisma.surveyResponse.findFirst({
+      where: { sessionId }
     });
 
+    let survey;
+    if (existingSurvey) {
+      survey = await prisma.surveyResponse.update({
+        where: { id: existingSurvey.id },
+        data: surveyFields
+      });
+    } else {
+      survey = await prisma.surveyResponse.create({
+        data: surveyFields
+      });
+    }
+
+    // Set cookies
     cookieStore.set('guest_session', sessionId, {
       httpOnly: true,
       secure: process.env.NODE_ENV === 'production',
@@ -133,51 +131,52 @@ export async function POST(req: Request) {
       maxAge: 60 * 60 * 24 * 7
     });
 
-    // Check if this is step 5 completion to trigger SPLIT meal generation
+    // Build base URL for internal API calls
+    const protocol = req.headers.get('x-forwarded-proto') || 'http';
+    const host = req.headers.get('host') || 'localhost:3000';
+    const baseUrl = `${protocol}://${host}`;
+
+    // Trigger background processes based on step
     if (payload.currentStep === 5) {
-      console.log('[MEAL-TRIGGER-SPLIT] 🍽️ Step 5 completed - triggering SPLIT meal generation pipeline');
-      console.log('[MEAL-TRIGGER-SPLIT] 📊 Survey data for meal generation:', {
+      console.log('[MEAL-TRIGGER] 🍽️ Step 5 completed - starting meal generation');
+      console.log('[MEAL-TRIGGER] 📊 Survey data:', {
         surveyId: survey.id,
         sessionId,
         goal: parsed.data.goal,
         city: parsed.data.city,
-        state: parsed.data.state,
         cuisines: parsed.data.preferredCuisines?.length || 0,
         foods: parsed.data.preferredFoods?.length || 0,
-        distancePreference: parsed.data.distancePreference
       });
 
-      // Trigger SPLIT pipeline: Home meals first (fast), then restaurants (background)
-      const protocol = req.headers.get('x-forwarded-proto') || 'http';
-      const host = req.headers.get('host') || 'localhost:3000';
-      const baseUrl = `${protocol}://${host}`;
+      // AWAIT home meals (this is the critical change - we wait for home meals to complete)
+      // This ensures the dashboard has home meals + grocery list ready
+      const homeMealsResult = await triggerHomeMealGeneration(survey.id, sessionId, baseUrl);
 
-      triggerSplitMealGeneration(survey.id, sessionId, parsed.data, baseUrl).catch(error => {
-        console.error('[MEAL-TRIGGER-SPLIT] ❌ Background split meal generation failed:', error);
+      // Fire-and-forget restaurant generation (runs in background)
+      triggerRestaurantGeneration(survey.id, sessionId, baseUrl).catch(error => {
+        console.error('[RESTAURANT-TRIGGER] ❌ Background restaurant generation failed:', error);
       });
-    } else if (payload.currentStep === 6) {
-      console.log('[WORKOUT-TRIGGER] 🏋️ Step 6 completed - triggering background workout generation');
-      console.log('[WORKOUT-TRIGGER] 📊 Survey data for workout generation:', {
+
+      return NextResponse.json({
+        ok: true,
         surveyId: survey.id,
         sessionId,
-        goal: parsed.data.goal,
-        activityLevel: parsed.data.activityLevel,
-        age: parsed.data.age,
-        workoutPrefs: !!parsed.data.workoutPreferences
+        homeMealsReady: homeMealsResult.success,
+        groceryList: homeMealsResult.groceryList || null
       });
 
-      // Trigger background workout generation (non-blocking)
-      const protocol = req.headers.get('x-forwarded-proto') || 'http';
-      const host = req.headers.get('host') || 'localhost:3000';
-      const baseUrl = `${protocol}://${host}`;
+    } else if (payload.currentStep === 6) {
+      console.log('[WORKOUT-TRIGGER] 🏋️ Step 6 completed - triggering background workout generation');
 
-      triggerBackgroundWorkoutGeneration(survey.id, sessionId, parsed.data, baseUrl).catch(error => {
+      // Fire-and-forget workout generation
+      triggerBackgroundWorkoutGeneration(survey.id, sessionId, baseUrl).catch(error => {
         console.error('[WORKOUT-TRIGGER] ❌ Background workout generation failed:', error);
       });
+
     } else if (!payload.currentStep) {
-      console.log('[FINAL] 🎯 Final survey submission - both meal and workout generation already triggered in previous steps');
+      console.log('[FINAL] 🎯 Final survey submission');
     } else {
-      console.log(`[PROGRESSIVE] ℹ️ Step ${payload.currentStep || 'final'} completed - no background processes triggered`);
+      console.log(`[PROGRESSIVE] ℹ️ Step ${payload.currentStep} completed`);
     }
 
     return NextResponse.json({
@@ -185,6 +184,7 @@ export async function POST(req: Request) {
       surveyId: survey.id,
       sessionId
     });
+
   } catch (err) {
     console.error('[POST /api/survey] Error:', err);
     return NextResponse.json({ error: 'Server error' }, { status: 500 });
@@ -206,13 +206,11 @@ export async function GET(req: Request) {
         include: { activeSurvey: true }
       });
       survey = user?.activeSurvey;
-    } 
-    else if (surveyId) {
+    } else if (surveyId) {
       survey = await prisma.surveyResponse.findUnique({
         where: { id: surveyId }
       });
-    } 
-    else if (sessionId) {
+    } else if (sessionId) {
       survey = await prisma.surveyResponse.findFirst({
         where: { 
           sessionId,
@@ -227,23 +225,133 @@ export async function GET(req: Request) {
     }
 
     return NextResponse.json({ survey });
+
   } catch (err) {
     console.error('[GET /api/survey] Error:', err);
     return NextResponse.json({ error: 'Server error' }, { status: 500 });
   }
 }
 
-// Progressive generation functions
+// ============================================================================
+// GENERATION TRIGGER FUNCTIONS
+// ============================================================================
 
-async function triggerBackgroundWorkoutGeneration(surveyId: string, sessionId: string, surveyData: any, baseUrl: string) {
+/**
+ * Triggers home meal generation and WAITS for completion
+ * Returns the result including grocery list
+ */
+async function triggerHomeMealGeneration(
+  surveyId: string, 
+  sessionId: string, 
+  baseUrl: string
+): Promise<{ success: boolean; groceryList?: any; error?: string }> {
   const startTime = Date.now();
   try {
-    console.log('[WORKOUT-TRIGGER] 🏋️ Starting background workout generation for survey:', surveyId);
-    console.log('[WORKOUT-TRIGGER] 🌐 Making fetch request to workout generation endpoint...');
+    console.log('[HOME-MEAL-TRIGGER] 🏠 Starting home meal generation (AWAITED)...');
 
-    // baseUrl is now passed as parameter
+    const response = await fetch(`${baseUrl}/api/ai/meals/generate-home`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Cookie': `survey_id=${surveyId}; guest_session=${sessionId}`
+      },
+      body: JSON.stringify({ backgroundGeneration: true })
+    });
 
-    const fetchStartTime = Date.now();
+    const totalTime = Date.now() - startTime;
+
+    if (response.ok) {
+      const result = await response.json();
+      console.log('[HOME-MEAL-TRIGGER] ✅ Home meals generated:', {
+        success: result.success,
+        mealsCount: result.timings?.homeMealsGenerated || 0,
+        hasGroceryList: !!result.homeMealPlan?.groceryList,
+        totalTime: `${totalTime}ms`
+      });
+
+      return {
+        success: true,
+        groceryList: result.homeMealPlan?.groceryList || null
+      };
+    } else {
+      console.error('[HOME-MEAL-TRIGGER] ❌ Home meal generation failed:', {
+        status: response.status,
+        totalTime: `${totalTime}ms`
+      });
+      return { success: false, error: `HTTP ${response.status}` };
+    }
+
+  } catch (error) {
+    const totalTime = Date.now() - startTime;
+    console.error('[HOME-MEAL-TRIGGER] ❌ Error:', {
+      error: error instanceof Error ? error.message : 'Unknown error',
+      totalTime: `${totalTime}ms`
+    });
+    return { 
+      success: false, 
+      error: error instanceof Error ? error.message : 'Unknown error' 
+    };
+  }
+}
+
+/**
+ * Triggers restaurant meal generation in the background (fire-and-forget)
+ */
+async function triggerRestaurantGeneration(
+  surveyId: string, 
+  sessionId: string, 
+  baseUrl: string
+): Promise<void> {
+  const startTime = Date.now();
+  try {
+    console.log('[RESTAURANT-TRIGGER] 🏪 Starting restaurant generation (BACKGROUND)...');
+
+    const response = await fetch(`${baseUrl}/api/ai/meals/generate-restaurants`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Cookie': `survey_id=${surveyId}; guest_session=${sessionId}`
+      },
+      body: JSON.stringify({ backgroundGeneration: true })
+    });
+
+    const totalTime = Date.now() - startTime;
+
+    if (response.ok) {
+      const result = await response.json();
+      console.log('[RESTAURANT-TRIGGER] ✅ Restaurant meals generated:', {
+        success: result.success,
+        restaurantCount: result.restaurantMeals?.length || 0,
+        totalTime: `${totalTime}ms`
+      });
+    } else {
+      console.error('[RESTAURANT-TRIGGER] ❌ Failed:', {
+        status: response.status,
+        totalTime: `${totalTime}ms`
+      });
+    }
+
+  } catch (error) {
+    const totalTime = Date.now() - startTime;
+    console.error('[RESTAURANT-TRIGGER] ❌ Error:', {
+      error: error instanceof Error ? error.message : 'Unknown error',
+      totalTime: `${totalTime}ms`
+    });
+  }
+}
+
+/**
+ * Triggers workout generation in the background (fire-and-forget)
+ */
+async function triggerBackgroundWorkoutGeneration(
+  surveyId: string, 
+  sessionId: string, 
+  baseUrl: string
+): Promise<void> {
+  const startTime = Date.now();
+  try {
+    console.log('[WORKOUT-TRIGGER] 🏋️ Starting workout generation (BACKGROUND)...');
+
     const response = await fetch(`${baseUrl}/api/ai/workouts/generate`, {
       method: 'POST',
       headers: {
@@ -252,164 +360,26 @@ async function triggerBackgroundWorkoutGeneration(surveyId: string, sessionId: s
       },
       body: JSON.stringify({ backgroundGeneration: true })
     });
-    const fetchTime = Date.now() - fetchStartTime;
+
+    const totalTime = Date.now() - startTime;
 
     if (response.ok) {
       const result = await response.json();
-      const totalTime = Date.now() - startTime;
-      console.log('[WORKOUT-TRIGGER] ✅ Workout generation completed:', {
+      console.log('[WORKOUT-TRIGGER] ✅ Workouts generated:', {
         success: result.success,
-        timings: result.timings,
-        totalBackgroundTime: totalTime
-      });
-      console.log('[WORKOUT-TRIGGER] 📈 Performance:', {
-        fetchTime: `${fetchTime}ms`,
-        totalTime: `${totalTime}ms`,
-        workoutTimings: result.timings
+        totalTime: `${totalTime}ms`
       });
     } else {
-      const totalTime = Date.now() - startTime;
-      console.error('[WORKOUT-TRIGGER] ❌ Workout generation failed:', {
+      console.error('[WORKOUT-TRIGGER] ❌ Failed:', {
         status: response.status,
-        statusText: response.statusText,
         totalTime: `${totalTime}ms`
       });
     }
+
   } catch (error) {
     const totalTime = Date.now() - startTime;
-    console.error('[WORKOUT-TRIGGER] ❌ Workout generation error:', {
-      error: error.message,
-      totalTime: `${totalTime}ms`
-    });
-  }
-}
-
-async function triggerMealGeneration(surveyId: string, sessionId: string, surveyData: any, baseUrl: string) {
-  const startTime = Date.now();
-  try {
-    console.log('[FINAL] 🍽️ Starting meal plan generation for survey:', surveyId);
-    console.log('[FINAL] 🌐 Making fetch request to meal generation endpoint...');
-
-    // baseUrl is now passed as parameter
-
-    const fetchStartTime = Date.now();
-    const response = await fetch(`${baseUrl}/api/ai/meals/generate`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Cookie': `survey_id=${surveyId}; guest_session=${sessionId}`
-      },
-      body: JSON.stringify({ backgroundGeneration: true })
-    });
-    const fetchTime = Date.now() - fetchStartTime;
-
-    if (response.ok) {
-      const result = await response.json();
-      const totalTime = Date.now() - startTime;
-      console.log('[FINAL] ✅ Meal generation completed:', {
-        success: result.success,
-        timings: result.timings,
-        totalBackgroundTime: totalTime
-      });
-      console.log('[FINAL] 📈 Performance:', {
-        fetchTime: `${fetchTime}ms`,
-        totalTime: `${totalTime}ms`,
-        mealTimings: result.timings
-      });
-    } else {
-      const totalTime = Date.now() - startTime;
-      console.error('[FINAL] ❌ Meal generation failed:', {
-        status: response.status,
-        statusText: response.statusText,
-        totalTime: `${totalTime}ms`
-      });
-    }
-  } catch (error) {
-    const totalTime = Date.now() - startTime;
-    console.error('[FINAL] ❌ Meal generation error:', {
-      error: error.message,
-      totalTime: `${totalTime}ms`
-    });
-  }
-}
-
-// NEW: Split meal generation pipeline - Home meals first (fast), then restaurants (background)
-async function triggerSplitMealGeneration(surveyId: string, sessionId: string, surveyData: any, baseUrl: string) {
-  const startTime = Date.now();
-  try {
-    console.log('[SPLIT-MEAL] 🚀 Starting split meal generation pipeline...');
-
-    // Phase 1: Generate home meals first (fast - ~40s)
-    console.log('[SPLIT-MEAL] 🏠 Phase 1: Generating home meals (fast)...');
-    const homeMealsStartTime = Date.now();
-
-    const homeMealsResponse = await fetch(`${baseUrl}/api/ai/meals/generate-home`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Cookie': `survey_id=${surveyId}; guest_session=${sessionId}`
-      },
-      body: JSON.stringify({ backgroundGeneration: true })
-    });
-
-    const homeMealsTime = Date.now() - homeMealsStartTime;
-
-    if (homeMealsResponse.ok) {
-      const homeMealsResult = await homeMealsResponse.json();
-      console.log('[SPLIT-MEAL] ✅ Phase 1 completed - Home meals generated:', {
-        success: homeMealsResult.success,
-        homeMealsCount: homeMealsResult.timings?.homeMealsGenerated || 0,
-        time: `${homeMealsTime}ms`
-      });
-
-      // Phase 2: Generate restaurant meals in background (slow - ~120s)
-      console.log('[SPLIT-MEAL] 🏪 Phase 2: Starting background restaurant generation...');
-
-      // Start restaurant generation but don't wait for it (fire-and-forget)
-      fetch(`${baseUrl}/api/ai/meals/generate-restaurants`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Cookie': `survey_id=${surveyId}; guest_session=${sessionId}`
-        },
-        body: JSON.stringify({ backgroundGeneration: true })
-      }).then(async (restaurantResponse) => {
-        const restaurantTime = Date.now() - startTime;
-        if (restaurantResponse.ok) {
-          const restaurantResult = await restaurantResponse.json();
-          console.log('[SPLIT-MEAL] ✅ Phase 2 completed - Restaurant meals generated:', {
-            success: restaurantResult.success,
-            restaurantMealsCount: restaurantResult.restaurantMeals?.length || 0,
-            totalTime: `${restaurantTime}ms`
-          });
-        } else {
-          console.error('[SPLIT-MEAL] ❌ Phase 2 failed - Restaurant generation failed:', {
-            status: restaurantResponse.status,
-            totalTime: `${restaurantTime}ms`
-          });
-        }
-      }).catch(error => {
-        const restaurantTime = Date.now() - startTime;
-        console.error('[SPLIT-MEAL] ❌ Phase 2 error - Restaurant generation error:', {
-          error: error.message,
-          totalTime: `${restaurantTime}ms`
-        });
-      });
-
-      console.log('[SPLIT-MEAL] 🎯 Split pipeline initiated successfully - Home meals ready, restaurants generating in background');
-
-    } else {
-      const totalTime = Date.now() - startTime;
-      console.error('[SPLIT-MEAL] ❌ Phase 1 failed - Home meal generation failed:', {
-        status: homeMealsResponse.status,
-        statusText: homeMealsResponse.statusText,
-        totalTime: `${totalTime}ms`
-      });
-    }
-  } catch (error) {
-    const totalTime = Date.now() - startTime;
-    console.error('[SPLIT-MEAL] ❌ Split pipeline error:', {
-      error: error.message,
+    console.error('[WORKOUT-TRIGGER] ❌ Error:', {
+      error: error instanceof Error ? error.message : 'Unknown error',
       totalTime: `${totalTime}ms`
     });
   }

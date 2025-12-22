@@ -1,11 +1,11 @@
 // Centralized AI Prompts Export
 // This file consolidates all AI prompts for easy importing across the application
 
-// Re-export all meal generation prompts
+// Re-export all meal generation prompts (7-day system)
 export * from './meal-generation';
 export type {
-  Restaurant,
-  MenuExtractionContext
+  MealGenerationContext,
+  RestaurantMealContext
 } from './meal-generation';
 
 // Re-export all workout generation prompts

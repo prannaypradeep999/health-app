@@ -17,7 +17,11 @@ import {
   Apple,
   Dumbbell,
   User,
-  MapPin
+  MapPin,
+  UtensilsCrossed,
+  Star,
+  ExternalLink,
+  X
 } from "lucide-react";
 
 interface DashboardHomeProps {
@@ -27,6 +31,8 @@ interface DashboardHomeProps {
     mealsGenerated: boolean;
     workoutsGenerated: boolean;
     restaurantsDiscovered: boolean;
+    homeMealsGenerated: boolean;
+    restaurantMealsGenerated: boolean;
   };
   isGuest?: boolean;
   onShowAccountModal?: () => void;
@@ -41,6 +47,11 @@ export function DashboardHome({ user, onNavigate, generationStatus, isGuest, onS
   const [isInitialized, setIsInitialized] = useState(false);
   const [completedExercises, setCompletedExercises] = useState<Record<string, Set<string>>>({});
   const [workoutData, setWorkoutData] = useState<any>(null);
+  const [selectedMealOptions, setSelectedMealOptions] = useState<{
+    breakfast: 'primary' | 'alternative',
+    lunch: 'primary' | 'alternative',
+    dinner: 'primary' | 'alternative'
+  }>({ breakfast: 'primary', lunch: 'primary', dinner: 'primary' });
 
   // Helper functions for the new design
   const getGreeting = () => {
@@ -239,12 +250,76 @@ export function DashboardHome({ user, onNavigate, generationStatus, isGuest, onS
 
   // Get today's meals from real data - using same structure as MealPlanPage
   const getTodaysMeals = () => {
-    if (mealData && mealData.mealPlan && mealData.mealPlan.planData && mealData.mealPlan.planData.weeklyPlan) {
-      // Get today's meals (day 1) - same logic as meal tab
-      const todaysMeals = mealData.mealPlan.planData.weeklyPlan.find((day: any) => day.day === 1) || mealData.mealPlan.planData.weeklyPlan[0];
+    if (mealData && mealData.mealPlan && mealData.mealPlan.planData) {
+      // Try to get from days array (7-day structured format) or weeklyPlan (legacy format)
+      let todaysMeals = null;
 
-      const formatMeal = (meal: any, optionType: 'primary' | 'alternative' = 'primary') => {
-        if (!meal) return { name: "No data available", image: null, calories: 0 };
+      if (mealData.mealPlan.planData.days && Array.isArray(mealData.mealPlan.planData.days)) {
+        // Get today's day from 7-day structured format
+        const todayDayName = getTodayDayName();
+        todaysMeals = mealData.mealPlan.planData.days.find((day: any) => day.day === todayDayName);
+      } else if (mealData.mealPlan.planData.weeklyPlan && Array.isArray(mealData.mealPlan.planData.weeklyPlan)) {
+        // Fallback to legacy format (day 1)
+        todaysMeals = mealData.mealPlan.planData.weeklyPlan.find((day: any) => day.day === 1) || mealData.mealPlan.planData.weeklyPlan[0];
+      }
+
+      // Add null check for todaysMeals
+      if (!todaysMeals) {
+        return {
+          breakfast: {
+            primary: { name: "Meal being generated...", image: null, calories: 0, isLoading: true },
+            alternative: { name: "Alternative being generated...", image: null, calories: 0, isLoading: true }
+          },
+          lunch: {
+            primary: { name: "Meal being generated...", image: null, calories: 0, isLoading: true },
+            alternative: { name: "Alternative being generated...", image: null, calories: 0, isLoading: true }
+          },
+          dinner: {
+            primary: { name: "Meal being generated...", image: null, calories: 0, isLoading: true },
+            alternative: { name: "Alternative being generated...", image: null, calories: 0, isLoading: true }
+          }
+        };
+      }
+
+      const formatMeal = (meal: any, mealType: string, optionType: 'primary' | 'alternative' = 'primary') => {
+        // Check if meal is skipped according to planned schedule
+        const plannedMeals = todaysMeals.plannedMeals || {};
+        if (plannedMeals[mealType] === 'no-meal') {
+          return {
+            name: "Meal skipped as per your schedule",
+            image: null,
+            calories: 0,
+            isSkipped: true
+          };
+        }
+
+        // Check if meal is still loading (no meal data but should have one)
+        if (!meal || meal === null) {
+          const isHome = plannedMeals[mealType] === 'home';
+          const isRestaurant = plannedMeals[mealType] === 'restaurant';
+
+          if (isRestaurant && !generationStatus.restaurantMealsGenerated) {
+            return {
+              name: "Finding restaurant options...",
+              image: null,
+              calories: 0,
+              isLoading: true
+            };
+          } else if (isHome && !generationStatus.homeMealsGenerated) {
+            return {
+              name: "Creating home meal...",
+              image: null,
+              calories: 0,
+              isLoading: true
+            };
+          } else {
+            return {
+              name: "No data available",
+              image: null,
+              calories: 0
+            };
+          }
+        }
 
         // Handle primary/alternatives structure
         let actualMeal;
@@ -252,6 +327,24 @@ export function DashboardHome({ user, onNavigate, generationStatus, isGuest, onS
           actualMeal = meal.alternatives[0]; // First alternative
         } else {
           actualMeal = meal.primary || meal;
+        }
+
+        // If still no actual meal data, check if it's loading
+        if (!actualMeal) {
+          const isRestaurant = plannedMeals[mealType] === 'restaurant';
+          if (isRestaurant && !generationStatus.restaurantMealsGenerated) {
+            return {
+              name: optionType === 'alternative' ? "Finding alternative restaurant..." : "Finding restaurant options...",
+              image: null,
+              calories: 0,
+              isLoading: true
+            };
+          }
+          return {
+            name: optionType === 'alternative' ? "Alternative not available" : "No meal data",
+            image: null,
+            calories: 0
+          };
         }
 
         if (actualMeal.source === "restaurant") {
@@ -272,12 +365,12 @@ export function DashboardHome({ user, onNavigate, generationStatus, isGuest, onS
       };
 
       // Handle the {primary, alternatives} structure - show both options
-      const breakfastPrimary = formatMeal(todaysMeals.breakfast, 'primary');
-      const breakfastAlternative = formatMeal(todaysMeals.breakfast, 'alternative');
-      const lunchPrimary = formatMeal(todaysMeals.lunch, 'primary');
-      const lunchAlternative = formatMeal(todaysMeals.lunch, 'alternative');
-      const dinnerPrimary = formatMeal(todaysMeals.dinner, 'primary');
-      const dinnerAlternative = formatMeal(todaysMeals.dinner, 'alternative');
+      const breakfastPrimary = formatMeal(todaysMeals.meals?.breakfast, 'breakfast', 'primary');
+      const breakfastAlternative = formatMeal(todaysMeals.meals?.breakfast, 'breakfast', 'alternative');
+      const lunchPrimary = formatMeal(todaysMeals.meals?.lunch, 'lunch', 'primary');
+      const lunchAlternative = formatMeal(todaysMeals.meals?.lunch, 'lunch', 'alternative');
+      const dinnerPrimary = formatMeal(todaysMeals.meals?.dinner, 'dinner', 'primary');
+      const dinnerAlternative = formatMeal(todaysMeals.meals?.dinner, 'dinner', 'alternative');
 
       return {
         breakfast: {
@@ -299,16 +392,16 @@ export function DashboardHome({ user, onNavigate, generationStatus, isGuest, onS
 
     return {
       breakfast: {
-        primary: { name: "No meal data available", image: null, calories: 0 },
-        alternative: { name: "No meal data available", image: null, calories: 0 }
+        primary: { name: "Generating your personalized meal plan...", image: null, calories: 0, isLoading: true },
+        alternative: { name: "Creating alternative options...", image: null, calories: 0, isLoading: true }
       },
       lunch: {
-        primary: { name: "No meal data available", image: null, calories: 0 },
-        alternative: { name: "No meal data available", image: null, calories: 0 }
+        primary: { name: "Generating your personalized meal plan...", image: null, calories: 0, isLoading: true },
+        alternative: { name: "Creating alternative options...", image: null, calories: 0, isLoading: true }
       },
       dinner: {
-        primary: { name: "No meal data available", image: null, calories: 0 },
-        alternative: { name: "No meal data available", image: null, calories: 0 }
+        primary: { name: "Generating your personalized meal plan...", image: null, calories: 0, isLoading: true },
+        alternative: { name: "Creating alternative options...", image: null, calories: 0, isLoading: true }
       },
       totalCalories: 0,
       dayName: "Today"
@@ -341,12 +434,12 @@ export function DashboardHome({ user, onNavigate, generationStatus, isGuest, onS
     }
 
     return {
-      focus: "No workout data available",
+      focus: "Generating your workout plan...",
       duration: 0,
       calories: 0,
       exercises: [],
       restDay: false,
-      description: "Generate your workout plan to see today's workout",
+      description: "Creating personalized workouts based on your preferences",
       totalExercises: 0
     };
   };
@@ -383,6 +476,14 @@ export function DashboardHome({ user, onNavigate, generationStatus, isGuest, onS
       console.log('Dashboard - new eatenMeals state:', newState);
       return newState;
     });
+  };
+
+  // NEW: Toggle meal option selection
+  const toggleMealOption = (mealType: 'breakfast' | 'lunch' | 'dinner') => {
+    setSelectedMealOptions(prev => ({
+      ...prev,
+      [mealType]: prev[mealType] === 'primary' ? 'alternative' : 'primary'
+    }));
   };
 
   // Calculate real consumed macros for today
@@ -775,53 +876,98 @@ export function DashboardHome({ user, onNavigate, generationStatus, isGuest, onS
             </div>
 
             <div className="grid gap-3">
-              {/* Breakfast */}
+              {/* NEW: Breakfast Toggle Design */}
               {todaysMeals.breakfast && (
-                <div className="space-y-2">
-                  <h4 className="font-bold text-gray-900 text-base">Breakfast Options</h4>
-                  {/* Primary Option */}
-                  <div className="flex items-center space-x-3 sm:space-x-4 p-2 sm:p-3 bg-gray-50 border border-gray-200 rounded-lg hover:shadow-md transition-shadow">
-                    <div className="flex-shrink-0">
-                      <ImageWithFallback
-                        src={todaysMeals.breakfast.primary.image || "https://images.unsplash.com/photo-1506084868230-bb9d95c24759"}
-                        alt={todaysMeals.breakfast.primary.name}
-                        className="w-12 h-12 sm:w-14 sm:h-14 object-cover rounded-lg shadow-sm"
-                      />
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <p className="text-sm text-gray-700 truncate">{todaysMeals.breakfast.primary.name}</p>
-                      <p className="text-xs text-[#8b5cf6] font-medium">{todaysMeals.breakfast.primary.calories} cal</p>
-                    </div>
-                    <div className="flex items-center space-x-2">
-                      <input
-                        type="checkbox"
-                        checked={isMealEaten('breakfast', 0, 'primary')}
-                        onChange={() => toggleMealEatenFromDashboard('breakfast', 0, 'primary')}
-                        className="h-4 w-4 text-[#c1272d] focus:ring-[#c1272d] border-gray-300 rounded"
-                      />
+                <div className="bg-white border-2 border-gray-200 rounded-xl shadow-sm hover:shadow-md transition-all duration-300 overflow-hidden">
+                  {/* Header */}
+                  <div className="bg-gradient-to-r from-orange-50 to-yellow-50 px-4 py-2 border-b border-gray-200 flex items-center justify-between">
+                    <h4 className="font-bold text-gray-900 text-base flex items-center gap-2">
+                      🍳 Breakfast
+                    </h4>
+                    <div className={`px-2 py-1 rounded-full text-xs font-medium ${
+                      selectedMealOptions.breakfast === 'primary'
+                        ? 'bg-orange-100 text-orange-700'
+                        : 'bg-purple-100 text-purple-700'
+                    }`}>
+                      {selectedMealOptions.breakfast === 'primary' ? '⭐ Primary' : '🔄 Alternative'}
                     </div>
                   </div>
-                  {/* Alternative Option */}
-                  {todaysMeals.breakfast.alternative.name !== "No meal data available" && (
-                    <div className="flex items-center space-x-3 sm:space-x-4 p-2 sm:p-3 bg-gray-50 border border-gray-200 rounded-lg hover:shadow-md transition-shadow">
-                      <div className="flex-shrink-0">
-                        <ImageWithFallback
-                          src={todaysMeals.breakfast.alternative.image || "https://images.unsplash.com/photo-1506084868230-bb9d95c24759"}
-                          alt={todaysMeals.breakfast.alternative.name}
-                          className="w-12 h-12 sm:w-14 sm:h-14 object-cover rounded-lg shadow-sm"
-                        />
-                      </div>
-                      <div className="flex-1 min-w-0">
-                        <p className="text-sm text-gray-700 truncate">{todaysMeals.breakfast.alternative.name}</p>
-                        <p className="text-xs text-[#8b5cf6] font-medium">{todaysMeals.breakfast.alternative.calories} cal</p>
-                      </div>
-                      <div className="flex items-center space-x-2">
-                        <input
-                          type="checkbox"
-                          checked={isMealEaten('breakfast', 0, 'alternative')}
-                          onChange={() => toggleMealEatenFromDashboard('breakfast', 0, 'alternative')}
-                          className="h-4 w-4 text-[#c1272d] focus:ring-[#c1272d] border-gray-300 rounded"
-                        />
+
+                  {/* Current Selected Option */}
+                  <div className="p-4">
+                    {(() => {
+                      const currentOption = selectedMealOptions.breakfast === 'primary'
+                        ? todaysMeals.breakfast.primary
+                        : todaysMeals.breakfast.alternative;
+
+                      return (
+                        <div className="flex items-center space-x-3">
+                          <div className="flex-shrink-0">
+                            {currentOption.isLoading ? (
+                              <div className="w-16 h-16 bg-gray-200 rounded-xl flex items-center justify-center">
+                                <div className="w-5 h-5 border-2 border-[#c1272d] border-t-transparent rounded-full animate-spin"></div>
+                              </div>
+                            ) : currentOption.isSkipped ? (
+                              <div className="w-16 h-16 bg-gray-300 rounded-xl flex items-center justify-center">
+                                <span className="text-gray-500 text-xl">🚫</span>
+                              </div>
+                            ) : (
+                              <ImageWithFallback
+                                src={currentOption.image || "https://images.unsplash.com/photo-1506084868230-bb9d95c24759"}
+                                alt={currentOption.name}
+                                className="w-16 h-16 object-cover rounded-xl shadow-md"
+                              />
+                            )}
+                          </div>
+
+                          <div className="flex-1 min-w-0">
+                            <h5 className={`font-semibold text-gray-900 mb-1 ${
+                              currentOption.isSkipped ? 'text-gray-500 italic' : ''
+                            }`}>
+                              {currentOption.name}
+                            </h5>
+                            <p className="text-sm text-[#8b5cf6] font-medium mb-2">
+                              {currentOption.isSkipped ? 'Skipped' : `${currentOption.calories} cal`}
+                            </p>
+
+                            <div className="flex items-center gap-3">
+                              {!currentOption.isSkipped && !currentOption.isLoading && (
+                                <label className="flex items-center gap-2 cursor-pointer">
+                                  <input
+                                    type="checkbox"
+                                    checked={isMealEaten('breakfast', 0, selectedMealOptions.breakfast)}
+                                    onChange={() => toggleMealEatenFromDashboard('breakfast', 0, selectedMealOptions.breakfast)}
+                                    className="h-4 w-4 text-[#c1272d] focus:ring-[#c1272d] border-gray-300 rounded"
+                                  />
+                                  <span className="text-sm text-gray-600">Mark as eaten</span>
+                                </label>
+                              )}
+                            </div>
+                          </div>
+                        </div>
+                      );
+                    })()}
+                  </div>
+
+                  {/* Toggle Switch */}
+                  {todaysMeals.breakfast.alternative.name !== "Alternative not available" && (
+                    <div className="border-t border-gray-200 bg-gray-50 px-4 py-3">
+                      <div className="flex items-center justify-between">
+                        <div className="text-sm text-gray-600">
+                          Switch to: <span className="font-medium text-gray-900">
+                            {selectedMealOptions.breakfast === 'primary'
+                              ? todaysMeals.breakfast.alternative.name
+                              : todaysMeals.breakfast.primary.name
+                            }
+                          </span>
+                        </div>
+                        <Button
+                          onClick={() => toggleMealOption('breakfast')}
+                          size="sm"
+                          className="bg-gradient-to-r from-orange-400 to-yellow-400 hover:from-orange-500 hover:to-yellow-500 text-white border-0 shadow-sm transition-all duration-200 hover:scale-105 text-xs px-3 py-1"
+                        >
+                          🔄 Switch
+                        </Button>
                       </div>
                     </div>
                   )}
@@ -833,48 +979,78 @@ export function DashboardHome({ user, onNavigate, generationStatus, isGuest, onS
                 <div className="space-y-2">
                   <h4 className="font-bold text-gray-900 text-base">Lunch Options</h4>
                   {/* Primary Option */}
-                  <div className="flex items-center space-x-3 sm:space-x-4 p-2 sm:p-3 bg-gray-50 border border-gray-200 rounded-lg hover:shadow-md transition-shadow">
+                  <div className={`flex items-center space-x-3 sm:space-x-4 p-2 sm:p-3 border rounded-lg transition-shadow ${
+                    todaysMeals.lunch.primary.isSkipped
+                      ? 'bg-gray-100 border-gray-300'
+                      : 'bg-gray-50 border-gray-200 hover:shadow-md'
+                  }`}>
                     <div className="flex-shrink-0">
-                      <ImageWithFallback
-                        src={todaysMeals.lunch.primary.image || "https://images.unsplash.com/photo-1546793665-c74683f339c1"}
-                        alt={todaysMeals.lunch.primary.name}
-                        className="w-12 h-12 sm:w-14 sm:h-14 object-cover rounded-lg shadow-sm"
-                      />
+                      {todaysMeals.lunch.primary.isLoading ? (
+                        <div className="w-12 h-12 sm:w-14 sm:h-14 bg-gray-200 rounded-lg flex items-center justify-center">
+                          <div className="w-5 h-5 border-2 border-[#c1272d] border-t-transparent rounded-full animate-spin"></div>
+                        </div>
+                      ) : todaysMeals.lunch.primary.isSkipped ? (
+                        <div className="w-12 h-12 sm:w-14 sm:h-14 bg-gray-300 rounded-lg flex items-center justify-center">
+                          <X className="w-5 h-5 text-gray-500" />
+                        </div>
+                      ) : (
+                        <ImageWithFallback
+                          src={todaysMeals.lunch.primary.image || "https://images.unsplash.com/photo-1546793665-c74683f339c1"}
+                          alt={todaysMeals.lunch.primary.name}
+                          className="w-12 h-12 sm:w-14 sm:h-14 object-cover rounded-lg shadow-sm"
+                        />
+                      )}
                     </div>
                     <div className="flex-1 min-w-0">
-                      <p className="text-sm text-gray-700 truncate">{todaysMeals.lunch.primary.name}</p>
-                      <p className="text-xs text-[#8b5cf6] font-medium">{todaysMeals.lunch.primary.calories} cal</p>
+                      <p className={`text-sm truncate ${
+                        todaysMeals.lunch.primary.isSkipped ? 'text-gray-500 italic' : 'text-gray-700'
+                      }`}>
+                        {todaysMeals.lunch.primary.name}
+                      </p>
+                      <p className="text-xs text-[#8b5cf6] font-medium">
+                        {todaysMeals.lunch.primary.isSkipped ? '' : `${todaysMeals.lunch.primary.calories} cal`}
+                      </p>
                     </div>
                     <div className="flex items-center space-x-2">
-                      <input
-                        type="checkbox"
-                        checked={isMealEaten('lunch', 0, 'primary')}
-                        onChange={() => toggleMealEatenFromDashboard('lunch', 0, 'primary')}
-                        className="h-4 w-4 text-[#c1272d] focus:ring-[#c1272d] border-gray-300 rounded"
-                      />
+                      {!todaysMeals.lunch.primary.isSkipped && !todaysMeals.lunch.primary.isLoading && (
+                        <input
+                          type="checkbox"
+                          checked={isMealEaten('lunch', 0, 'primary')}
+                          onChange={() => toggleMealEatenFromDashboard('lunch', 0, 'primary')}
+                          className="h-4 w-4 text-[#c1272d] focus:ring-[#c1272d] border-gray-300 rounded"
+                        />
+                      )}
                     </div>
                   </div>
                   {/* Alternative Option */}
-                  {todaysMeals.lunch.alternative.name !== "No meal data available" && (
+                  {!todaysMeals.lunch.primary.isSkipped && todaysMeals.lunch.alternative.name !== "Alternative not available" && (
                     <div className="flex items-center space-x-3 sm:space-x-4 p-2 sm:p-3 bg-gray-50 border border-gray-200 rounded-lg hover:shadow-md transition-shadow">
                       <div className="flex-shrink-0">
-                        <ImageWithFallback
-                          src={todaysMeals.lunch.alternative.image || "https://images.unsplash.com/photo-1546793665-c74683f339c1"}
-                          alt={todaysMeals.lunch.alternative.name}
-                          className="w-12 h-12 sm:w-14 sm:h-14 object-cover rounded-lg shadow-sm"
-                        />
+                        {todaysMeals.lunch.alternative.isLoading ? (
+                          <div className="w-12 h-12 sm:w-14 sm:h-14 bg-gray-200 rounded-lg flex items-center justify-center">
+                            <div className="w-5 h-5 border-2 border-[#c1272d] border-t-transparent rounded-full animate-spin"></div>
+                          </div>
+                        ) : (
+                          <ImageWithFallback
+                            src={todaysMeals.lunch.alternative.image || "https://images.unsplash.com/photo-1546793665-c74683f339c1"}
+                            alt={todaysMeals.lunch.alternative.name}
+                            className="w-12 h-12 sm:w-14 sm:h-14 object-cover rounded-lg shadow-sm"
+                          />
+                        )}
                       </div>
                       <div className="flex-1 min-w-0">
                         <p className="text-sm text-gray-700 truncate">{todaysMeals.lunch.alternative.name}</p>
                         <p className="text-xs text-[#8b5cf6] font-medium">{todaysMeals.lunch.alternative.calories} cal</p>
                       </div>
                       <div className="flex items-center space-x-2">
-                        <input
-                          type="checkbox"
-                          checked={isMealEaten('lunch', 0, 'alternative')}
-                          onChange={() => toggleMealEatenFromDashboard('lunch', 0, 'alternative')}
-                          className="h-4 w-4 text-[#c1272d] focus:ring-[#c1272d] border-gray-300 rounded"
-                        />
+                        {!todaysMeals.lunch.alternative.isLoading && (
+                          <input
+                            type="checkbox"
+                            checked={isMealEaten('lunch', 0, 'alternative')}
+                            onChange={() => toggleMealEatenFromDashboard('lunch', 0, 'alternative')}
+                            className="h-4 w-4 text-[#c1272d] focus:ring-[#c1272d] border-gray-300 rounded"
+                          />
+                        )}
                       </div>
                     </div>
                   )}
@@ -886,48 +1062,78 @@ export function DashboardHome({ user, onNavigate, generationStatus, isGuest, onS
                 <div className="space-y-2">
                   <h4 className="font-bold text-gray-900 text-base">Dinner Options</h4>
                   {/* Primary Option */}
-                  <div className="flex items-center space-x-3 sm:space-x-4 p-2 sm:p-3 bg-gray-50 border border-gray-200 rounded-lg hover:shadow-md transition-shadow">
+                  <div className={`flex items-center space-x-3 sm:space-x-4 p-2 sm:p-3 border rounded-lg transition-shadow ${
+                    todaysMeals.dinner.primary.isSkipped
+                      ? 'bg-gray-100 border-gray-300'
+                      : 'bg-gray-50 border-gray-200 hover:shadow-md'
+                  }`}>
                     <div className="flex-shrink-0">
-                      <ImageWithFallback
-                        src={todaysMeals.dinner.primary.image || "https://images.unsplash.com/photo-1565299624946-b28f40a0ca4b"}
-                        alt={todaysMeals.dinner.primary.name}
-                        className="w-12 h-12 sm:w-14 sm:h-14 object-cover rounded-lg shadow-sm"
-                      />
+                      {todaysMeals.dinner.primary.isLoading ? (
+                        <div className="w-12 h-12 sm:w-14 sm:h-14 bg-gray-200 rounded-lg flex items-center justify-center">
+                          <div className="w-5 h-5 border-2 border-[#c1272d] border-t-transparent rounded-full animate-spin"></div>
+                        </div>
+                      ) : todaysMeals.dinner.primary.isSkipped ? (
+                        <div className="w-12 h-12 sm:w-14 sm:h-14 bg-gray-300 rounded-lg flex items-center justify-center">
+                          <X className="w-5 h-5 text-gray-500" />
+                        </div>
+                      ) : (
+                        <ImageWithFallback
+                          src={todaysMeals.dinner.primary.image || "https://images.unsplash.com/photo-1565299624946-b28f40a0ca4b"}
+                          alt={todaysMeals.dinner.primary.name}
+                          className="w-12 h-12 sm:w-14 sm:h-14 object-cover rounded-lg shadow-sm"
+                        />
+                      )}
                     </div>
                     <div className="flex-1 min-w-0">
-                      <p className="text-sm text-gray-700 truncate">{todaysMeals.dinner.primary.name}</p>
-                      <p className="text-xs text-[#8b5cf6] font-medium">{todaysMeals.dinner.primary.calories} cal</p>
+                      <p className={`text-sm truncate ${
+                        todaysMeals.dinner.primary.isSkipped ? 'text-gray-500 italic' : 'text-gray-700'
+                      }`}>
+                        {todaysMeals.dinner.primary.name}
+                      </p>
+                      <p className="text-xs text-[#8b5cf6] font-medium">
+                        {todaysMeals.dinner.primary.isSkipped ? '' : `${todaysMeals.dinner.primary.calories} cal`}
+                      </p>
                     </div>
                     <div className="flex items-center space-x-2">
-                      <input
-                        type="checkbox"
-                        checked={isMealEaten('dinner', 0, 'primary')}
-                        onChange={() => toggleMealEatenFromDashboard('dinner', 0, 'primary')}
-                        className="h-4 w-4 text-[#c1272d] focus:ring-[#c1272d] border-gray-300 rounded"
-                      />
+                      {!todaysMeals.dinner.primary.isSkipped && !todaysMeals.dinner.primary.isLoading && (
+                        <input
+                          type="checkbox"
+                          checked={isMealEaten('dinner', 0, 'primary')}
+                          onChange={() => toggleMealEatenFromDashboard('dinner', 0, 'primary')}
+                          className="h-4 w-4 text-[#c1272d] focus:ring-[#c1272d] border-gray-300 rounded"
+                        />
+                      )}
                     </div>
                   </div>
                   {/* Alternative Option */}
-                  {todaysMeals.dinner.alternative.name !== "No meal data available" && (
+                  {!todaysMeals.dinner.primary.isSkipped && todaysMeals.dinner.alternative.name !== "Alternative not available" && (
                     <div className="flex items-center space-x-3 sm:space-x-4 p-2 sm:p-3 bg-gray-50 border border-gray-200 rounded-lg hover:shadow-md transition-shadow">
                       <div className="flex-shrink-0">
-                        <ImageWithFallback
-                          src={todaysMeals.dinner.alternative.image || "https://images.unsplash.com/photo-1565299624946-b28f40a0ca4b"}
-                          alt={todaysMeals.dinner.alternative.name}
-                          className="w-12 h-12 sm:w-14 sm:h-14 object-cover rounded-lg shadow-sm"
-                        />
+                        {todaysMeals.dinner.alternative.isLoading ? (
+                          <div className="w-12 h-12 sm:w-14 sm:h-14 bg-gray-200 rounded-lg flex items-center justify-center">
+                            <div className="w-5 h-5 border-2 border-[#c1272d] border-t-transparent rounded-full animate-spin"></div>
+                          </div>
+                        ) : (
+                          <ImageWithFallback
+                            src={todaysMeals.dinner.alternative.image || "https://images.unsplash.com/photo-1565299624946-b28f40a0ca4b"}
+                            alt={todaysMeals.dinner.alternative.name}
+                            className="w-12 h-12 sm:w-14 sm:h-14 object-cover rounded-lg shadow-sm"
+                          />
+                        )}
                       </div>
                       <div className="flex-1 min-w-0">
                         <p className="text-sm text-gray-700 truncate">{todaysMeals.dinner.alternative.name}</p>
                         <p className="text-xs text-[#8b5cf6] font-medium">{todaysMeals.dinner.alternative.calories} cal</p>
                       </div>
                       <div className="flex items-center space-x-2">
-                        <input
-                          type="checkbox"
-                          checked={isMealEaten('dinner', 0, 'alternative')}
-                          onChange={() => toggleMealEatenFromDashboard('dinner', 0, 'alternative')}
-                          className="h-4 w-4 text-[#c1272d] focus:ring-[#c1272d] border-gray-300 rounded"
-                        />
+                        {!todaysMeals.dinner.alternative.isLoading && (
+                          <input
+                            type="checkbox"
+                            checked={isMealEaten('dinner', 0, 'alternative')}
+                            onChange={() => toggleMealEatenFromDashboard('dinner', 0, 'alternative')}
+                            className="h-4 w-4 text-[#c1272d] focus:ring-[#c1272d] border-gray-300 rounded"
+                          />
+                        )}
                       </div>
                     </div>
                   )}
