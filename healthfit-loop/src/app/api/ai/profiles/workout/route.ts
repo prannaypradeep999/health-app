@@ -256,8 +256,7 @@ Make it feel personal, specific to their situation, and motivating. Use their na
         },
         { role: 'user', content: prompt }
       ],
-      temperature: 0.7,
-      max_tokens: 800
+      temperature: 0.7
     })
   });
 

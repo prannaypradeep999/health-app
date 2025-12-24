@@ -275,8 +275,7 @@ Extract 6-12 menu items maximum. Return ONLY valid JSON.`;
           model: 'gpt-4o',
           messages: [{ role: 'user', content: gptPrompt }],
           response_format: { type: "json_object" },
-          temperature: 0.1,
-          max_tokens: 2000
+          temperature: 0.1
         })
       });
 

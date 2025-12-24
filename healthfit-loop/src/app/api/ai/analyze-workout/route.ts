@@ -29,8 +29,7 @@ export async function POST(request: NextRequest) {
           { role: 'system', content: 'You are a fitness expert. Respond with ONLY valid JSON.' },
           { role: 'user', content: prompt }
         ],
-        temperature: 0.3,
-        max_tokens: 150
+        temperature: 0.3
       })
     });
 
