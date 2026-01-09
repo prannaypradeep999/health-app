@@ -92,7 +92,7 @@ TASK: Create a comprehensive fitness profile that captures this user's personali
 FORMAT: Write in 2nd person ("you") as if speaking directly to the user. Be specific, actionable, and motivating.
 
 INCLUDE:
-1. TRAINING PHILOSOPHY: Based on their goal (${surveyData.goal}) and current activity level
+1. TRAINING PHILOSOPHY: Based on their goal (${surveyData.primaryGoal || surveyData.goal}) and fitness level (${surveyData.fitnessLevel || 'intermediate'})
 2. WORKOUT STRATEGY: How to structure training for their lifestyle and preferences
 3. PROGRESSION APPROACH: Realistic timeline based on their fitness timeline expectations
 4. MOTIVATION STYLE: What drives them based on sports interests and personality
@@ -138,10 +138,15 @@ SCIENTIFIC PRINCIPLES YOU FOLLOW:
 
 USER PROFILE:
 - Age: ${surveyData.age}, Sex: ${surveyData.sex}
-- Primary Goal: ${surveyData.goal}
+- Primary Goal: ${surveyData.primaryGoal || surveyData.goal}
+- Health Focus: ${surveyData.healthFocus || 'general'}
+- Maintain Focus: ${surveyData.maintainFocus || 'Not specified'}
+- Current Fitness Level: ${surveyData.fitnessLevel || 'intermediate'}
 - Activity Level: ${surveyData.activityLevel}
 - Sports Interests: ${surveyData.sportsInterests || 'none specified'}
+- Preferred Activities: ${(surveyData.preferredActivities || []).join(', ') || 'varied'}
 - Fitness Timeline: ${surveyData.fitnessTimeline || 'no specific timeline'}
+- Additional Notes: ${surveyData.additionalGoalsNotes || 'none'}
 - Monthly Fitness Budget: $${surveyData.monthlyFitnessBudget || 50}
 - Workout Experience: ${workoutPrefs.fitnessExperience || 'intermediate'}
 - Gym Access: ${workoutPrefs.gymAccess || 'no_gym'}
@@ -174,7 +179,102 @@ REST PERIODS (Research-backed):
 - Hypertrophy: 1-3 minutes (Schoenfeld et al.)
 - Endurance: 30-90 seconds (circuit style)
 
-RETURN EXACTLY THIS JSON STRUCTURE:
+${(() => {
+  // Goal-specific workout guidance
+  function getWorkoutGoalGuidance(surveyData, workoutPrefs) {
+    const { primaryGoal, fitnessLevel, healthFocus, maintainFocus } = surveyData;
+
+    if (primaryGoal === 'lose_weight') {
+      return `WEIGHT LOSS FOCUS: Include HIIT elements, higher rep ranges, shorter rest periods.
+              Emphasize compound movements for maximum calorie burn.
+              Add optional cardio finishers to workouts.`;
+    }
+
+    if (primaryGoal === 'build_muscle' && fitnessLevel) {
+      const levelGuide = {
+        'beginner': 'BEGINNER: Full body 3x/week, focus on form, lighter weights, 2-3 sets per exercise.',
+        'intermediate': 'INTERMEDIATE: Upper/Lower or PPL split, progressive overload, 3-4 sets.',
+        'advanced': 'ADVANCED: Advanced splits, periodization, intensity techniques, 4-5 sets.'
+      };
+      return levelGuide[fitnessLevel] || '';
+    }
+
+    if (primaryGoal === 'get_healthier' && healthFocus) {
+      const healthGuide = {
+        'energy': 'ENERGY FOCUS: Morning workouts preferred, mix of cardio and strength.',
+        'digestion': 'DIGESTION FOCUS: Include core work, walking, yoga elements. Avoid exercising right after meals.',
+        'mental_clarity': 'MENTAL CLARITY: Include mind-body elements, outdoor options when possible.',
+        'bloodwork': 'BLOODWORK FOCUS: Emphasize cardiovascular health, moderate intensity steady-state cardio.',
+        'general': 'GENERAL WELLNESS: Balanced approach with strength, cardio, and flexibility.'
+      };
+      return healthGuide[healthFocus] || '';
+    }
+
+    if (primaryGoal === 'maintain') {
+      let maintainGuide = 'MAINTENANCE FOCUS: Emphasize consistency and enjoyment over intensity. Mix of strength training and activities you enjoy. Focus on movement quality and habit formation.';
+
+      if (maintainFocus) {
+        const focusGuidance: Record<string, string> = {
+          'consistency': `
+
+USER WANTS CONSISTENCY: Design a highly repeatable routine.
+- Use the same core exercises each week (builds mastery and habit)
+- 3-4 day split that fits their schedule reliably
+- Moderate intensity (RPE 6-7) to avoid burnout
+- Same workout times each week when possible
+- Simple progressions (add 1 rep or small weight increases)
+- Minimal equipment changes between exercises
+- Include "minimum effective dose" alternatives for busy days`,
+
+          'recomp': `
+
+USER WANTS BODY RECOMPOSITION: Build muscle while staying lean.
+- Higher training volume (4-5 days if possible)
+- Compound lifts with progressive overload emphasis
+- Include both strength (3-6 reps) and hypertrophy (8-12 reps) rep ranges
+- Strategic cardio: 2-3 HIIT or LISS sessions for fat oxidation
+- Focus on muscle groups user wants to develop
+- Track lifts to ensure progressive overload
+- Emphasize time under tension for hypertrophy`,
+
+          'habits': `
+
+USER WANTS TO BUILD LASTING HABITS: Focus on habit formation.
+- Start with achievable frequency (3 days) before adding more
+- Suggest habit stacking: "After [morning coffee], I will [do 10 min warmup]"
+- Same time each day to build automatic behavior
+- Celebrate small wins in workout descriptions
+- Include "2-minute rule" mini-workouts for tough days
+- Build identity: "You're becoming someone who exercises regularly"
+- Remove friction: prep workout clothes night before`,
+
+          'intuitive': `
+
+USER PREFERS INTUITIVE TRAINING: Flexible, body-aware approach.
+- RPE-based intensity (no strict percentages)
+- Offer exercise alternatives for each movement pattern
+- Include "listen to your body" cues in descriptions
+- Autoregulation: adjust volume based on daily energy
+- No rigid structure - suggest movement categories not exact exercises
+- Include mobility/recovery as valid workout options
+- Emphasize enjoyment and sustainability over optimization`
+        };
+
+        maintainGuide += focusGuidance[maintainFocus] || '';
+      }
+
+      return maintainGuide;
+    }
+
+    return '';
+  }
+
+  const guidance = getWorkoutGoalGuidance(surveyData, workoutPrefs);
+  return guidance ? `PERSONALIZED WORKOUT GUIDANCE:
+${guidance}
+
+` : '';
+})()}RETURN EXACTLY THIS JSON STRUCTURE:
 
 {
   "weeklyPlan": [
@@ -185,7 +285,7 @@ RETURN EXACTLY THIS JSON STRUCTURE:
       "estimatedTime": "45 minutes",
       "estimatedCalories": 280,
       "targetMuscles": ["chest", "shoulders", "triceps"],
-      "description": "Welcome to your Push day! Today we're targeting your chest, shoulders, and triceps using proven push movement patterns. This workout follows the Push/Pull/Legs methodology used by top bodybuilders and strength coaches. Focus on perfect form over heavy weight - choose weights that allow you to complete all reps with 2-3 reps in reserve. Control the weight on both the lowering and lifting phases, and engage your core throughout each movement. Perfect for your ${surveyData.goal} goal because pushing movements build upper body strength and size while burning significant calories. Listen to your body and adjust weights as needed!",
+      "description": "Welcome to your Push day! Today we're targeting your chest, shoulders, and triceps using proven push movement patterns. This workout follows the Push/Pull/Legs methodology used by top bodybuilders and strength coaches. Focus on perfect form over heavy weight - choose weights that allow you to complete all reps with 2-3 reps in reserve. Control the weight on both the lowering and lifting phases, and engage your core throughout each movement. Perfect for your ${surveyData.primaryGoal || surveyData.goal} goal because pushing movements build upper body strength and size while burning significant calories. Listen to your body and adjust weights as needed!",
       "exercises": [
         {
           "name": "Push-ups (or Bench Press if available)",
@@ -207,7 +307,7 @@ RETURN EXACTLY THIS JSON STRUCTURE:
   ],
   "overview": {
     "splitType": "Push/Pull/Legs (PPL)",
-    "description": "This evidence-based Push/Pull/Legs split is designed specifically for your ${surveyData.goal} goal. It's the gold standard used by elite bodybuilders and strength athletes because it maximizes muscle protein synthesis while allowing optimal recovery between sessions.",
+    "description": "This evidence-based Push/Pull/Legs split is designed specifically for your ${surveyData.primaryGoal || surveyData.goal} goal. It's the gold standard used by elite bodybuilders and strength athletes because it maximizes muscle protein synthesis while allowing optimal recovery between sessions.",
     "whyThisSplit": "PPL split allows you to train each muscle group with high volume while providing 48-72 hours recovery (optimal for muscle protein synthesis). Research by Schoenfeld et al. shows this frequency maximizes hypertrophy and strength gains. Perfect for your ${workoutPrefs.fitnessExperience || 'intermediate'} experience level.",
     "expectedResults": ["Increased muscle mass and strength", "Improved body composition", "Better movement patterns", "Enhanced metabolic rate"]
   },

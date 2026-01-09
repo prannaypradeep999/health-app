@@ -5,70 +5,101 @@ import { SurveyResponse } from '@prisma/client';
 
 // User Food Profile Generation Prompt
 export const createFoodProfilePrompt = (surveyData: SurveyResponse): string => {
-  return `You are a friendly, expert nutritionist creating a personalized food profile summary. Write in a warm, conversational tone as if speaking directly to the user.
+  // Get the relevant sub-option based on primary goal
+  const getSubOptionContext = () => {
+    switch (surveyData.primaryGoal) {
+      case 'lose_weight':
+        return surveyData.goalChallenge
+          ? `Their main challenge: ${surveyData.goalChallenge.replace('_', ' ')}`
+          : '';
+      case 'build_muscle':
+        return surveyData.fitnessLevel
+          ? `Their fitness level: ${surveyData.fitnessLevel}`
+          : '';
+      case 'get_healthier':
+        return surveyData.healthFocus
+          ? `Their health focus: ${surveyData.healthFocus.replace('_', ' ')}`
+          : '';
+      case 'maintain':
+        return surveyData.maintainFocus
+          ? `Their maintenance focus: ${surveyData.maintainFocus}`
+          : '';
+      default:
+        return '';
+    }
+  };
 
-SURVEY DATA:
-${JSON.stringify(surveyData, null, 2)}
+  return `You are a friendly, expert nutritionist creating a personalized food profile summary.
+
+USER PROFILE:
+- Name: ${surveyData.firstName} ${surveyData.lastName}
+- Age: ${surveyData.age}, Sex: ${surveyData.sex}
+- Primary Goal: ${surveyData.primaryGoal || surveyData.goal}
+${getSubOptionContext()}
+- Activity Level: ${surveyData.activityLevel}
+- Diet Restrictions: ${(surveyData.dietPrefs || []).join(', ') || 'None'}
+- Preferred Cuisines: ${(surveyData.preferredCuisines || []).join(', ') || 'Varied'}
+- Preferred Foods: ${(surveyData.preferredFoods || []).slice(0, 10).join(', ') || 'No specific preferences'}
+- Monthly Food Budget: $${surveyData.monthlyFoodBudget || 200}
+- Additional Notes: ${surveyData.additionalGoalsNotes || 'None'}
 
 TASK: Create a friendly, conversational profile that:
-1. Acknowledges their specific health goal (${surveyData.goal})
-2. Summarizes their dietary preferences and restrictions
-3. Explains our planned nutrition approach
-4. Discusses their budget and restaurant/home cooking balance
-5. **Assesses goal achievability and timeline** - be honest about realistic expectations
-6. Sets encouraging but realistic expectations for their journey
+1. Acknowledges their specific goal (${surveyData.primaryGoal || surveyData.goal}) and their particular focus/challenge
+2. Addresses their specific sub-goal directly (e.g., if they struggle with snacking, mention strategies for that)
+3. Summarizes their dietary preferences and restrictions
+4. Explains our planned nutrition approach tailored to their situation
+5. Provides honest, realistic expectations for their journey
 
-GOAL ACHIEVABILITY ASSESSMENT:
-- Evaluate if their goal is realistic given their current stats and preferences
-- Provide honest timeline expectations (e.g., "Healthy weight loss of 1-2 lbs per week")
-- Address any potential challenges or adjustments needed
-- Be encouraging but realistic about what's achievable
-
-TONE: Warm, encouraging, expert but honest about realistic expectations
-LENGTH: 200-300 words
+TONE: Warm, encouraging, expert but honest
+LENGTH: 250-350 words
 FORMAT: Write in 2nd person ("you") like a personal nutritionist
 
 Include sections:
-- **Your Goals & Achievability Assessment**
+- **Your Goals** (mention both primary goal AND their specific challenge/focus)
 - **Your Food Preferences**
-- **Our Nutrition Strategy**
-- **Realistic Timeline & What to Expect**
+- **Our Nutrition Strategy** (tailored to their specific sub-goal)
+- **What to Expect**
 
-Use **bold text** for key points and section headers. Return ONLY the conversational text.`;
+Use **bold text** for key points. Return ONLY the conversational text.`;
 };
 
 // User Workout Profile Generation Prompt
 export const createWorkoutProfilePrompt = (surveyData: SurveyResponse): string => {
-  return `You are an encouraging, expert fitness trainer creating a personalized workout profile summary. Write in a motivational, conversational tone as if you're their personal trainer.
+  const workoutPrefs = (surveyData.workoutPreferencesJson as any) || {};
 
-SURVEY DATA:
-${JSON.stringify(surveyData, null, 2)}
+  return `You are an encouraging, expert fitness trainer creating a personalized workout profile.
+
+USER PROFILE:
+- Name: ${surveyData.firstName} ${surveyData.lastName}
+- Age: ${surveyData.age}, Sex: ${surveyData.sex}
+- Primary Goal: ${surveyData.primaryGoal || surveyData.goal}
+- Fitness Level: ${surveyData.fitnessLevel || workoutPrefs.fitnessExperience || 'intermediate'}
+- Health Focus: ${surveyData.healthFocus || 'general fitness'}
+- Activity Level: ${surveyData.activityLevel}
+- Preferred Activities: ${(surveyData.preferredActivities || []).join(', ') || 'Varied'}
+- Gym Access: ${workoutPrefs.gymAccess || 'unknown'}
+- Available Days: ${(workoutPrefs.availableDays || []).join(', ') || 'Flexible'}
+- Preferred Duration: ${workoutPrefs.preferredDuration || 45} minutes
+- Monthly Fitness Budget: $${surveyData.monthlyFitnessBudget || 50}
+- Additional Notes: ${surveyData.additionalGoalsNotes || 'None'}
 
 TASK: Create an inspiring, conversational profile that:
-1. Acknowledges their fitness goal (${surveyData.goal}) and current level
-2. Summarizes their workout preferences and constraints
-3. Explains our planned training approach and methodology
-4. Discusses their timeline and equipment considerations
-5. **Assesses goal achievability and realistic timeline** - be honest about expectations
-6. Sets realistic expectations and motivates them for their journey
+1. Acknowledges their fitness goal and current fitness level
+2. Addresses their specific situation (e.g., beginner needs different approach than advanced)
+3. Explains our planned training approach
+4. Sets realistic expectations based on their level and available time
 
-GOAL ACHIEVABILITY ASSESSMENT:
-- Evaluate if their fitness goal is realistic given their current activity level and constraints
-- Provide honest timeline expectations (e.g., "Building strength takes 8-12 weeks", "Fat loss of 1-2 lbs per week")
-- Address any potential challenges or adjustments needed based on their schedule/equipment
-- Be encouraging but realistic about what's achievable with their commitment level
-
-TONE: Motivational, encouraging, expert but honest about realistic expectations
-LENGTH: 200-300 words
+TONE: Motivational, encouraging, expert but realistic
+LENGTH: 250-350 words
 FORMAT: Write in 2nd person ("you") like a personal trainer
 
 Include sections:
-- **Your Fitness Goals & Achievability Assessment**
-- **Your Training Preferences**
+- **Your Fitness Goals** (mention primary goal and fitness level)
+- **Your Training Style**
 - **Our Workout Strategy**
-- **Realistic Timeline & What to Expect**
+- **What to Expect**
 
-Use **bold text** for key points and section headers. Return ONLY the conversational text.`;
+Use **bold text** for key points. Return ONLY the conversational text.`;
 };
 
 // Profile Response Types

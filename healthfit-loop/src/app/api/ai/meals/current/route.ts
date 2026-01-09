@@ -137,20 +137,29 @@ export async function GET() {
     let metadata = userContext?.metadata || {};
     let days = userContext?.days || [];
 
-    // Count restaurant meals from different possible formats
+    // Extract grocery and meal count data
+    let groceryList = userContext?.groceryList || null;
+    let totalEstimatedCost = userContext?.totalEstimatedCost || 0;
+    let homeMeals = userContext?.homeMeals || [];
+
+    // Count restaurant and home meals from different possible formats
     let restaurantMealCount = 0;
+    let homeMealCount = 0;
     if (days.length > 0) {
       // Count from 7-day structure
       days.forEach(day => {
         Object.values(day.meals || {}).forEach(meal => {
           if (meal && meal.source === 'restaurant') {
             restaurantMealCount++;
+          } else if (meal && meal.source !== 'restaurant') {
+            homeMealCount++;
           }
         });
       });
     } else if (restaurantMeals.length > 0) {
       // Count from restaurantMeals array
       restaurantMealCount = restaurantMeals.length;
+      homeMealCount = homeMeals.length;
     }
 
     if (shouldLog) console.log(`[MealCurrent] Using 7-day structured format with ${days.length} days`);
@@ -182,6 +191,11 @@ export async function GET() {
         metadata: metadata,
         format: '7-day-structured'
       },
+      // Add grocery and count data
+      groceryList: groceryList,
+      totalEstimatedCost: totalEstimatedCost,
+      homeMealsCount: homeMealCount,
+      restaurantMealsCount: restaurantMealCount,
       nutritionTargets
     };
 

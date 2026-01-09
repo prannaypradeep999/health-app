@@ -38,13 +38,124 @@ NUTRITION TARGETS PER MEAL:
 - Lunch: ${nutritionTargets.mealTargets.lunch.calories} calories, ${nutritionTargets.mealTargets.lunch.protein}g protein
 - Dinner: ${nutritionTargets.mealTargets.dinner.calories} calories, ${nutritionTargets.mealTargets.dinner.protein}g protein
 
-USER PREFERENCES:
-- Goal: ${surveyData.goal || 'General Wellness'}
+USER PREFERENCES & GOALS:
+- Primary Goal: ${surveyData.primaryGoal || surveyData.goal || 'General Wellness'}
+- Main Challenge: ${surveyData.goalChallenge || 'None specified'}
+- Health Focus: ${surveyData.healthFocus || 'General wellness'}
+- Fitness Level: ${surveyData.fitnessLevel || 'Not specified'}
+- Maintain Focus: ${surveyData.maintainFocus || 'Not specified'}
+- Activity Level: ${surveyData.activityLevel || 'MODERATELY_ACTIVE'}
 - Diet Restrictions: ${(surveyData.dietPrefs || []).join(', ') || 'None'}
 - Preferred Foods: ${(surveyData.preferredFoods || []).slice(0, 10).join(', ') || 'No specific preferences'}
 - Preferred Cuisines: ${(surveyData.preferredCuisines || []).join(', ') || 'Varied'}
 - Budget: $${surveyData.monthlyFoodBudget || 200}/month
 
+${(() => {
+  // Comprehensive goal-specific guidance
+  function getGoalSpecificGuidance(surveyData) {
+    const { primaryGoal, goalChallenge, fitnessLevel, healthFocus, maintainFocus } = surveyData;
+
+    let guidance = '';
+
+    // Goal Challenge guidance (lose_weight)
+    if (primaryGoal === 'lose_weight' && goalChallenge) {
+      const challengeGuidance = {
+        'snacking': `USER STRUGGLES WITH SNACKING: Include 2 satisfying high-protein snacks per day.
+                     Make meals filling with fiber and protein to reduce between-meal hunger.
+                     Suggest healthy snack swaps. Avoid recipes that create leftovers prone to snacking.`,
+        'eating_out': `USER EATS OUT FREQUENTLY: Keep home recipes simple since cooking isn't their main habit.
+                       Focus on quick 15-20 min meals. Prep-friendly recipes for busy days.
+                       Include meals that compete with restaurant appeal.`,
+        'portions': `USER STRUGGLES WITH PORTIONS: Include specific portion sizes in grams/oz for everything.
+                     Suggest using smaller plates. Pre-portioned meal prep recipes preferred.
+                     Visual portion guides in recipe instructions.`,
+        'late_night': `USER TENDS TO EAT LATE AT NIGHT: Front-load calories earlier in the day.
+                       Make dinner very satisfying with protein + fiber + volume.
+                       Include a planned 150-200 cal evening snack (casein-rich: Greek yogurt, cottage cheese).
+                       Avoid simple carbs at dinner that spike then crash blood sugar.`,
+        'dont_know': `USER UNSURE WHAT TO EAT: Provide extra variety and educational notes.
+                      Explain WHY each meal supports weight loss in the description.
+                      Keep choices simple and approachable. No exotic ingredients.`
+      };
+      guidance += challengeGuidance[goalChallenge] || '';
+    }
+
+    // Fitness Level guidance (build_muscle)
+    if (primaryGoal === 'build_muscle' && fitnessLevel) {
+      const levelGuidance = {
+        'beginner': `BEGINNER LIFTER: Focus on protein basics (0.8-1g per lb bodyweight).
+                     Simpler recipes with clear protein counts. Meal timing less critical.
+                     Emphasize whole food protein sources over supplements.`,
+        'intermediate': `INTERMEDIATE LIFTER: Higher protein targets (1-1.2g per lb).
+                         Include pre/post workout meal suggestions.
+                         Strategic carb timing around training windows.`,
+        'advanced': `ADVANCED LIFTER: Performance nutrition focus (1.2-1.5g protein per lb).
+                     Precise macro breakdowns. Meal timing for optimal recovery.
+                     Include intra-workout nutrition suggestions if training >90min.`
+      };
+      guidance += levelGuidance[fitnessLevel] || '';
+    }
+
+    // Health Focus guidance (get_healthier)
+    if (primaryGoal === 'get_healthier' && healthFocus) {
+      const healthGuidance = {
+        'energy': `USER WANTS MORE ENERGY: Focus on complex carbohydrates for sustained energy.
+                   Iron-rich foods (spinach, lean red meat, legumes). B-vitamin foods.
+                   Avoid sugar spikes - always pair carbs with protein/fat.
+                   Strategic meal timing: bigger breakfast, moderate lunch, lighter dinner.`,
+        'digestion': `USER WANTS BETTER DIGESTION: High fiber focus (25-35g daily).
+                      Include fermented foods (yogurt, kimchi, sauerkraut, miso).
+                      Probiotic-rich options. Adequate hydration reminders.
+                      Avoid common irritants in recipes (excess dairy, fried foods, artificial sweeteners).`,
+        'mental_clarity': `USER WANTS MENTAL CLARITY: Omega-3 rich foods (salmon, walnuts, flaxseed).
+                           Fatty fish 2-3x per week. Antioxidant-rich berries and leafy greens.
+                           Blood sugar stability crucial - no simple carb meals.
+                           Include brain foods: eggs, avocado, dark chocolate, blueberries.`,
+        'bloodwork': `USER WANTS TO IMPROVE BLOODWORK: Heart-healthy fats (olive oil, avocado, nuts).
+                      Lower sodium options (<1500mg daily). High fiber for cholesterol.
+                      Lean proteins. Whole foods over processed. Limit red meat to 1-2x/week.
+                      Include foods that lower LDL: oats, beans, almonds, fatty fish.`,
+        'general': `USER WANTS GENERAL WELLNESS: Balanced, whole-food focused meals.
+                    Rainbow of vegetables for micronutrient variety.
+                    Anti-inflammatory foods. Moderate portions. Sustainable and enjoyable.`
+      };
+      guidance += healthGuidance[healthFocus] || '';
+    }
+
+    // Maintain Focus guidance
+    if (primaryGoal === 'maintain' && maintainFocus) {
+      const maintainGuidance = {
+        'consistency': `USER WANTS CONSISTENCY: Repeatable, sustainable meal patterns.
+                        Use similar structures each week (e.g., "Taco Tuesday", "Stir-fry Friday").
+                        Batch-cooking friendly recipes. Simple ingredients always available.
+                        Predictable grocery lists week to week.`,
+        'recomp': `USER WANTS BODY RECOMPOSITION: High protein priority (1g+ per lb bodyweight).
+                   Maintenance calories with strategic distribution.
+                   Higher carbs on training days, lower on rest days.
+                   Prioritize lean proteins and time carbs around workouts.`,
+        'habits': `USER WANTS TO BUILD BETTER HABITS: Include habit-building tips with recipes.
+                   Suggest habit stacking ("prep tomorrow's lunch while dinner cooks").
+                   Small, achievable daily goals. Consistency over perfection messaging.
+                   Weekly review suggestions for what worked/didn't.`,
+        'intuitive': `USER WANTS INTUITIVE EATING: Include portion guidance using hand measures:
+                      - Palm-sized protein (4-6oz)
+                      - Fist-sized carbs (1 cup)
+                      - Thumb-sized fats (1-2 tbsp)
+                      No strict calorie counting in descriptions. Focus on balanced plates.
+                      Hunger/fullness awareness cues. Flexibility in portions.`
+      };
+      guidance += maintainGuidance[maintainFocus] || '';
+    }
+
+    return guidance;
+  }
+
+  const guidance = getGoalSpecificGuidance(surveyData);
+  return guidance ? `PERSONALIZED GUIDANCE BASED ON USER'S SPECIFIC SITUATION:
+${guidance}
+
+` : '';
+})()}
 REQUIREMENTS:
 1. Generate EXACTLY ${homeMeals.length} recipes - one for each meal in the schedule above
 2. Each meal MUST hit its nutrition targets (±50 calories)
@@ -170,8 +281,12 @@ ${restaurantMealsSchedule.map(meal => `- ${meal.day} ${meal.mealType}`).join('\n
 AVAILABLE RESTAURANTS WITH VERIFIED ORDERING LINKS:
 ${restaurantDetails}
 
-USER PREFERENCES:
-- Goal: ${surveyData.goal || 'General Wellness'}
+USER PREFERENCES & GOALS:
+- Primary Goal: ${surveyData.primaryGoal || surveyData.goal || 'General Wellness'}
+- Main Challenge: ${surveyData.goalChallenge || 'None specified'}
+- Health Focus: ${surveyData.healthFocus || 'General wellness'}
+- Fitness Level: ${surveyData.fitnessLevel || 'Not specified'}
+- Maintain Focus: ${surveyData.maintainFocus || 'Not specified'}
 - Diet Restrictions: ${(surveyData.dietPrefs || []).join(', ') || 'None'}
 - Preferred Cuisines: ${(surveyData.preferredCuisines || []).join(', ')}
 - Budget: $${surveyData.monthlyFoodBudget || 200}/month
@@ -254,10 +369,13 @@ ${i + 1}. Name: ${r.name}
    City: ${r.city || 'Unknown'}
 `).join('\n')}
 
-USER PREFERENCES:
+USER PREFERENCES & GOALS:
+- Primary Goal: ${surveyData.primaryGoal || surveyData.goal || 'General Wellness'}
+- Main Challenge: ${surveyData.goalChallenge || 'None specified'}
+- Health Focus: ${surveyData.healthFocus || 'General wellness'}
+- Maintain Focus: ${surveyData.maintainFocus || 'Not specified'}
 - Preferred Cuisines: ${(surveyData.preferredCuisines || []).join(', ')}
 - Budget: $${surveyData.monthlyFoodBudget || 200}/month
-- Goal: ${surveyData.goal || 'General Wellness'}
 
 SELECTION CRITERIA:
 1. Choose 6-8 restaurants maximum

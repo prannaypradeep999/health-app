@@ -10,7 +10,8 @@ import { LoadingPage } from './LoadingPage';
 import { MealPlanningPreview } from './MealPlanningPreview';
 import { calculateMacroTargets } from '@/lib/utils/nutrition';
 import AccountCreationModal from './modals/AccountCreationModal';
-import { UtensilsCrossed } from 'lucide-react';
+import { ForkKnife, Spinner } from '@phosphor-icons/react';
+import { motion } from 'framer-motion';
 
 type Screen = 'dashboard' | 'meal-plan' | 'workout-plan' | 'progress' | 'account';
 
@@ -62,22 +63,31 @@ export function DashboardContainer({ initialScreen = 'dashboard' }: DashboardCon
   const [previewData, setPreviewData] = useState<any>(null);
   const [loadingPreview, setLoadingPreview] = useState(false);
   const [shouldShowInitialPreview, setShouldShowInitialPreview] = useState(false);
+  const [isEarlyArrival, setIsEarlyArrival] = useState(false);
 
   useEffect(() => {
     fetchSurveyData();
     checkGenerationStatus();
 
-    // Check if user just completed survey (should show initial preview)
+    // Check URL params for survey completion or early arrival
     const urlParams = new URLSearchParams(window.location.search);
     const justCompleted = urlParams.get('surveyCompleted');
-    console.log('[DashboardContainer] URL params check:', { justCompleted, href: window.location.href });
+    const earlyArrival = urlParams.get('earlyArrival');
+
+    console.log('[DashboardContainer] URL params check:', { justCompleted, earlyArrival, href: window.location.href });
+
     if (justCompleted === 'true') {
       console.log('[DashboardContainer] Survey just completed, will show initial preview');
       setShouldShowInitialPreview(true);
       // Clean up URL
       window.history.replaceState({}, '', window.location.pathname);
+    } else if (earlyArrival === 'true') {
+      console.log('[DashboardContainer] Early arrival - generation still in progress');
+      setIsEarlyArrival(true);
+      // Clean up URL
+      window.history.replaceState({}, '', window.location.pathname);
     } else {
-      console.log('[DashboardContainer] No surveyCompleted flag found');
+      console.log('[DashboardContainer] No special flags found');
     }
   }, []);
 
@@ -391,6 +401,28 @@ export function DashboardContainer({ initialScreen = 'dashboard' }: DashboardCon
 
   return (
     <>
+      {/* Early Arrival Progress Banner */}
+      {isEarlyArrival && (!generationStatus.mealsGenerated || !generationStatus.workoutsGenerated) && (
+        <motion.div
+          initial={{ opacity: 0, y: -10 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.35, ease: [0.25, 0.46, 0.45, 0.94] }}
+          className="bg-amber-50 border-b border-amber-100 px-4 py-3"
+        >
+          <div className="flex items-center justify-center gap-2 text-amber-800">
+            <motion.div
+              animate={{ rotate: 360 }}
+              transition={{ repeat: Infinity, duration: 1.2, ease: "linear" }}
+            >
+              <Spinner size={14} />
+            </motion.div>
+            <span className="text-sm font-medium">
+              Still generating your personalized plan...
+            </span>
+          </div>
+        </motion.div>
+      )}
+
       {renderScreen()}
 
       {/* Floating Preview Button */}
@@ -400,7 +432,7 @@ export function DashboardContainer({ initialScreen = 'dashboard' }: DashboardCon
           className="fixed bottom-6 right-6 w-14 h-14 bg-gradient-to-r from-[#c1272d] to-[#8b5cf6] hover:from-[#a1232a] hover:to-[#7c3aed] text-white rounded-full shadow-lg hover:shadow-xl transition-all duration-200 flex items-center justify-center z-40 group"
           title="Quick Preview"
         >
-          <UtensilsCrossed className="w-6 h-6" />
+          <ForkKnife className="w-6 h-6" weight="regular" />
         </button>
       )}
 

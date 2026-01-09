@@ -17,7 +17,7 @@ import {
   Home,
   DollarSign,
   ShoppingCart,
-  UtensilsCrossed,
+  ForkKnife,
   Minimize2,
   Maximize2,
   Sparkles,
@@ -220,7 +220,7 @@ export function MealPlanningPreview({
                   : 'text-gray-600 hover:bg-gray-100'
               }`}
             >
-              <UtensilsCrossed className="w-4 h-4" />
+              <ForkKnife className="w-4 h-4" />
               Restaurants ({data?.restaurants?.length || 0})
             </button>
             <button
@@ -321,7 +321,7 @@ export function MealPlanningPreview({
                   <div className="flex items-center justify-between mb-6">
                     <div className="flex items-center space-x-4">
                       <div className="w-12 h-12 bg-gradient-to-r from-[#c1272d] to-red-600 rounded-xl flex items-center justify-center shadow-lg">
-                        <UtensilsCrossed className="w-6 h-6 text-white" />
+                        <ForkKnife className="w-6 h-6 text-white" />
                       </div>
                       <div>
                         <h3 className="text-xl font-bold text-gray-900">
@@ -359,7 +359,7 @@ export function MealPlanningPreview({
                             <div className="flex items-start space-x-4">
                               {/* Restaurant icon/avatar */}
                               <div className="w-16 h-16 bg-gradient-to-br from-gray-100 to-gray-200 rounded-2xl flex items-center justify-center flex-shrink-0 shadow-sm border border-gray-200">
-                                <UtensilsCrossed className="w-8 h-8 text-gray-600" />
+                                <ForkKnife className="w-8 h-8 text-gray-600" />
                               </div>
 
                               <div className="flex-1 min-w-0">

@@ -8,16 +8,16 @@ import {
   Circle,
   ShoppingCart,
   Target,
-  DollarSign,
-  Beef,
+  CurrencyDollar,
+  Fish,
   Carrot,
-  Wheat,
-  Milk,
+  Bread,
+  Drop,
   Package,
   Cookie,
   Copy,
   FileText
-} from 'lucide-react';
+} from '@phosphor-icons/react';
 
 interface GroceryItem {
   name: string;
@@ -55,7 +55,7 @@ export function GroceryListSection({
     return (
       <div className="bg-white border border-gray-200 rounded-2xl shadow-md overflow-hidden">
         <div className="p-8 text-center">
-          <ShoppingCart className="w-12 h-12 text-gray-400 mx-auto mb-4" />
+          <ShoppingCart className="w-12 h-12 text-gray-400 mx-auto mb-4" weight="regular" />
           <h3 className="text-lg font-semibold text-gray-900 mb-2">Grocery List Unavailable</h3>
           <p className="text-gray-600">
             {groceryList?.error || 'Your grocery list is being generated. Please check back soon.'}
@@ -67,10 +67,10 @@ export function GroceryListSection({
 
   // Category configurations with Lucide icons and colors
   const categoryConfigs = {
-    proteins: { icon: Beef, color: 'from-red-500 to-pink-600', bgColor: 'bg-red-50', borderColor: 'border-red-200', textColor: 'text-red-700' },
+    proteins: { icon: Fish, color: 'from-red-500 to-pink-600', bgColor: 'bg-red-50', borderColor: 'border-red-200', textColor: 'text-red-700' },
     vegetables: { icon: Carrot, color: 'from-green-500 to-emerald-600', bgColor: 'bg-green-50', borderColor: 'border-green-200', textColor: 'text-green-700' },
-    grains: { icon: Wheat, color: 'from-amber-500 to-orange-600', bgColor: 'bg-amber-50', borderColor: 'border-amber-200', textColor: 'text-amber-700' },
-    dairy: { icon: Milk, color: 'from-blue-500 to-cyan-600', bgColor: 'bg-blue-50', borderColor: 'border-blue-200', textColor: 'text-blue-700' },
+    grains: { icon: Bread, color: 'from-amber-500 to-orange-600', bgColor: 'bg-amber-50', borderColor: 'border-amber-200', textColor: 'text-amber-700' },
+    dairy: { icon: Drop, color: 'from-blue-500 to-cyan-600', bgColor: 'bg-blue-50', borderColor: 'border-blue-200', textColor: 'text-blue-700' },
     pantryStaples: { icon: Package, color: 'from-purple-500 to-violet-600', bgColor: 'bg-purple-50', borderColor: 'border-purple-200', textColor: 'text-purple-700' },
     snacks: { icon: Cookie, color: 'from-pink-500 to-rose-600', bgColor: 'bg-pink-50', borderColor: 'border-pink-200', textColor: 'text-pink-700' }
   };
@@ -114,12 +114,12 @@ export function GroceryListSection({
         <div className="flex items-center justify-between">
           <div className="flex items-center space-x-3">
             <div className="w-10 h-10 bg-gradient-to-r from-green-500 to-emerald-600 rounded-xl flex items-center justify-center shadow-md">
-              <ShoppingCart className="w-5 h-5 text-white" />
+              <ShoppingCart className="w-5 h-5 text-white" weight="regular" />
             </div>
             <div>
               <h3 className="text-lg font-bold text-gray-900">Smart Grocery List</h3>
               <p className="text-sm text-gray-600 flex items-center gap-2">
-                <Target className="w-4 h-4 text-green-600" />
+                <Target className="w-4 h-4 text-green-600" weight="regular" />
                 {totalItems} items across {availableCategories.length} categories
               </p>
             </div>
@@ -146,7 +146,7 @@ export function GroceryListSection({
                 : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
             }`}
           >
-            <ShoppingCart className="w-4 h-4 mr-1" />
+            <ShoppingCart className="w-4 h-4 mr-1" weight="regular" />
             All Items ({totalItems})
           </button>
 
@@ -166,7 +166,7 @@ export function GroceryListSection({
                     : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
                 }`}
               >
-                <config.icon className="w-4 h-4 mr-1" />
+                <config.icon className="w-4 h-4 mr-1" weight="regular" />
                 {category.charAt(0).toUpperCase() + category.slice(1).replace(/([A-Z])/g, ' $1')} ({items.length})
               </button>
             );
@@ -197,16 +197,16 @@ export function GroceryListSection({
                     className="transition-transform duration-200 hover:scale-110"
                   >
                     {isChecked ? (
-                      <CheckCircle className="w-5 h-5 text-green-600" />
+                      <CheckCircle className="w-5 h-5 text-green-600" weight="regular" />
                     ) : (
-                      <Circle className="w-5 h-5 text-gray-400 hover:text-gray-600" />
+                      <Circle className="w-5 h-5 text-gray-400 hover:text-gray-600" weight="regular" />
                     )}
                   </button>
 
                   <div className="flex-1">
                     <div className="flex items-center gap-2 mb-1">
                       {config && (
-                        <config.icon className="w-4 h-4 text-gray-500" />
+                        <config.icon className="w-4 h-4 text-gray-500" weight="regular" />
                       )}
                       <p className={`font-medium ${isChecked ? 'text-green-800 line-through' : 'text-gray-900'}`}>
                         {item.name}
@@ -231,7 +231,7 @@ export function GroceryListSection({
           })
         ) : (
           <div className="text-center py-8 text-gray-500">
-            <ShoppingCart className="w-8 h-8 mx-auto mb-2 opacity-50" />
+            <ShoppingCart className="w-8 h-8 mx-auto mb-2 opacity-50" weight="regular" />
             <p>No items in this category</p>
           </div>
         )}
@@ -257,14 +257,14 @@ export function GroceryListSection({
               }}
               className="text-gray-600 border-gray-300 hover:bg-gray-100"
             >
-              <Copy className="w-4 h-4 mr-1" />
+              <Copy className="w-4 h-4 mr-1" weight="regular" />
               Copy List
             </Button>
             <Button
               size="sm"
               className="bg-gradient-to-r from-green-500 to-emerald-600 text-white shadow-md hover:shadow-lg transition-all duration-200"
             >
-              <FileText className="w-4 h-4 mr-1" />
+              <FileText className="w-4 h-4 mr-1" weight="regular" />
               Export to Notes
             </Button>
           </div>

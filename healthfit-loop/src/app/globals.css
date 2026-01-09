@@ -49,6 +49,16 @@
   box-sizing: border-box;
 }
 
+/* Shimmer animation for skeleton loading */
+@keyframes shimmer {
+  0% { background-position: 200% 0; }
+  100% { background-position: -200% 0; }
+}
+
+.animate-shimmer {
+  animation: shimmer 2s ease-in-out infinite;
+}
+
 body {
   margin: 0;
   background: var(--background);

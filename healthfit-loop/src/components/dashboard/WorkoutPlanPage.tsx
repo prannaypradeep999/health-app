@@ -12,17 +12,17 @@ import {
   Target,
   Play,
   CheckCircle,
-  Timer,
-  TrendingUp,
-  Apple,
-  Dumbbell,
-  User,
+  Timer as TimerIcon,
+  ChartLineUp,
+  ForkKnife,
+  Barbell,
+  UserCircle,
   Plus,
   X,
   Calendar,
-  Edit2,
-  Trash2
-} from "lucide-react";
+  PencilSimple,
+  Trash
+} from "@phosphor-icons/react";
 
 interface WorkoutPlanPageProps {
   onNavigate: (screen: string) => void;
@@ -337,10 +337,10 @@ export function WorkoutPlanPage({ onNavigate, generationStatus }: WorkoutPlanPag
                 src={exercise.imageUrl}
                 alt={exercise.name}
                 className="w-16 h-16 object-cover rounded-lg"
-                fallback={<Dumbbell className="w-6 h-6 text-gray-500" />}
+                fallback={<Barbell className="w-6 h-6 text-gray-500" weight="regular" />}
               />
             ) : (
-              <Dumbbell className="w-6 h-6 text-gray-500" />
+              <Barbell className="w-6 h-6 text-gray-500" weight="regular" />
             )}
           </div>
         </div>
@@ -387,7 +387,7 @@ export function WorkoutPlanPage({ onNavigate, generationStatus }: WorkoutPlanPag
               <span className="font-bold text-purple-600">{exercise.reps} reps</span>
             </div>
             <div className="flex items-center">
-              <Timer className="w-3 h-3 mr-1 text-purple-600" />
+              <TimerIcon className="w-3 h-3 mr-1 text-purple-600" weight="regular" />
               <span className="font-bold text-purple-600">{exercise.restTime} rest</span>
             </div>
           </div>
@@ -490,7 +490,7 @@ export function WorkoutPlanPage({ onNavigate, generationStatus }: WorkoutPlanPag
     <Card className="mb-6 border-0 shadow-subtle bg-gradient-to-br from-green-50 to-blue-50">
       <CardContent className="p-8 text-center">
         <div className="w-16 h-16 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-4">
-          <User className="w-8 h-8 text-green-600 stroke-1" />
+          <UserCircle className="w-8 h-8 text-green-600" weight="regular" />
         </div>
         <h3 className="text-xl font-medium text-neutral-900 mb-3">Rest & Recovery Day</h3>
         <p className="text-neutral-600 mb-6">{description}</p>
@@ -557,25 +557,25 @@ export function WorkoutPlanPage({ onNavigate, generationStatus }: WorkoutPlanPag
               className="flex flex-col items-center justify-center text-neutral-400"
               onClick={() => onNavigate("meal-plan")}
             >
-              <Apple className="w-5 h-5 mb-1" />
+              <ForkKnife className="w-5 h-5 mb-1" weight="regular" />
               <span className="text-xs">Meals</span>
             </button>
             <button className="flex flex-col items-center justify-center text-primary">
-              <Dumbbell className="w-5 h-5 mb-1" />
+              <Barbell className="w-5 h-5 mb-1" weight="regular" />
               <span className="text-xs">Workouts</span>
             </button>
             <button
               className="flex flex-col items-center justify-center text-neutral-400"
               onClick={() => onNavigate("progress")}
             >
-              <TrendingUp className="w-5 h-5 mb-1" />
+              <ChartLineUp className="w-5 h-5 mb-1" weight="regular" />
               <span className="text-xs">Progress</span>
             </button>
             <button
               className="flex flex-col items-center justify-center text-neutral-400"
               onClick={() => onNavigate("account")}
             >
-              <User className="w-5 h-5 mb-1" />
+              <UserCircle className="w-5 h-5 mb-1" weight="regular" />
               <span className="text-xs">Account</span>
             </button>
           </div>
@@ -764,7 +764,7 @@ export function WorkoutPlanPage({ onNavigate, generationStatus }: WorkoutPlanPag
                           onClick={() => deleteWorkout(workout.id)}
                           className="p-1 hover:bg-red-100 rounded text-red-500"
                         >
-                          <Trash2 className="w-4 h-4" />
+                          <Trash className="w-4 h-4" weight="regular" />
                         </button>
                       </div>
                     </div>
@@ -849,25 +849,25 @@ export function WorkoutPlanPage({ onNavigate, generationStatus }: WorkoutPlanPag
             className="flex flex-col items-center justify-center text-neutral-400"
             onClick={() => onNavigate("meal-plan")}
           >
-            <Apple className="w-5 h-5 mb-1" />
+            <ForkKnife className="w-5 h-5 mb-1" weight="regular" />
             <span className="text-xs">Meals</span>
           </button>
           <button className="flex flex-col items-center justify-center text-primary">
-            <Dumbbell className="w-5 h-5 mb-1" />
+            <Barbell className="w-5 h-5 mb-1" weight="regular" />
             <span className="text-xs">Workouts</span>
           </button>
           <button
             className="flex flex-col items-center justify-center text-neutral-400"
             onClick={() => onNavigate("progress")}
           >
-            <TrendingUp className="w-5 h-5 mb-1" />
+            <ChartLineUp className="w-5 h-5 mb-1" weight="regular" />
             <span className="text-xs">Progress</span>
           </button>
           <button
             className="flex flex-col items-center justify-center text-neutral-400"
             onClick={() => onNavigate("account")}
           >
-            <User className="w-5 h-5 mb-1" />
+            <UserCircle className="w-5 h-5 mb-1" weight="regular" />
             <span className="text-xs">Account</span>
           </button>
         </div>

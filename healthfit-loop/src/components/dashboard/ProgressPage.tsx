@@ -8,21 +8,21 @@ import { Progress as ProgressBar } from "@/components/ui/progress";
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, BarChart, Bar } from 'recharts';
 import {
   ArrowLeft,
-  TrendingUp,
+  ChartLineUp,
   Target,
-  Award,
-  BarChart3,
-  Apple,
-  Dumbbell,
-  User,
+  Medal,
+  ChartBar,
+  ForkKnife,
+  Barbell,
+  UserCircle,
   Watch,
-  Activity,
-  Scale,
+  Heartbeat,
+  Scales,
   Moon,
   Heart,
   Footprints,
-  Zap
-} from "lucide-react";
+  Lightning
+} from "@phosphor-icons/react";
 
 interface ProgressPageProps {
   onNavigate: (screen: string) => void;
@@ -81,7 +81,7 @@ export function ProgressPage({ onNavigate }: ProgressPageProps) {
 
         {/* Empty State */}
         <div className="max-w-lg mx-auto px-6 py-16 text-center">
-          <BarChart3 className="w-16 h-16 text-gray-400 mx-auto mb-6" />
+          <ChartBar className="w-16 h-16 text-gray-400 mx-auto mb-6" weight="regular" />
           <h2 className="text-xl font-medium text-gray-900 mb-4">Start Tracking Your Progress</h2>
           <p className="text-gray-600 mb-8">
             Complete workouts and log meals to see your progress charts and achievements here.
@@ -170,7 +170,7 @@ export function ProgressPage({ onNavigate }: ProgressPageProps) {
         {/* Motivational Quote */}
         <div className="bg-gradient-to-r from-[#8b5cf6]/5 to-[#c1272d]/5 border border-gray-200 rounded-2xl p-6 shadow-md">
           <div className="flex items-start gap-3">
-            <Zap className="w-5 h-5 text-[#8b5cf6] mt-1 flex-shrink-0" />
+            <Lightning className="w-5 h-5 text-[#8b5cf6] mt-1 flex-shrink-0" weight="regular" />
             <div>
               <p className="text-sm font-medium text-gray-900 italic">"{todaysQuote}"</p>
               <p className="text-xs text-gray-600 mt-2">Your daily motivation</p>
@@ -184,7 +184,7 @@ export function ProgressPage({ onNavigate }: ProgressPageProps) {
           <div className="grid grid-cols-2 gap-4">
             <div className="p-4 bg-gradient-to-br from-[#8b5cf6]/10 to-[#8b5cf6]/5 rounded-xl">
               <div className="flex items-center justify-between mb-2">
-                <Dumbbell className="w-5 h-5 text-[#8b5cf6]" />
+                <Barbell className="w-5 h-5 text-[#8b5cf6]" weight="regular" />
                 <Badge className="bg-white/50 text-[#8b5cf6] text-xs">
                   {weeklyStats.workoutsCompleted}/{weeklyStats.workoutsPlanned}
                 </Badge>
@@ -194,7 +194,7 @@ export function ProgressPage({ onNavigate }: ProgressPageProps) {
             </div>
             <div className="p-4 bg-gradient-to-br from-[#c1272d]/10 to-[#c1272d]/5 rounded-xl">
               <div className="flex items-center justify-between mb-2">
-                <Apple className="w-5 h-5 text-[#c1272d]" />
+                <ForkKnife className="w-5 h-5 text-[#c1272d]" weight="regular" />
                 <Badge className="bg-white/50 text-[#c1272d] text-xs">
                   {weeklyStats.mealPlanAdherence}%
                 </Badge>
@@ -204,14 +204,14 @@ export function ProgressPage({ onNavigate }: ProgressPageProps) {
             </div>
             <div className="p-4 bg-gradient-to-br from-orange-100 to-orange-50 rounded-xl">
               <div className="flex items-center justify-between mb-2">
-                <Activity className="w-5 h-5 text-orange-600" />
+                <Heartbeat className="w-5 h-5 text-orange-600" weight="regular" />
               </div>
               <div className="text-2xl font-semibold text-gray-900">{weeklyStats.avgCaloriesBurned}</div>
               <div className="text-sm text-gray-600">Avg calories burned per day</div>
             </div>
             <div className="p-4 bg-gradient-to-br from-blue-100 to-blue-50 rounded-xl">
               <div className="flex items-center justify-between mb-2">
-                <BarChart3 className="w-5 h-5 text-blue-600" />
+                <ChartBar className="w-5 h-5 text-blue-600" weight="regular" />
               </div>
               <div className="text-2xl font-semibold text-gray-900">{weeklyStats.avgActiveMinutes}</div>
               <div className="text-sm text-gray-600">Avg active time per day (min)</div>
@@ -269,7 +269,7 @@ export function ProgressPage({ onNavigate }: ProgressPageProps) {
                   <div className={`w-10 h-10 rounded-full flex items-center justify-center ${
                     renphoConnected ? 'bg-blue-500' : 'bg-gray-200'
                   }`}>
-                    <Scale className={`w-5 h-5 ${renphoConnected ? 'text-white' : 'text-gray-600'}`} />
+                    <Scales className={`w-5 h-5 ${renphoConnected ? 'text-white' : 'text-gray-600'}`} />
                   </div>
                   <div>
                     <h4 className="font-semibold text-gray-900">Renpho Scale</h4>

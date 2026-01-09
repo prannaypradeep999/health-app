@@ -5,15 +5,15 @@ import { Badge } from '@/components/ui/badge';
 import {
   MapPin,
   Star,
-  ExternalLink,
+  ArrowSquareOut,
   Phone,
   Clock,
   Truck,
-  Home,
-  UtensilsCrossed,
+  House,
+  ForkKnife,
   ChefHat,
   Target
-} from 'lucide-react';
+} from '@phosphor-icons/react';
 
 interface Restaurant {
   name: string;
@@ -71,7 +71,7 @@ export function RestaurantListSection({ restaurants, metadata }: RestaurantListS
     return (
       <div className="bg-white border border-gray-200 rounded-2xl shadow-md overflow-hidden">
         <div className="p-8 text-center">
-          <UtensilsCrossed className="w-12 h-12 text-gray-400 mx-auto mb-4" />
+          <ForkKnife className="w-12 h-12 text-gray-400 mx-auto mb-4" weight="regular" />
           <h3 className="text-lg font-semibold text-gray-900 mb-2">No Restaurants Found</h3>
           <p className="text-gray-600">
             We couldn't find restaurants in your area, but don't worry! Your meal plan focuses on amazing home-cooked meals.
@@ -90,12 +90,12 @@ export function RestaurantListSection({ restaurants, metadata }: RestaurantListS
         <div className="flex items-center justify-between">
           <div className="flex items-center space-x-3">
             <div className="w-10 h-10 bg-gradient-to-r from-[#c1272d] to-red-600 rounded-xl flex items-center justify-center shadow-md">
-              <UtensilsCrossed className="w-5 h-5 text-white" />
+              <ForkKnife className="w-5 h-5 text-white" weight="regular" />
             </div>
             <div>
               <h3 className="text-lg font-bold text-gray-900">Curated Restaurants</h3>
               <p className="text-sm text-gray-600 flex items-center gap-2">
-                <Target className="w-4 h-4 text-[#c1272d]" />
+                <Target className="w-4 h-4 text-[#c1272d]" weight="regular" />
                 {restaurants.length} places matched to your {metadata?.goal?.toLowerCase()} goals
               </p>
             </div>
@@ -112,12 +112,12 @@ export function RestaurantListSection({ restaurants, metadata }: RestaurantListS
         {/* Quick stats */}
         <div className="flex items-center gap-4 mt-3 text-sm text-gray-600">
           <div className="flex items-center gap-1">
-            <Truck className="w-4 h-4 text-[#c1272d]" />
+            <Truck className="w-4 h-4 text-[#c1272d]" weight="regular" />
             <span className="font-medium">{totalOrderingLinks} ordering links</span>
           </div>
           {metadata?.location && (
             <div className="flex items-center gap-1">
-              <MapPin className="w-4 h-4 text-[#c1272d]" />
+              <MapPin className="w-4 h-4 text-[#c1272d]" weight="regular" />
               <span>{metadata.location}</span>
             </div>
           )}
@@ -137,7 +137,7 @@ export function RestaurantListSection({ restaurants, metadata }: RestaurantListS
                 <div className="p-4 border-b border-gray-200 bg-white">
                   <div className="flex items-start space-x-3">
                     <div className="w-12 h-12 bg-gradient-to-br from-gray-100 to-gray-200 rounded-xl flex items-center justify-center shadow-sm border border-gray-200 group-hover:border-[#c1272d]/30 transition-colors">
-                      <UtensilsCrossed className="w-6 h-6 text-gray-600 group-hover:text-[#c1272d] transition-colors" />
+                      <ForkKnife className="w-6 h-6 text-gray-600 group-hover:text-[#c1272d] transition-colors" weight="regular" />
                     </div>
                     <div className="flex-1 min-w-0">
                       <h4 className="font-bold text-gray-900 truncate group-hover:text-[#c1272d] transition-colors">
@@ -249,7 +249,7 @@ export function RestaurantListSection({ restaurants, metadata }: RestaurantListS
                           onClick={() => openOrderingLink(restaurant.orderingLinks.direct!, 'Direct')}
                           className="bg-[#8b5cf6] hover:bg-purple-700 text-white border-0 shadow-sm transition-all duration-200 hover:scale-105 text-xs h-8"
                         >
-                          <Home className="w-3 h-3 mr-1" />
+                          <House className="w-3 h-3 mr-1" weight="regular" />
                           Direct
                         </Button>
                       )}
@@ -270,7 +270,7 @@ export function RestaurantListSection({ restaurants, metadata }: RestaurantListS
                     {restaurant.error && (
                       <div className="mt-2 bg-amber-50 border border-amber-200 rounded-lg p-2">
                         <p className="text-xs text-amber-800 flex items-center gap-1">
-                          <ExternalLink className="w-3 h-3 text-amber-600" />
+                          <ArrowSquareOut className="w-3 h-3 text-amber-600" weight="regular" />
                           {restaurant.error}
                         </p>
                       </div>

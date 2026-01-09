@@ -1,28 +1,33 @@
 'use client';
 
-import { useState, useEffect } from "react";
+import React, { useState, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Progress } from "@/components/ui/progress";
 import { Badge } from "@/components/ui/badge";
 import { ImageWithFallback } from "@/components/ui/ImageWithFallback";
 import {
-  TrendingUp,
+  ChartLineUp,
   Target,
   Clock,
-  Flame,
-  ChevronRight,
+  Fire,
+  CaretRight,
   Plus,
-  BarChart3,
-  Apple,
-  Dumbbell,
+  ChartBar,
+  ForkKnife,
+  Barbell,
   User,
   MapPin,
-  UtensilsCrossed,
   Star,
-  ExternalLink,
-  X
-} from "lucide-react";
+  ArrowSquareOut,
+  X,
+  Spinner,
+  CheckCircle,
+  Circle,
+  ShoppingCart
+} from "@phosphor-icons/react";
+import { motion } from "framer-motion";
+import { calculateMacroTargets, UserProfile } from '@/lib/utils/nutrition';
 
 interface DashboardHomeProps {
   user: any;
@@ -37,6 +42,93 @@ interface DashboardHomeProps {
   isGuest?: boolean;
   onShowAccountModal?: () => void;
 }
+
+// Skeleton Components
+const MealSkeleton = () => (
+  <motion.div
+    initial={{ opacity: 0 }}
+    animate={{ opacity: 1 }}
+    transition={{ duration: 0.3 }}
+    className="animate-pulse"
+  >
+    <div className="h-32 bg-gradient-to-r from-gray-100 via-gray-200 to-gray-100 bg-[length:200%_100%] animate-shimmer rounded-xl mb-3" />
+    <div className="h-4 bg-gray-200 rounded w-3/4 mb-2" />
+    <div className="h-3 bg-gray-100 rounded w-1/2" />
+  </motion.div>
+);
+
+const WorkoutSkeleton = () => (
+  <div className="space-y-3">
+    <div className="h-5 bg-gray-200 rounded w-1/3 animate-pulse" />
+    <div className="space-y-2">
+      {[1, 2, 3].map(i => (
+        <motion.div
+          key={i}
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          transition={{ delay: i * 0.08, duration: 0.3 }}
+          className="flex gap-3 p-3 bg-gray-50 rounded-lg"
+        >
+          <div className="w-12 h-12 bg-gray-200 rounded animate-pulse" />
+          <div className="flex-1">
+            <div className="h-4 bg-gray-200 rounded w-2/3 mb-2 animate-pulse" />
+            <div className="h-3 bg-gray-100 rounded w-1/2 animate-pulse" />
+          </div>
+        </motion.div>
+      ))}
+    </div>
+  </div>
+);
+
+// Section reveal animation when data arrives
+const SectionReveal = ({ children, isReady }: { children: React.ReactNode; isReady: boolean }) => (
+  <motion.div
+    initial={{ opacity: 0 }}
+    animate={{ opacity: isReady ? 1 : 0.6 }}
+    transition={{ duration: 0.4, ease: [0.25, 0.46, 0.45, 0.94] }}
+  >
+    {children}
+  </motion.div>
+);
+
+// Building progress item component with optional preview
+interface BuildingItemProps {
+  icon: React.ComponentType<any>;
+  label: string;
+  isComplete: boolean;
+  isLoading: boolean;
+  detail?: string;
+  preview?: string; // e.g., "Sweetgreen, Chipotle, Tender Greens"
+}
+
+const BuildingItem = ({ icon: Icon, label, isComplete, isLoading, detail, preview }: BuildingItemProps) => (
+  <div className="flex items-start gap-3 py-2">
+    <div className="flex-shrink-0 mt-0.5">
+      {isComplete ? (
+        <CheckCircle size={20} weight="fill" className="text-green-500" />
+      ) : isLoading ? (
+        <Spinner size={20} className="text-red-600 animate-spin" />
+      ) : (
+        <Circle size={20} className="text-gray-300" />
+      )}
+    </div>
+    <div className="flex-1 min-w-0">
+      <div className="flex items-center flex-wrap gap-x-2">
+        <span className={`text-sm ${isComplete ? 'text-gray-900' : isLoading ? 'text-gray-700' : 'text-gray-400'}`}>
+          {label}
+        </span>
+        {detail && isComplete && (
+          <span className="text-xs text-green-600 font-medium">{detail}</span>
+        )}
+      </div>
+      {/* Preview text - shows restaurant names, grocery cost, etc */}
+      {preview && isComplete && (
+        <p className="text-xs text-gray-500 mt-0.5 truncate">{preview}</p>
+      )}
+    </div>
+    <Icon size={16} className={`flex-shrink-0 ${isComplete ? 'text-gray-600' : 'text-gray-300'}`} />
+  </div>
+);
 
 export function DashboardHome({ user, onNavigate, generationStatus, isGuest, onShowAccountModal }: DashboardHomeProps) {
   const [mealData, setMealData] = useState<any>(null);
@@ -53,6 +145,15 @@ export function DashboardHome({ user, onNavigate, generationStatus, isGuest, onS
     dinner: 'primary' | 'alternative'
   }>({ breakfast: 'primary', lunch: 'primary', dinner: 'primary' });
 
+  // Preview data for the "Building" section - derived from actual API data
+  const [restaurantPreview, setRestaurantPreview] = useState<{ count: number; names: string }>({
+    count: 0,
+    names: ''
+  });
+  const [groceryPreview, setGroceryPreview] = useState<string>('');
+  const [homeMealsCount, setHomeMealsCount] = useState<number>(0);
+  const [workoutDaysCount, setWorkoutDaysCount] = useState<number>(0);
+
   // Helper functions for the new design
   const getGreeting = () => {
     const hour = new Date().getHours();
@@ -67,6 +168,34 @@ export function DashboardHome({ user, onNavigate, generationStatus, isGuest, onS
     }
     return "Location not set";
   };
+
+  // Calculate macro targets instantly from survey data (no API needed)
+  // Round all values to nearest 10 for cleaner display
+  const macroTargets = React.useMemo(() => {
+    const survey = user?.activeSurvey;
+    if (!survey?.age || !survey?.weight || !survey?.height) {
+      return { calories: 2000, protein: 150, carbs: 200, fat: 70 };
+    }
+
+    const userProfile: UserProfile = {
+      age: survey.age,
+      sex: survey.sex || 'male',
+      height: survey.height,
+      weight: survey.weight,
+      activityLevel: survey.activityLevel || 'MODERATELY_ACTIVE',
+      goal: survey.goal || 'GENERAL_WELLNESS'
+    };
+
+    const calculated = calculateMacroTargets(userProfile);
+
+    // Round to nearest 10 for cleaner display
+    return {
+      calories: Math.round(calculated.calories / 10) * 10,
+      protein: Math.round(calculated.protein / 10) * 10,
+      carbs: Math.round(calculated.carbs / 10) * 10,
+      fat: Math.round(calculated.fat / 10) * 10
+    };
+  }, [user?.activeSurvey]);
 
   const getGoalText = () => {
     const goal = user?.activeSurvey?.goal || "GENERAL_WELLNESS";
@@ -193,6 +322,70 @@ export function DashboardHome({ user, onNavigate, generationStatus, isGuest, onS
       window.dispatchEvent(event);
     }
   }, [eatenMeals, isInitialized]);
+
+  // Extract restaurant preview when meal data arrives
+  useEffect(() => {
+    if (mealData?.mealPlan && generationStatus.restaurantMealsGenerated) {
+      // Get restaurant meals from planData
+      const restaurantMeals = mealData.mealPlan.planData?.restaurantMeals || [];
+      const count = restaurantMeals.length || mealData.mealPlan.restaurantMealsCount || 0;
+
+      // Extract unique restaurant names (first 3)
+      const uniqueNames = [...new Set(
+        restaurantMeals
+          .map((r: any) => r.restaurant?.name || r.restaurantName || r.name)
+          .filter(Boolean)
+      )].slice(0, 3);
+
+      const names = uniqueNames.join(', ') || '';
+      setRestaurantPreview({ count, names });
+    }
+  }, [mealData, generationStatus.restaurantMealsGenerated]);
+
+  // Extract grocery preview when meal data arrives
+  useEffect(() => {
+    if (mealData?.mealPlan && generationStatus.homeMealsGenerated) {
+      // Get grocery data from mealPlan (after API fix, this is now available)
+      const groceryList = mealData.mealPlan.groceryList;
+      const totalCost = mealData.mealPlan.totalEstimatedCost;
+
+      if (totalCost && totalCost > 0) {
+        setGroceryPreview(`~$${Math.round(totalCost)} estimated`);
+      } else if (groceryList?.totalEstimatedCost) {
+        setGroceryPreview(`~$${Math.round(groceryList.totalEstimatedCost)} estimated`);
+      } else {
+        setGroceryPreview('Ready to shop');
+      }
+
+      // Count home meals from days or use API count
+      const homeMealCount = mealData.mealPlan.homeMealsCount;
+      if (homeMealCount) {
+        setHomeMealsCount(homeMealCount);
+      } else {
+        // Fallback: count from days data
+        const days = mealData.mealPlan.planData?.days || [];
+        let homeCount = 0;
+        days.forEach((day: any) => {
+          Object.values(day.meals || {}).forEach((meal: any) => {
+            if (meal && meal.source !== 'restaurant') {
+              homeCount++;
+            }
+          });
+        });
+        setHomeMealsCount(homeCount);
+      }
+    }
+  }, [mealData, generationStatus.homeMealsGenerated]);
+
+  // Extract workout days count
+  useEffect(() => {
+    if (workoutData?.workoutPlan && generationStatus.workoutsGenerated) {
+      const weeklyPlan = workoutData.workoutPlan.planData?.weeklyPlan || [];
+      // Count non-rest days
+      const activeDays = weeklyPlan.filter((day: any) => !day.restDay).length;
+      setWorkoutDaysCount(activeDays || weeklyPlan.length);
+    }
+  }, [workoutData, generationStatus.workoutsGenerated]);
 
   const fetchConsumptionData = async () => {
     try {
@@ -723,12 +916,86 @@ export function DashboardHome({ user, onNavigate, generationStatus, isGuest, onS
           <p className="text-sm sm:text-base text-gray-600">Ready to crush your health goals today? Let's make it happen!</p>
         </div>
 
+        {/* ============ INSTANT VALUE SECTIONS ============ */}
+
+        {/* Daily Targets - Always visible instantly */}
+        {/* Mobile: 2x2 grid, Desktop: 4 columns */}
+        <div className="bg-white rounded-2xl p-4 sm:p-5 shadow-sm border border-gray-100 mb-4">
+          <div className="flex items-center gap-2 mb-4">
+            <Target size={20} weight="duotone" className="text-red-600" />
+            <h3 className="font-semibold text-gray-900">Your Daily Targets</h3>
+          </div>
+
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 sm:gap-3">
+            <div className="text-center p-3 bg-gray-50 rounded-xl">
+              <div className="text-lg sm:text-xl font-bold text-gray-900">{macroTargets.calories.toLocaleString()}</div>
+              <div className="text-xs text-gray-500">calories</div>
+            </div>
+            <div className="text-center p-3 bg-blue-50 rounded-xl">
+              <div className="text-lg sm:text-xl font-bold text-blue-700">{macroTargets.protein}g</div>
+              <div className="text-xs text-blue-600">protein</div>
+            </div>
+            <div className="text-center p-3 bg-amber-50 rounded-xl">
+              <div className="text-lg sm:text-xl font-bold text-amber-700">{macroTargets.carbs}g</div>
+              <div className="text-xs text-amber-600">carbs</div>
+            </div>
+            <div className="text-center p-3 bg-green-50 rounded-xl">
+              <div className="text-lg sm:text-xl font-bold text-green-700">{macroTargets.fat}g</div>
+              <div className="text-xs text-green-600">fat</div>
+            </div>
+          </div>
+        </div>
+
+        {/* What We're Building - Shows progress with REAL preview data, hides when all complete */}
+        {(!generationStatus.mealsGenerated || !generationStatus.workoutsGenerated || !generationStatus.restaurantMealsGenerated) && (
+          <div className="bg-gradient-to-r from-gray-50 to-slate-50 rounded-2xl p-4 sm:p-5 border border-gray-100 mb-4">
+            <div className="flex items-center gap-2 mb-3">
+              <Spinner size={18} className="text-red-600 animate-spin" />
+              <h3 className="font-medium text-gray-900 text-sm sm:text-base">Building your personalized plan</h3>
+            </div>
+
+            <div className="space-y-1">
+              <BuildingItem
+                icon={ForkKnife}
+                label="Creating personalized meals"
+                isComplete={generationStatus.homeMealsGenerated}
+                isLoading={!generationStatus.homeMealsGenerated}
+                detail={generationStatus.homeMealsGenerated && homeMealsCount > 0 ? `${homeMealsCount} meals ready` : undefined}
+              />
+              <BuildingItem
+                icon={Barbell}
+                label="Building workout plan"
+                isComplete={generationStatus.workoutsGenerated}
+                isLoading={!generationStatus.workoutsGenerated && generationStatus.homeMealsGenerated}
+                detail={generationStatus.workoutsGenerated && workoutDaysCount > 0 ? `${workoutDaysCount}-day plan created` : undefined}
+              />
+              <BuildingItem
+                icon={MapPin}
+                label="Finding local restaurants"
+                isComplete={generationStatus.restaurantMealsGenerated}
+                isLoading={!generationStatus.restaurantMealsGenerated && generationStatus.homeMealsGenerated}
+                detail={generationStatus.restaurantMealsGenerated ? `${restaurantPreview.count} spots found` : undefined}
+                preview={generationStatus.restaurantMealsGenerated ? restaurantPreview.names : undefined}
+              />
+              <BuildingItem
+                icon={ShoppingCart}
+                label="Preparing grocery list"
+                isComplete={generationStatus.homeMealsGenerated}
+                isLoading={!generationStatus.homeMealsGenerated}
+                detail={generationStatus.homeMealsGenerated ? groceryPreview : undefined}
+              />
+            </div>
+          </div>
+        )}
+
+        {/* ============ END INSTANT VALUE SECTIONS ============ */}
+
         {/* Stats Grid */}
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4 sm:gap-6 mb-6 sm:mb-8">
           {/* Box 1: Nutrition Goal */}
           <div className="bg-white border border-gray-200 rounded-2xl p-4 sm:p-6 shadow-md hover:shadow-lg transition-all duration-300">
             <div className="flex items-center justify-between mb-4">
-              <BarChart3 className="w-8 h-8 text-[#c1272d] stroke-1" />
+              <ChartBar className="w-8 h-8 text-[#c1272d]" weight="regular" />
               <span className="bg-gray-100 text-gray-700 px-3 py-1 rounded-full text-xs font-medium">
                 Nutrition
               </span>
@@ -741,7 +1008,7 @@ export function DashboardHome({ user, onNavigate, generationStatus, isGuest, onS
           {/* Box 2: Today's Workouts */}
           <div className="bg-white border border-gray-200 rounded-2xl p-4 sm:p-6 shadow-md hover:shadow-lg transition-all duration-300">
             <div className="flex items-center justify-between mb-4">
-              <Target className="w-8 h-8 text-[#c1272d] stroke-1" />
+              <Target className="w-8 h-8 text-[#c1272d]" weight="regular" />
               <span className="bg-gray-100 text-gray-700 px-3 py-1 rounded-full text-xs font-medium">
                 Today
               </span>
@@ -754,7 +1021,7 @@ export function DashboardHome({ user, onNavigate, generationStatus, isGuest, onS
           {/* Box 3: Macros from Today's Meals */}
           <div className="bg-white border border-gray-200 rounded-2xl p-4 sm:p-6 shadow-md hover:shadow-lg transition-all duration-300">
             <div className="flex items-center justify-between mb-4">
-              <Apple className="w-8 h-8 text-[#c1272d] stroke-1" />
+              <ForkKnife className="w-8 h-8 text-[#c1272d]" weight="regular" />
               <span className="bg-gray-100 text-gray-700 px-3 py-1 rounded-full text-xs font-medium">
                 Macros
               </span>
@@ -773,13 +1040,13 @@ export function DashboardHome({ user, onNavigate, generationStatus, isGuest, onS
           >
             <div className="flex items-center justify-between">
               <div className="flex items-center space-x-3">
-                <Apple className="w-7 h-7 text-[#c1272d] stroke-1" />
+                <ForkKnife className="w-7 h-7 text-[#c1272d]" weight="regular" />
                 <div>
                   <h3 className="text-lg font-bold text-[#c1272d]">Meal Plans</h3>
                   <p className="text-xs text-[#8b5cf6]">AI-powered nutrition</p>
                 </div>
               </div>
-              <ChevronRight className="w-5 h-5 text-[#c1272d] stroke-1" />
+              <CaretRight className="w-5 h-5 text-[#c1272d]" weight="regular" />
             </div>
           </div>
 
@@ -789,23 +1056,31 @@ export function DashboardHome({ user, onNavigate, generationStatus, isGuest, onS
           >
             <div className="flex items-center justify-between">
               <div className="flex items-center space-x-3">
-                <Dumbbell className="w-7 h-7 text-[#c1272d] stroke-1" />
+                <Barbell className="w-7 h-7 text-[#c1272d]" weight="regular" />
                 <div>
                   <h3 className="text-lg font-bold text-[#c1272d]">Workouts</h3>
                   <p className="text-xs text-[#8b5cf6]">Custom training plans</p>
                 </div>
               </div>
-              <ChevronRight className="w-5 h-5 text-[#c1272d] stroke-1" />
+              <CaretRight className="w-5 h-5 text-[#c1272d]" weight="regular" />
             </div>
           </div>
         </div>
 
         {/* Today's Workout Section */}
-        {generationStatus.workoutsGenerated && todaysWorkout.focus !== "No workout data available" && (
+        {!generationStatus.workoutsGenerated ? (
+          <div className="bg-white border border-gray-200 rounded-xl p-4 sm:p-6 shadow-md mb-6 sm:mb-8">
+            <div className="flex items-center gap-2 text-gray-500 mb-4">
+              <Spinner size={16} className="animate-spin" />
+              <span className="text-sm">Generating your personalized workouts...</span>
+            </div>
+            <WorkoutSkeleton />
+          </div>
+        ) : generationStatus.workoutsGenerated && todaysWorkout.focus !== "No workout data available" ? (
           <div className="bg-white border border-gray-200 rounded-xl p-4 sm:p-6 shadow-md mb-6 sm:mb-8">
             <div className="flex items-center justify-between mb-4">
               <div className="flex items-center space-x-3">
-                <Dumbbell className="w-7 h-7 text-[#c1272d] stroke-1" />
+                <Barbell className="w-7 h-7 text-[#c1272d]" weight="regular" />
                 <div>
                   <h3 className="text-lg font-bold text-[#c1272d]">Today's Workout</h3>
                   <p className="text-xs text-[#8b5cf6] font-medium">{todaysWorkout.focus}</p>
@@ -822,7 +1097,7 @@ export function DashboardHome({ user, onNavigate, generationStatus, isGuest, onS
             <div className="bg-gray-50 rounded-lg p-3 sm:p-4 border border-gray-200">
               <div className="flex items-center space-x-3 sm:space-x-4">
                 <div className="w-12 h-12 sm:w-16 sm:h-16 bg-white rounded-lg flex items-center justify-center shadow-sm">
-                  <Dumbbell className="w-6 h-6 text-[#c1272d] stroke-1" />
+                  <Barbell className="w-6 h-6 text-[#c1272d]" weight="regular" />
                 </div>
                 <div className="flex-1">
                   <h4 className="font-bold text-gray-900 text-sm sm:text-base">{todaysWorkout.focus}</h4>
@@ -830,15 +1105,15 @@ export function DashboardHome({ user, onNavigate, generationStatus, isGuest, onS
                     {!todaysWorkout.restDay && (
                       <>
                         <span className="flex items-center">
-                          <Clock className="w-4 h-4 mr-1 text-[#8b5cf6]" />
+                          <Clock className="w-4 h-4 mr-1 text-[#8b5cf6]" weight="regular" />
                           {todaysWorkout.duration}min
                         </span>
                         <span className="flex items-center">
-                          <Flame className="w-4 h-4 mr-1 text-[#8b5cf6]" />
+                          <Fire className="w-4 h-4 mr-1 text-[#8b5cf6]" weight="regular" />
                           ~{todaysWorkout.calories} cal
                         </span>
                         <span className="flex items-center">
-                          <Target className="w-4 h-4 mr-1 text-[#8b5cf6]" />
+                          <Target className="w-4 h-4 mr-1 text-[#8b5cf6]" weight="regular" />
                           {todaysWorkout.totalExercises} exercises
                         </span>
                       </>
@@ -854,14 +1129,26 @@ export function DashboardHome({ user, onNavigate, generationStatus, isGuest, onS
               </div>
             </div>
           </div>
-        )}
+        ) : null}
 
         {/* Today's Meals Section */}
-        {generationStatus.mealsGenerated && todaysMeals.breakfast && (
+        {!generationStatus.mealsGenerated ? (
+          <div className="bg-white border border-gray-200 rounded-xl p-4 sm:p-6 shadow-md mb-6 sm:mb-8">
+            <div className="flex items-center gap-2 text-gray-500 mb-4">
+              <Spinner size={16} className="animate-spin" />
+              <span className="text-sm">Generating your personalized meals...</span>
+            </div>
+            <div className="grid grid-cols-1 gap-4">
+              <MealSkeleton />
+              <MealSkeleton />
+              <MealSkeleton />
+            </div>
+          </div>
+        ) : generationStatus.mealsGenerated && todaysMeals.breakfast ? (
           <div className="bg-white border border-gray-200 rounded-xl p-4 sm:p-6 shadow-md mb-6 sm:mb-8">
             <div className="flex items-center justify-between mb-4">
               <div className="flex items-center space-x-3">
-                <Apple className="w-7 h-7 text-[#c1272d] stroke-1" />
+                <ForkKnife className="w-7 h-7 text-[#c1272d]" weight="regular" />
                 <div>
                   <h3 className="text-lg font-bold text-[#c1272d]">Today's Meals</h3>
                   <p className="text-xs text-[#8b5cf6] font-medium">Check off as you eat</p>
@@ -882,14 +1169,25 @@ export function DashboardHome({ user, onNavigate, generationStatus, isGuest, onS
                   {/* Header */}
                   <div className="bg-gradient-to-r from-orange-50 to-yellow-50 px-4 py-2 border-b border-gray-200 flex items-center justify-between">
                     <h4 className="font-bold text-gray-900 text-base flex items-center gap-2">
-                      🍳 Breakfast
+                      <ForkKnife className="w-4 h-4 mr-1" weight="regular" />
+                      Breakfast
                     </h4>
                     <div className={`px-2 py-1 rounded-full text-xs font-medium ${
                       selectedMealOptions.breakfast === 'primary'
                         ? 'bg-orange-100 text-orange-700'
                         : 'bg-purple-100 text-purple-700'
                     }`}>
-                      {selectedMealOptions.breakfast === 'primary' ? '⭐ Primary' : '🔄 Alternative'}
+                      {selectedMealOptions.breakfast === 'primary' ? (
+                        <>
+                          <Star className="w-3 h-3 mr-1" weight="bold" />
+                          Primary
+                        </>
+                      ) : (
+                        <>
+                          <ArrowSquareOut className="w-3 h-3 mr-1" weight="regular" />
+                          Alternative
+                        </>
+                      )}
                     </div>
                   </div>
 
@@ -966,7 +1264,8 @@ export function DashboardHome({ user, onNavigate, generationStatus, isGuest, onS
                           size="sm"
                           className="bg-gradient-to-r from-orange-400 to-yellow-400 hover:from-orange-500 hover:to-yellow-500 text-white border-0 shadow-sm transition-all duration-200 hover:scale-105 text-xs px-3 py-1"
                         >
-                          🔄 Switch
+                          <ArrowSquareOut className="w-3 h-3 mr-1" weight="regular" />
+                          Switch
                         </Button>
                       </div>
                     </div>
@@ -1141,13 +1440,13 @@ export function DashboardHome({ user, onNavigate, generationStatus, isGuest, onS
               )}
             </div>
           </div>
-        )}
+        ) : null}
 
         {/* Daily Macro Progress - Compact */}
         <div className="bg-white border border-gray-200 rounded-xl p-4 sm:p-6 shadow-md mb-6 sm:mb-8">
           <div className="flex items-center justify-between mb-4">
             <div className="flex items-center space-x-3">
-              <BarChart3 className="w-7 h-7 text-[#c1272d] stroke-1" />
+              <ChartBar className="w-7 h-7 text-[#c1272d]" weight="regular" />
               <div>
                 <h3 className="text-lg font-bold text-[#c1272d]">Today's Nutrition</h3>
                 <p className="text-xs text-[#8b5cf6] font-medium">Track your macro intake</p>
@@ -1238,21 +1537,21 @@ export function DashboardHome({ user, onNavigate, generationStatus, isGuest, onS
             className="flex flex-col items-center justify-center text-neutral-400"
             onClick={() => onNavigate("meal-plan")}
           >
-            <Apple className="w-5 h-5 mb-1 stroke-1" />
+            <ForkKnife className="w-5 h-5 mb-1" weight="regular" />
             <span className="text-xs">Meals</span>
           </button>
           <button
             className="flex flex-col items-center justify-center text-neutral-400"
             onClick={() => onNavigate("workout-plan")}
           >
-            <Dumbbell className="w-5 h-5 mb-1 stroke-1" />
+            <Barbell className="w-5 h-5 mb-1" weight="regular" />
             <span className="text-xs">Workouts</span>
           </button>
           <button
             className="flex flex-col items-center justify-center text-neutral-400"
             onClick={() => onNavigate("progress")}
           >
-            <TrendingUp className="w-5 h-5 mb-1 stroke-1" />
+            <ChartLineUp className="w-5 h-5 mb-1" weight="regular" />
             <span className="text-xs">Progress</span>
           </button>
           <button

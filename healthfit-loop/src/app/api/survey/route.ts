@@ -35,9 +35,16 @@ function buildSurveyData(data: any, sessionId: string, mealsOutPerWeek: number) 
     zipCode: data.zipCode || '',
     country: data.country || 'United States',
     goal: data.goal,
+    primaryGoal: data.primaryGoal || null,
+    goalChallenge: data.goalChallenge || null,
+    fitnessLevel: data.fitnessLevel || null,
+    healthFocus: data.healthFocus || null,
+    maintainFocus: data.maintainFocus || null,
     activityLevel: data.activityLevel || '',
     sportsInterests: data.sportsInterests || '',
     fitnessTimeline: data.fitnessTimeline || '',
+    preferredActivities: data.preferredActivities || [],
+    additionalGoalsNotes: data.additionalGoalsNotes || '',
     monthlyFoodBudget: data.monthlyFoodBudget || 200,
     monthlyFitnessBudget: data.monthlyFitnessBudget || 50,
     dietPrefs: data.dietPrefs || [],
@@ -173,8 +180,39 @@ export async function POST(req: Request) {
         console.error('[WORKOUT-TRIGGER] ❌ Background workout generation failed:', error);
       });
 
-    } else if (!payload.currentStep) {
-      console.log('[FINAL] 🎯 Final survey submission');
+    } else if (!payload.currentStep || payload.currentStep === 9) {
+      console.log('[FINAL] 🎯 Final survey submission - triggering all generation in parallel');
+
+      // Fire all generation processes in parallel (don't await any)
+      // The LoadingJourney will poll for status updates
+      Promise.all([
+        triggerHomeMealGeneration(survey.id, sessionId, baseUrl),
+        triggerBackgroundWorkoutGeneration(survey.id, sessionId, baseUrl),
+        triggerRestaurantGeneration(survey.id, sessionId, baseUrl)
+      ]).catch(error => {
+        console.error('[FINAL] ❌ Generation error:', error);
+      });
+
+      // Also trigger profile generation (fast)
+      Promise.all([
+        fetch(`${baseUrl}/api/ai/profiles/food`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Cookie': `survey_id=${survey.id}; guest_session=${sessionId}`
+          }
+        }),
+        fetch(`${baseUrl}/api/ai/profiles/workout`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Cookie': `survey_id=${survey.id}; guest_session=${sessionId}`
+          }
+        })
+      ]).catch(error => {
+        console.error('[FINAL] ❌ Profile generation error:', error);
+      });
+
     } else {
       console.log(`[PROGRESSIVE] ℹ️ Step ${payload.currentStep} completed`);
     }

@@ -10,9 +10,11 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 import { Slider } from '@/components/ui/slider';
 import { Progress } from '@/components/ui/progress';
-import { ArrowRight, Target, Activity, DollarSign, Utensils, Apple, Dumbbell, FlaskConical, ChevronLeft, ChevronRight, Upload, Shield } from 'lucide-react';
+import { ArrowRight, Target, Heartbeat, CurrencyDollar, ForkKnife, ForkKnife as AppleIcon, Barbell, Flask, CaretLeft, CaretRight, Upload, Shield, Scales, Flame, Heart, Cookie, MapPin, Moon, Question, Plant, TrendUp, Lightning, Brain, Sparkle, Calendar, PersonSimpleRun, ArrowsClockwise, CheckCircle, House, Briefcase, Coffee, Faders, Check, CalendarCheck, CaretDown, Minus } from '@phosphor-icons/react';
+import { motion, AnimatePresence } from 'framer-motion';
 import Logo from '@/components/logo';
 import ProfileConfirmation from '@/components/dashboard/ProfileConfirmation';
+import LoadingJourney from '@/components/dashboard/LoadingJourney';
 
 // Survey data interface from existing survey
 interface SurveyData {
@@ -23,6 +25,8 @@ interface SurveyData {
   age: number | '';
   sex: string;
   height: number | '';
+  heightFeet: number | '';
+  heightInches: number | '';
   weight: number | '';
 
   // Full address fields
@@ -69,6 +73,273 @@ interface SurveyData {
   source?: string;
 }
 
+// Meal schedule template types
+type MealType = 'home' | 'restaurant' | 'no-meal';
+
+interface DaySchedule {
+  breakfast: MealType;
+  lunch: MealType;
+  dinner: MealType;
+}
+
+interface WeeklySchedule {
+  monday: DaySchedule;
+  tuesday: DaySchedule;
+  wednesday: DaySchedule;
+  thursday: DaySchedule;
+  friday: DaySchedule;
+  saturday: DaySchedule;
+  sunday: DaySchedule;
+}
+
+interface MealScheduleTemplate {
+  id: string;
+  label: string;
+  description: string;
+  icon: React.ComponentType<any>;
+  weekday: DaySchedule;
+  weekend: DaySchedule;
+}
+
+// Meal schedule templates with mobile-optimized labels
+const mealScheduleTemplates: MealScheduleTemplate[] = [
+  {
+    id: 'home_cook',
+    label: 'I cook most meals at home',
+    description: 'Restaurants only on weekends',
+    icon: House,
+    weekday: { breakfast: 'home', lunch: 'home', dinner: 'home' },
+    weekend: { breakfast: 'home', lunch: 'restaurant', dinner: 'restaurant' },
+  },
+  {
+    id: 'office_lunch',
+    label: 'I grab lunch near work',
+    description: 'Home for breakfast and dinner',
+    icon: Briefcase,
+    weekday: { breakfast: 'home', lunch: 'restaurant', dinner: 'home' },
+    weekend: { breakfast: 'home', lunch: 'home', dinner: 'restaurant' },
+  },
+  {
+    id: 'breakfast_skipper',
+    label: 'I skip breakfast',
+    description: 'Lunch out on workdays',
+    icon: Coffee,
+    weekday: { breakfast: 'no-meal', lunch: 'restaurant', dinner: 'home' },
+    weekend: { breakfast: 'home', lunch: 'home', dinner: 'restaurant' },
+  },
+  {
+    id: 'always_on_the_go',
+    label: 'I eat out most meals',
+    description: 'Home just for quick breakfasts',
+    icon: MapPin,
+    weekday: { breakfast: 'home', lunch: 'restaurant', dinner: 'restaurant' },
+    weekend: { breakfast: 'no-meal', lunch: 'restaurant', dinner: 'restaurant' },
+  },
+  {
+    id: 'custom',
+    label: "I'll set it myself",
+    description: 'Customize each day',
+    icon: Faders,
+    weekday: { breakfast: 'home', lunch: 'home', dinner: 'home' },
+    weekend: { breakfast: 'home', lunch: 'home', dinner: 'home' },
+  },
+];
+
+// Function to expand template to full week
+const expandTemplate = (template: MealScheduleTemplate): WeeklySchedule => {
+  return {
+    monday: { ...template.weekday },
+    tuesday: { ...template.weekday },
+    wednesday: { ...template.weekday },
+    thursday: { ...template.weekday },
+    friday: { ...template.weekday },
+    saturday: { ...template.weekend },
+    sunday: { ...template.weekend },
+  };
+};
+
+// Helper function to format day schedule for display
+const formatDaySchedule = (day: DaySchedule) => {
+  const formatMeal = (meal: MealType) => {
+    switch(meal) {
+      case 'home': return 'Home';
+      case 'restaurant': return 'Out';
+      case 'no-meal': return 'Skip';
+    }
+  };
+  return `${formatMeal(day.breakfast)} → ${formatMeal(day.lunch)} → ${formatMeal(day.dinner)}`;
+};
+
+// Animation variants for smooth transitions
+const containerVariants = {
+  hidden: { opacity: 0 },
+  show: {
+    opacity: 1,
+    transition: { staggerChildren: 0.05 }
+  }
+};
+
+const itemVariants = {
+  hidden: { opacity: 0, y: 10 },
+  show: { opacity: 1, y: 0 }
+};
+
+// MealPill component for compact summary
+const MealPill = ({ type, label }: { type: MealType; label: string }) => {
+  const config = {
+    home: { bg: 'bg-green-100', text: 'text-green-700', icon: House },
+    restaurant: { bg: 'bg-orange-100', text: 'text-orange-700', icon: MapPin },
+    'no-meal': { bg: 'bg-gray-100', text: 'text-gray-400', icon: Minus },
+  };
+  const c = config[type];
+
+  return (
+    <div className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full ${c.bg}`}>
+      <c.icon size={12} className={c.text} weight="bold" />
+      <span className={`text-xs font-medium ${c.text}`}>{label}</span>
+    </div>
+  );
+};
+
+// MealDot component for collapsed day view
+const MealDot = ({ type }: { type: MealType }) => {
+  const colors = {
+    home: 'bg-green-500',
+    restaurant: 'bg-orange-500',
+    'no-meal': 'bg-gray-300',
+  };
+  return <div className={`w-2.5 h-2.5 rounded-full ${colors[type]}`} />;
+};
+
+// QuickActionChip for bulk actions
+const QuickActionChip = ({ label, onClick }: { label: string; onClick: () => void }) => (
+  <button
+    onClick={onClick}
+    className="px-3 py-1.5 text-xs font-medium text-gray-600 bg-gray-100
+               rounded-full whitespace-nowrap hover:bg-gray-200
+               active:scale-95 transition-all"
+  >
+    {label}
+  </button>
+);
+
+// MealRow component for segmented control
+const MealRow = ({ label, value, onChange }: {
+  label: string;
+  value: MealType;
+  onChange: (value: MealType) => void;
+}) => {
+  const options: { value: MealType; label: string; icon: any }[] = [
+    { value: 'no-meal', label: 'Skip', icon: Minus },
+    { value: 'home', label: 'Home', icon: House },
+    { value: 'restaurant', label: 'Out', icon: MapPin },
+  ];
+
+  return (
+    <div className="flex items-center justify-between">
+      <span className="text-sm text-gray-600">{label}</span>
+      <div className="flex bg-gray-100 rounded-lg p-1">
+        {options.map((opt) => {
+          const IconComponent = opt.icon;
+          return (
+            <button
+              key={opt.value}
+              onClick={() => onChange(opt.value)}
+              className={`
+                flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-medium
+                transition-all duration-150
+                ${value === opt.value
+                  ? 'bg-white text-gray-900 shadow-sm'
+                  : 'text-gray-500 hover:text-gray-700'
+                }
+              `}
+            >
+              <IconComponent size={14} weight={value === opt.value ? 'fill' : 'regular'} />
+              {opt.label}
+            </button>
+          );
+        })}
+      </div>
+    </div>
+  );
+};
+
+// DayCard component for expandable day editing
+const DayCard = ({
+  day,
+  schedule,
+  onChange,
+  isWeekend,
+}: {
+  day: string;
+  schedule: DaySchedule;
+  onChange: (meal: keyof DaySchedule, type: MealType) => void;
+  isWeekend: boolean;
+}) => {
+  const [expanded, setExpanded] = React.useState(false);
+
+  return (
+    <motion.div
+      className={`
+        rounded-xl border overflow-hidden
+        ${isWeekend ? 'border-purple-100 bg-purple-50/30' : 'border-gray-100 bg-white'}
+      `}
+    >
+      {/* Collapsed view - tap to expand */}
+      <button
+        onClick={() => setExpanded(!expanded)}
+        className="w-full p-4 flex items-center justify-between active:bg-gray-50 transition-colors"
+      >
+        <div className="flex items-center gap-3">
+          <span className="font-medium text-gray-900 w-24 text-left">{day}</span>
+          <div className="flex gap-1.5">
+            <MealDot type={schedule.breakfast} />
+            <MealDot type={schedule.lunch} />
+            <MealDot type={schedule.dinner} />
+          </div>
+        </div>
+        <motion.div
+          animate={{ rotate: expanded ? 180 : 0 }}
+          transition={{ duration: 0.2 }}
+        >
+          <CaretDown size={18} className="text-gray-400" />
+        </motion.div>
+      </button>
+
+      {/* Expanded view - edit meals */}
+      <AnimatePresence>
+        {expanded && (
+          <motion.div
+            initial={{ height: 0, opacity: 0 }}
+            animate={{ height: 'auto', opacity: 1 }}
+            exit={{ height: 0, opacity: 0 }}
+            transition={{ duration: 0.2 }}
+            className="border-t border-gray-100"
+          >
+            <div className="p-4 space-y-3">
+              <MealRow
+                label="Breakfast"
+                value={schedule.breakfast}
+                onChange={(v) => onChange('breakfast', v)}
+              />
+              <MealRow
+                label="Lunch"
+                value={schedule.lunch}
+                onChange={(v) => onChange('lunch', v)}
+              />
+              <MealRow
+                label="Dinner"
+                value={schedule.dinner}
+                onChange={(v) => onChange('dinner', v)}
+              />
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+    </motion.div>
+  );
+};
+
 // Welcome screen component (from Figma UI)
 interface OnboardingWelcomeProps {
   onStart: () => void;
@@ -76,8 +347,8 @@ interface OnboardingWelcomeProps {
 
 function OnboardingWelcome({ onStart }: OnboardingWelcomeProps) {
   return (
-    <div className="min-h-screen bg-gray-50 p-6 flex flex-col">
-      <div className="flex-1 flex flex-col justify-center max-w-sm mx-auto w-full">
+    <div className="min-h-screen bg-gray-50 py-6 px-4 sm:px-6 lg:px-8 flex flex-col">
+      <div className="flex-1 flex flex-col justify-center max-w-md sm:max-w-lg md:max-w-xl mx-auto w-full">
         <div className="text-center mb-12">
           <div className="mx-auto mb-6 flex items-center justify-center">
             <Logo variant="full" width={200} height={50} href="" />
@@ -91,7 +362,7 @@ function OnboardingWelcome({ onStart }: OnboardingWelcomeProps) {
           <div className="space-y-6">
             <div className="flex items-start space-x-4">
               <div className="w-12 h-12 bg-red-50 rounded-2xl flex items-center justify-center border border-red-200">
-                <Utensils className="w-6 h-6 text-red-600" />
+                <ForkKnife className="w-6 h-6 text-red-600" />
               </div>
               <div>
                 <h3 className="font-medium text-gray-900 mb-1">Smart Meal Planning</h3>
@@ -103,7 +374,7 @@ function OnboardingWelcome({ onStart }: OnboardingWelcomeProps) {
 
             <div className="flex items-start space-x-4">
               <div className="w-12 h-12 bg-red-50 rounded-2xl flex items-center justify-center border border-red-200">
-                <Activity className="w-6 h-6 text-red-600" />
+                <Heartbeat className="w-6 h-6 text-red-600" weight="regular" />
               </div>
               <div>
                 <h3 className="font-medium text-gray-900 mb-1">Adaptive Workouts</h3>
@@ -115,7 +386,7 @@ function OnboardingWelcome({ onStart }: OnboardingWelcomeProps) {
 
             <div className="flex items-start space-x-4">
               <div className="w-12 h-12 bg-red-50 rounded-2xl flex items-center justify-center border border-red-200">
-                <Dumbbell className="w-6 h-6 text-red-600" />
+                <Barbell className="w-6 h-6 text-red-600" weight="regular" />
               </div>
               <div>
                 <h3 className="font-medium text-gray-900 mb-1">Progress Insights</h3>
@@ -153,6 +424,10 @@ function OnboardingSteps({ onComplete, onBack }: OnboardingStepsProps) {
   const [currentStep, setCurrentStep] = useState(1);
   const [isGeneratingMeals, setIsGeneratingMeals] = useState(false);
 
+  // Template selection state
+  const [selectedTemplate, setSelectedTemplate] = useState<string | null>(null);
+  const [showCustomize, setShowCustomize] = useState(false);
+
   // Define all food options at the top
   const allFoodOptions = [
     'Fruits', 'Rice', 'Eggs', 'Vegetables', 'Nuts', 'Chicken', 'Fish', 'Beef',
@@ -169,6 +444,8 @@ function OnboardingSteps({ onComplete, onBack }: OnboardingStepsProps) {
     age: '',
     sex: '',
     height: '',
+    heightFeet: '',
+    heightInches: '',
     weight: '',
 
     // Full address fields
@@ -178,9 +455,16 @@ function OnboardingSteps({ onComplete, onBack }: OnboardingStepsProps) {
     zipCode: '',
     country: 'United States',
     goal: '',
+    primaryGoal: '',
+    goalChallenge: '',
+    fitnessLevel: '',
+    healthFocus: '',
+    maintainFocus: '',
     activityLevel: '',
     sportsInterests: '',
     fitnessTimeline: '',
+    preferredActivities: [],
+    additionalGoalsNotes: '',
     monthlyFoodBudget: 200,
     monthlyFitnessBudget: 50,
     weeklyMealSchedule: {
@@ -219,14 +503,70 @@ function OnboardingSteps({ onComplete, onBack }: OnboardingStepsProps) {
     source: 'web_v2'
   });
 
-  const totalSteps = 7;
+  const totalSteps = 9;
   const progress = (currentStep / totalSteps) * 100;
 
   const stepIcons = [
-    Target, Activity, DollarSign, Utensils, Apple, Dumbbell, FlaskConical
+    Target, Heartbeat, Scales, Barbell, CurrencyDollar, ForkKnife, AppleIcon, Barbell, Flask
   ];
 
-  // Data options from existing survey
+  // Enhanced Goal Selection Data
+  const primaryGoals = [
+    { value: 'lose_weight', label: 'Lose weight', icon: Flame, description: 'Burn fat and slim down', color: 'text-orange-600' },
+    { value: 'build_muscle', label: 'Build muscle', icon: Barbell, description: 'Get stronger and more defined', color: 'text-blue-600' },
+    { value: 'get_healthier', label: 'Get healthier', icon: Heart, description: 'Improve overall wellness', color: 'text-red-600' },
+    { value: 'maintain', label: 'Maintain weight', icon: Scales, description: 'Stay where you are', color: 'text-green-600' }
+  ];
+
+  const subOptions: Record<string, any> = {
+    lose_weight: {
+      question: "What's your biggest challenge?",
+      field: 'goalChallenge',
+      funFact: "People who plan meals lose 2x more weight than those who don't. You're already ahead.",
+      options: [
+        { value: 'snacking', label: 'I snack too much', icon: Cookie },
+        { value: 'eating_out', label: 'I eat out a lot', icon: MapPin },
+        { value: 'portions', label: 'Portions are hard', icon: Scales },
+        { value: 'late_night', label: 'Late night eating', icon: Moon },
+        { value: 'dont_know', label: "I don't know what to eat", icon: Question }
+      ]
+    },
+    build_muscle: {
+      question: "Where are you in your fitness journey?",
+      field: 'fitnessLevel',
+      funFact: "Muscle burns 3x more calories at rest than fat. You're building a faster metabolism.",
+      options: [
+        { value: 'beginner', label: 'Just getting started', icon: Plant },
+        { value: 'intermediate', label: 'Some experience', icon: TrendUp },
+        { value: 'advanced', label: 'I lift regularly', icon: Barbell }
+      ]
+    },
+    get_healthier: {
+      question: "What does 'healthier' mean to you?",
+      field: 'healthFocus',
+      funFact: "80% of your immune system lives in your gut. Good food = good defense.",
+      options: [
+        { value: 'energy', label: 'More energy', icon: Lightning },
+        { value: 'digestion', label: 'Better digestion', icon: Heartbeat },
+        { value: 'mental_clarity', label: 'Clearer mind', icon: Brain },
+        { value: 'bloodwork', label: 'Improve bloodwork', icon: Heart },
+        { value: 'general', label: 'Just feel better overall', icon: Sparkle }
+      ]
+    },
+    maintain: {
+      question: "What's your main goal right now?",
+      field: 'maintainFocus',
+      funFact: "Maintenance is the hardest phase - only 20% succeed long-term. Let's make it automatic.",
+      options: [
+        { value: 'consistency', label: 'Stay consistent', icon: Calendar },
+        { value: 'recomp', label: 'Improve body composition', icon: PersonSimpleRun },
+        { value: 'habits', label: 'Build better habits', icon: ArrowsClockwise },
+        { value: 'intuitive', label: 'Eat without tracking', icon: CheckCircle }
+      ]
+    }
+  };
+
+  // Legacy goals (kept for backwards compatibility)
   const goals = [
     { value: 'WEIGHT_LOSS', label: 'Weight Loss' },
     { value: 'MUSCLE_GAIN', label: 'Muscle Gain' },
@@ -239,6 +579,17 @@ function OnboardingSteps({ onComplete, onBack }: OnboardingStepsProps) {
     { value: 'LIGHTLY_ACTIVE', label: 'Light', desc: '1-3 days per week' },
     { value: 'MODERATELY_ACTIVE', label: 'Moderate', desc: '3-5 days per week' },
     { value: 'VERY_ACTIVE', label: 'High', desc: '6-7 days per week' }
+  ];
+
+  const preferredActivitiesOptions = [
+    'Cardio (Running, Cycling, Swimming)',
+    'Strength Training (Weights, Bodyweight)',
+    'Sports (Basketball, Tennis, Soccer)',
+    'Mind-Body (Yoga, Pilates, Tai Chi)',
+    'Outdoor Activities (Hiking, Rock Climbing)',
+    'Group Fitness (Dance, Classes, CrossFit)',
+    'Low Impact (Walking, Stretching)',
+    'Martial Arts & Combat Sports'
   ];
 
   const budgetOptions = [
@@ -274,9 +625,108 @@ function OnboardingSteps({ onComplete, onBack }: OnboardingStepsProps) {
     setFormData(prev => ({ ...prev, [field]: value }));
   };
 
+  // Template selection handler
+  const handleTemplateSelect = (templateId: string) => {
+    setSelectedTemplate(templateId);
+    const template = mealScheduleTemplates.find(t => t.id === templateId);
+    if (template) {
+      const expandedSchedule = expandTemplate(template);
+      // Convert WeeklySchedule format to the format expected by formData
+      const formattedSchedule = Object.entries(expandedSchedule).reduce((acc, [day, schedule]) => {
+        acc[day] = {
+          breakfast: schedule.breakfast === 'no-meal' ? 'no-meal' : schedule.breakfast,
+          lunch: schedule.lunch === 'no-meal' ? 'no-meal' : schedule.lunch,
+          dinner: schedule.dinner === 'no-meal' ? 'no-meal' : schedule.dinner,
+        };
+        return acc;
+      }, {} as Record<string, { breakfast: string; lunch: string; dinner: string }>);
+
+      updateFormData('weeklyMealSchedule', formattedSchedule);
+      // Auto-show customize view for "custom" template
+      setShowCustomize(templateId === 'custom');
+    }
+  };
+
+  // Bulk action helpers for customization
+  const daysOfWeek = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
+
+  const setAllMeals = (mealType: keyof DaySchedule, value: MealType) => {
+    const newSchedule = { ...formData.weeklyMealSchedule };
+    Object.keys(newSchedule).forEach(day => {
+      newSchedule[day] = { ...newSchedule[day], [mealType]: value };
+    });
+    updateFormData('weeklyMealSchedule', newSchedule);
+  };
+
+  const setWeekdayMeal = (mealType: keyof DaySchedule, value: MealType) => {
+    const newSchedule = { ...formData.weeklyMealSchedule };
+    ['monday', 'tuesday', 'wednesday', 'thursday', 'friday'].forEach(day => {
+      newSchedule[day] = { ...newSchedule[day], [mealType]: value };
+    });
+    updateFormData('weeklyMealSchedule', newSchedule);
+  };
+
+  const resetToTemplate = () => {
+    if (selectedTemplate) {
+      const template = mealScheduleTemplates.find(t => t.id === selectedTemplate);
+      if (template) {
+        handleTemplateSelect(selectedTemplate);
+      }
+    }
+  };
+
+  const updateDay = (day: string, meal: keyof DaySchedule, type: MealType) => {
+    const newSchedule = {
+      ...formData.weeklyMealSchedule,
+      [day]: {
+        ...formData.weeklyMealSchedule[day],
+        [meal]: type
+      }
+    };
+    updateFormData('weeklyMealSchedule', newSchedule);
+  };
+
+  // Helper functions for enhanced goal selection
+  const handlePrimaryGoalChange = (value: string) => {
+    // Clear sub-option fields when primary goal changes
+    updateFormData('primaryGoal', value);
+    updateFormData('goalChallenge', '');
+    updateFormData('fitnessLevel', '');
+    updateFormData('healthFocus', '');
+    updateFormData('maintainFocus', '');
+
+    // Map to legacy goal field for backwards compatibility
+    const goalMapping: Record<string, string> = {
+      'lose_weight': 'WEIGHT_LOSS',
+      'build_muscle': 'MUSCLE_GAIN',
+      'get_healthier': 'GENERAL_WELLNESS',
+      'maintain': 'WEIGHT_LOSS'
+    };
+    updateFormData('goal', goalMapping[value] || '');
+  };
+
+  const getSubOptionValue = () => {
+    const primaryGoal = formData.primaryGoal;
+    switch (primaryGoal) {
+      case 'lose_weight': return formData.goalChallenge;
+      case 'build_muscle': return formData.fitnessLevel;
+      case 'get_healthier': return formData.healthFocus;
+      case 'maintain': return formData.maintainFocus;
+      default: return null;
+    }
+  };
+
+  const setSubOptionValue = (value: string) => {
+    const primaryGoal = formData.primaryGoal;
+    const field = subOptions[primaryGoal]?.field;
+    if (field) {
+      updateFormData(field, value);
+    }
+  };
+
   const handleNext = async () => {
-    // Show loading after step 5 (food preferences completed)
-    if (currentStep === 5) {
+    // Show loading after step 7 (food preferences completed)
+    if (currentStep === 7) {
       setIsGeneratingMeals(true);
 
       try {
@@ -286,7 +736,7 @@ function OnboardingSteps({ onComplete, onBack }: OnboardingStepsProps) {
           firstName: formData.firstName || 'User',
           lastName: formData.lastName || '',
           age: Number(formData.age) || 25,
-          sex: formData.sex || 'other',
+          sex: formData.sex || 'nonbinary',
           height: Number(formData.height) || 70,
           weight: Number(formData.weight) || 150,
 
@@ -312,11 +762,11 @@ function OnboardingSteps({ onComplete, onBack }: OnboardingStepsProps) {
           workoutPreferences: formData.workoutPreferences,
           biomarkers: formData.biomarkers,
           source: formData.source,
-          currentStep: 5
+          currentStep: 7
         };
 
         // Actually trigger meal generation
-        console.log('[Frontend] Triggering meal generation at step 5');
+        console.log('[Frontend] Triggering meal generation at step 7');
         const response = await fetch('/api/survey', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -342,8 +792,8 @@ function OnboardingSteps({ onComplete, onBack }: OnboardingStepsProps) {
       return;
     }
 
-    // Show loading after step 6 (workout preferences completed)
-    if (currentStep === 6) {
+    // Show loading after step 8 (workout preferences completed)
+    if (currentStep === 8) {
       setIsGeneratingMeals(true); // Reuse the loading state
 
       try {
@@ -353,7 +803,7 @@ function OnboardingSteps({ onComplete, onBack }: OnboardingStepsProps) {
           firstName: formData.firstName || 'User',
           lastName: formData.lastName || '',
           age: Number(formData.age) || 25,
-          sex: formData.sex || 'other',
+          sex: formData.sex || 'nonbinary',
           height: Number(formData.height) || 70,
           weight: Number(formData.weight) || 150,
 
@@ -379,11 +829,11 @@ function OnboardingSteps({ onComplete, onBack }: OnboardingStepsProps) {
           workoutPreferences: formData.workoutPreferences,
           biomarkers: formData.biomarkers,
           source: formData.source,
-          currentStep: 6
+          currentStep: 8
         };
 
         // Actually trigger workout generation
-        console.log('[Frontend] Triggering workout generation at step 6');
+        console.log('[Frontend] Triggering workout generation at step 8');
         const response = await fetch('/api/survey', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -483,58 +933,13 @@ function OnboardingSteps({ onComplete, onBack }: OnboardingStepsProps) {
                   />
                 </div>
               </div>
-              <div className="grid grid-cols-3 gap-4">
-                <div>
-                  <Label className="text-gray-700 mb-2 block">Age</Label>
-                  <Input
-                    type="number"
-                    value={formData.age}
-                    onChange={(e) => updateFormData("age", e.target.value ? Number(e.target.value) : '')}
-                    placeholder="25"
-                    className="border-gray-300 focus:border-red-500 bg-white text-gray-900 placeholder:text-gray-500"
-                  />
-                </div>
-                <div>
-                  <Label className="text-gray-700 mb-2 block">Sex</Label>
-                  <Select value={formData.sex} onValueChange={(value) => updateFormData("sex", value)}>
-                    <SelectTrigger className="border-gray-300 focus:border-red-500 bg-white text-gray-900 placeholder:text-gray-500">
-                      <SelectValue placeholder="Select" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="male">Male</SelectItem>
-                      <SelectItem value="female">Female</SelectItem>
-                      <SelectItem value="other">Other</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-                <div>
-                  <Label className="text-gray-700 mb-2 block">Height</Label>
-                  <Select value={formData.height?.toString() || ''} onValueChange={(value) => updateFormData("height", value ? Number(value) : '')}>
-                    <SelectTrigger className="border-gray-300 focus:border-red-500 bg-white text-gray-900">
-                      <SelectValue placeholder="Select height" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {Array.from({ length: 60 }, (_, i) => i + 36).map((inches) => {
-                        const feet = Math.floor(inches / 12);
-                        const remainingInches = inches % 12;
-                        const displayText = `${feet}'${remainingInches}" (${inches}")`;
-                        return (
-                          <SelectItem key={inches} value={inches.toString()}>
-                            {displayText}
-                          </SelectItem>
-                        );
-                      })}
-                    </SelectContent>
-                  </Select>
-                </div>
-              </div>
               <div>
-                <Label className="text-gray-700 mb-2 block">Weight (lbs)</Label>
+                <Label className="text-gray-700 mb-2 block">Age</Label>
                 <Input
                   type="number"
-                  value={formData.weight}
-                  onChange={(e) => updateFormData("weight", e.target.value ? Number(e.target.value) : '')}
-                  placeholder="150"
+                  value={formData.age}
+                  onChange={(e) => updateFormData("age", e.target.value ? Number(e.target.value) : '')}
+                  placeholder="25"
                   className="border-gray-300 focus:border-red-500 bg-white text-gray-900 placeholder:text-gray-500"
                 />
               </div>
@@ -547,31 +952,216 @@ function OnboardingSteps({ onComplete, onBack }: OnboardingStepsProps) {
         return (
           <div className="space-y-6">
             <div className="text-center mb-8">
-              <Activity className="w-12 h-12 text-red-600 mx-auto mb-4" />
+              <Heartbeat className="w-12 h-12 text-red-600 mx-auto mb-4" weight="regular" />
               <h2 className="text-2xl font-medium text-gray-900 mb-2">Health Goals</h2>
               <p className="text-gray-600">What would you like to achieve?</p>
             </div>
             <div>
-              <Label className="text-neutral-700 mb-4 block">Primary goals (select all that apply)</Label>
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                {goals.map((goal) => (
-                  <Button
-                    key={goal.value}
-                    variant={formData.goal === goal.value ? "default" : "outline"}
-                    className={`h-auto p-4 text-center transition-all duration-200 ${
-                      formData.goal === goal.value
-                        ? "bg-red-600 text-white"
-                        : "border-gray-300 hover:border-gray-400 bg-white text-gray-900 hover:bg-gray-50"
-                    }`}
-                    onClick={() => updateFormData("goal", goal.value)}
-                  >
-                    <div className="font-medium">{goal.label}</div>
-                  </Button>
-                ))}
+              {/* Primary Goal Selection */}
+              <div className="space-y-4">
+                <Label className="text-neutral-700 mb-4 block text-lg font-medium">Choose your primary goal</Label>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  {primaryGoals.map((goal) => (
+                    <button
+                      key={goal.value}
+                      onClick={() => handlePrimaryGoalChange(goal.value)}
+                      className={`p-6 rounded-xl border-2 transition-all duration-200 text-left ${
+                        formData.primaryGoal === goal.value
+                          ? 'border-red-500 bg-red-50 shadow-md'
+                          : 'border-gray-200 hover:border-gray-300 bg-white hover:shadow-sm'
+                      }`}
+                    >
+                      <div className="flex items-start gap-4">
+                        <goal.icon
+                          size={40}
+                          weight="duotone"
+                          className={`${goal.color} flex-shrink-0 mt-1`}
+                        />
+                        <div>
+                          <h3 className="font-semibold text-gray-900 mb-1">{goal.label}</h3>
+                          <p className="text-sm text-gray-600">{goal.description}</p>
+                        </div>
+                      </div>
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* Sub-options (show when primaryGoal selected) */}
+              {formData.primaryGoal && subOptions[formData.primaryGoal] && (
+                <div className="space-y-6 mt-8 pt-6 border-t border-gray-200 animate-in fade-in slide-in-from-bottom-4 duration-300">
+                  <h3 className="text-lg font-medium text-gray-900">
+                    {subOptions[formData.primaryGoal].question}
+                  </h3>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    {subOptions[formData.primaryGoal].options.map((option: any) => (
+                      <button
+                        key={option.value}
+                        onClick={() => setSubOptionValue(option.value)}
+                        className={`p-4 rounded-lg border flex items-center gap-3 text-left transition-all duration-200 ${
+                          getSubOptionValue() === option.value
+                            ? 'border-red-500 bg-red-50 shadow-sm'
+                            : 'border-gray-200 hover:border-gray-300 bg-white hover:shadow-sm'
+                        }`}
+                      >
+                        <option.icon
+                          size={24}
+                          className="text-gray-600 flex-shrink-0"
+                        />
+                        <span className="font-medium text-gray-900">{option.label}</span>
+                      </button>
+                    ))}
+                  </div>
+
+                  {/* Fun fact (show when sub-option selected) */}
+                  {getSubOptionValue() && (
+                    <div className="p-4 bg-blue-50 border border-blue-200 rounded-lg flex items-start gap-3 animate-in fade-in duration-300">
+                      <Sparkle size={18} className="text-blue-600 mt-0.5 flex-shrink-0" />
+                      <div>
+                        <p className="text-sm font-medium text-blue-900 mb-1">💡 Did you know?</p>
+                        <p className="text-sm text-blue-800">{subOptions[formData.primaryGoal].funFact}</p>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+          </div>
+        );
+
+      case 3:
+        return (
+          <div className="space-y-6">
+            <div className="text-center mb-6 sm:mb-8">
+              <Scales className="w-12 h-12 text-blue-600 mx-auto mb-4" weight="regular" />
+              <h2 className="text-xl sm:text-2xl lg:text-3xl font-medium text-gray-900 mb-3">Body Measurements</h2>
+              <p className="text-sm sm:text-base text-gray-600 max-w-md mx-auto">We need these details to personalize your meal plans and workout routines for optimal results</p>
+            </div>
+
+            <div className="space-y-6">
+              <div>
+                <Label className="text-gray-700 mb-3 block">Sex</Label>
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-3 md:gap-4 max-w-2xl">
+                  <label className="flex items-center p-4 bg-gray-50 rounded-lg border border-gray-200 cursor-pointer hover:bg-gray-100 transition-colors">
+                    <input
+                      type="radio"
+                      name="sex"
+                      value="male"
+                      checked={formData.sex === 'male'}
+                      onChange={(e) => updateFormData("sex", e.target.value)}
+                      className="w-4 h-4 text-red-600 border-gray-300 focus:ring-red-500"
+                    />
+                    <span className="ml-2 text-gray-700 font-medium">Male</span>
+                  </label>
+                  <label className="flex items-center p-4 bg-gray-50 rounded-lg border border-gray-200 cursor-pointer hover:bg-gray-100 transition-colors">
+                    <input
+                      type="radio"
+                      name="sex"
+                      value="female"
+                      checked={formData.sex === 'female'}
+                      onChange={(e) => updateFormData("sex", e.target.value)}
+                      className="w-4 h-4 text-red-600 border-gray-300 focus:ring-red-500"
+                    />
+                    <span className="ml-2 text-gray-700 font-medium">Female</span>
+                  </label>
+                  <label className="flex items-center p-4 bg-gray-50 rounded-lg border border-gray-200 cursor-pointer hover:bg-gray-100 transition-colors">
+                    <input
+                      type="radio"
+                      name="sex"
+                      value="nonbinary"
+                      checked={formData.sex === 'nonbinary'}
+                      onChange={(e) => updateFormData("sex", e.target.value)}
+                      className="w-4 h-4 text-red-600 border-gray-300 focus:ring-red-500"
+                    />
+                    <span className="ml-2 text-gray-700 font-medium">Non-binary</span>
+                  </label>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-6 max-w-lg">
+                <div>
+                  <Label className="text-gray-700 mb-2 block">Weight (lbs)</Label>
+                  <Input
+                    type="number"
+                    value={formData.weight}
+                    onChange={(e) => updateFormData("weight", e.target.value ? Number(e.target.value) : '')}
+                    placeholder="150"
+                    className="border-gray-300 focus:border-red-500 bg-white text-gray-900 placeholder:text-gray-500"
+                  />
+                </div>
+                <div>
+                  <Label className="text-gray-700 mb-2 block">Height</Label>
+                <div className="flex gap-3">
+                  <div className="flex-1">
+                    <Input
+                      type="number"
+                      min="3"
+                      max="8"
+                      placeholder="Feet"
+                      value={formData.heightFeet}
+                      onChange={(e) => {
+                        const feet = e.target.value ? Number(e.target.value) : '';
+                        updateFormData("heightFeet", feet);
+                        // Calculate total inches and update height field
+                        const totalInches = (feet ? Number(feet) : 0) * 12 + (formData.heightInches ? Number(formData.heightInches) : 0);
+                        updateFormData("height", totalInches >= 36 ? totalInches : '');
+                      }}
+                      className="border-gray-300 focus:border-red-500 bg-white text-gray-900 placeholder:text-gray-500"
+                    />
+                    <div className="text-xs text-gray-500 mt-1 text-center">Feet</div>
+                  </div>
+                  <div className="flex-1">
+                    <Input
+                      type="number"
+                      min="0"
+                      max="11"
+                      placeholder="Inches"
+                      value={formData.heightInches}
+                      onChange={(e) => {
+                        const inches = e.target.value ? Number(e.target.value) : '';
+                        updateFormData("heightInches", inches);
+                        // Calculate total inches and update height field
+                        const totalInches = (formData.heightFeet ? Number(formData.heightFeet) : 0) * 12 + (inches ? Number(inches) : 0);
+                        updateFormData("height", totalInches >= 36 ? totalInches : '');
+                      }}
+                      className="border-gray-300 focus:border-red-500 bg-white text-gray-900 placeholder:text-gray-500"
+                    />
+                    <div className="text-xs text-gray-500 mt-1 text-center">Inches</div>
+                  </div>
+                </div>
+                {formData.heightFeet && formData.heightInches !== '' && (
+                  <div className="text-sm text-gray-600 mt-2 text-center">
+                    Total: {((formData.heightFeet ? Number(formData.heightFeet) : 0) * 12 + (formData.heightInches ? Number(formData.heightInches) : 0))} inches
+                  </div>
+                )}
+                </div>
+              </div>
+
+              <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
+                <div className="flex items-start space-x-3">
+                  <Shield className="w-5 h-5 text-blue-600 mt-0.5 flex-shrink-0" />
+                  <div className="text-sm text-blue-800">
+                    <p className="font-medium mb-1">Privacy Protected</p>
+                    <p>Your measurements are used only to calculate personalized nutrition and fitness recommendations. This data is encrypted and never shared.</p>
+                  </div>
+                </div>
               </div>
             </div>
-            <div>
-              <Label className="text-neutral-700 mb-4 block">Current activity level</Label>
+          </div>
+        );
+
+      case 4:
+        return (
+          <div className="space-y-6">
+            <div className="text-center mb-8">
+              <Barbell className="w-12 h-12 text-blue-600 mx-auto mb-4" weight="regular" />
+              <h2 className="text-2xl font-medium text-gray-900 mb-2">Activity Preferences</h2>
+              <p className="text-gray-600">Tell us about your fitness lifestyle</p>
+            </div>
+
+            {/* Activity Level */}
+            <div className="space-y-4">
+              <Label className="text-neutral-700 mb-4 block text-lg font-medium">How active are you?</Label>
               <RadioGroup value={formData.activityLevel} onValueChange={(value) => updateFormData("activityLevel", value)}>
                 <div className="space-y-3">
                   {activityLevels.map((option) => (
@@ -579,7 +1169,7 @@ function OnboardingSteps({ onComplete, onBack }: OnboardingStepsProps) {
                       key={option.value}
                       className={`flex items-center space-x-3 p-3 rounded-lg border transition-all duration-200 cursor-pointer ${
                         formData.activityLevel === option.value
-                          ? "border-red-500 bg-red-50 shadow-sm"
+                          ? "border-blue-500 bg-blue-50 shadow-sm"
                           : "border-gray-300 bg-white hover:border-gray-400 hover:bg-gray-50"
                       }`}
                       onClick={() => updateFormData("activityLevel", option.value)}
@@ -590,7 +1180,7 @@ function OnboardingSteps({ onComplete, onBack }: OnboardingStepsProps) {
                           htmlFor={option.value}
                           className={`font-medium cursor-pointer ${
                             formData.activityLevel === option.value
-                              ? "text-red-900"
+                              ? "text-blue-900"
                               : "text-gray-900"
                           }`}
                         >
@@ -598,7 +1188,7 @@ function OnboardingSteps({ onComplete, onBack }: OnboardingStepsProps) {
                         </Label>
                         <p className={`text-sm ${
                           formData.activityLevel === option.value
-                            ? "text-red-700"
+                            ? "text-blue-700"
                             : "text-gray-600"
                         }`}>
                           {option.desc}
@@ -609,32 +1199,54 @@ function OnboardingSteps({ onComplete, onBack }: OnboardingStepsProps) {
                 </div>
               </RadioGroup>
             </div>
-            <div>
-              <Label className="text-neutral-700 mb-2 block">Do you regularly play or want to incorporate sports in your fitness plan?</Label>
-              <Input
-                value={formData.sportsInterests}
-                onChange={(e) => updateFormData("sportsInterests", e.target.value)}
-                placeholder="Ex. basketball, running, tennis, etc."
-                className="border-gray-300 focus:border-red-500 bg-white text-gray-900 placeholder:text-gray-500"
-              />
+
+            {/* Activity Preferences */}
+            <div className="space-y-4 pt-6 border-t border-gray-200">
+              <div>
+                <Label className="text-neutral-700 mb-4 block text-lg font-medium">How do you like to stay active?</Label>
+                <p className="text-sm text-gray-600 mb-4">Select all activity types you enjoy (we'll factor these into your fitness recommendations)</p>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  {preferredActivitiesOptions.map((activity) => (
+                    <button
+                      key={activity}
+                      onClick={() => toggleArrayItem("preferredActivities", activity)}
+                      className={`p-4 text-sm text-left rounded-lg border transition-all duration-200 ${
+                        formData.preferredActivities.includes(activity)
+                          ? 'border-blue-500 bg-blue-50 text-blue-900'
+                          : 'border-gray-200 bg-white text-gray-700 hover:border-gray-300 hover:bg-gray-50'
+                      }`}
+                    >
+                      {activity}
+                    </button>
+                  ))}
+                </div>
+              </div>
             </div>
-            <div>
-              <Label className="text-neutral-700 mb-2 block">Additional fitness goals or timelines</Label>
-              <Input
-                value={formData.fitnessTimeline}
-                onChange={(e) => updateFormData("fitnessTimeline", e.target.value)}
-                placeholder="Ex. Lose 20 lbs in 6 months, run a 5K, etc."
-                className="border-gray-300 focus:border-red-500 bg-white text-gray-900 placeholder:text-gray-500"
-              />
+
+            {/* Additional Goals */}
+            <div className="space-y-4 pt-6 border-t border-gray-200">
+              <div>
+                <Label className="text-neutral-700 mb-3 block text-lg font-medium">Anything else you want to log or let us know about your goals?</Label>
+                <p className="text-sm text-gray-600 mb-4">Share any specific goals, preferences, or things we should know about your health journey</p>
+                <textarea
+                  value={formData.additionalGoalsNotes}
+                  onChange={(e) => updateFormData("additionalGoalsNotes", e.target.value)}
+                  placeholder="Ex. I want to improve my sleep, I have a knee injury, I prefer morning workouts, I'm training for a marathon..."
+                  className="w-full h-32 p-4 border border-gray-300 rounded-xl focus:border-blue-500 focus:ring-2 focus:ring-blue-100 bg-white text-gray-900 placeholder:text-gray-500 resize-none transition-all duration-200"
+                />
+                <div className="mt-2 text-xs text-gray-500">
+                  This helps us personalize your meal plans and workout routines for your specific needs
+                </div>
+              </div>
             </div>
           </div>
         );
 
-      case 3:
+      case 5:
         return (
           <div className="space-y-6">
             <div className="text-center mb-8">
-              <DollarSign className="w-12 h-12 text-red-600 mx-auto mb-4" />
+              <CurrencyDollar className="w-12 h-12 text-red-600 mx-auto mb-4" weight="regular" />
               <h2 className="text-2xl font-medium text-gray-900 mb-2">Budget Preferences</h2>
               <p className="text-gray-600">Help us recommend options within your range</p>
             </div>
@@ -669,62 +1281,162 @@ function OnboardingSteps({ onComplete, onBack }: OnboardingStepsProps) {
               </div>
             </div>
             <div>
-              <Label className="text-neutral-700 mb-4 block">Weekly meal schedule for Week 1:</Label>
-              <p className="text-sm text-neutral-600 mb-4">Plan where you'll get each meal - this helps us create the perfect mix of home recipes and restaurant recommendations.</p>
+              {!selectedTemplate ? (
+                <>
+                  <Label className="text-neutral-700 mb-4 block">What does your typical week look like?</Label>
+                  <p className="text-sm text-neutral-600 mb-4">Choose a template that matches your lifestyle, then customize if needed.</p>
 
-              <div className="bg-white rounded-lg border border-neutral-200 overflow-hidden">
-                {/* Header */}
-                <div className="grid grid-cols-4 bg-neutral-50 border-b border-neutral-200">
-                  <div className="p-3 font-medium text-sm text-neutral-700">Day</div>
-                  <div className="p-3 font-medium text-sm text-neutral-700 text-center">Breakfast</div>
-                  <div className="p-3 font-medium text-sm text-neutral-700 text-center">Lunch</div>
-                  <div className="p-3 font-medium text-sm text-neutral-700 text-center">Dinner</div>
-                </div>
-
-                {/* Days */}
-                {Object.entries(formData.weeklyMealSchedule).map(([day, meals]) => (
-                  <div key={day} className="grid grid-cols-4 border-b border-neutral-100 last:border-b-0">
-                    <div className="p-3 font-medium text-sm text-neutral-800 capitalize bg-neutral-25 flex items-center">
-                      {day}
-                    </div>
-                    {(['breakfast', 'lunch', 'dinner'] as const).map((meal) => (
-                      <div key={meal} className="p-2">
-                        <select
-                          value={meals[meal]}
-                          onChange={(e) => {
-                            const newSchedule = {
-                              ...formData.weeklyMealSchedule,
-                              [day]: {
-                                ...formData.weeklyMealSchedule[day],
-                                [meal]: e.target.value
-                              }
-                            };
-                            updateFormData("weeklyMealSchedule", newSchedule);
-                          }}
-                          className="w-full p-2 text-xs border border-neutral-200 rounded focus:border-red-300 focus:outline-none bg-white"
+                  {/* Template Selection Grid */}
+                  <div className="grid grid-cols-2 gap-3 mb-4">
+                    {mealScheduleTemplates.filter(t => t.id !== 'custom').map((template) => {
+                      const IconComponent = template.icon;
+                      return (
+                        <button
+                          key={template.id}
+                          onClick={() => handleTemplateSelect(template.id)}
+                          className="p-4 bg-white border-2 border-gray-200 rounded-xl hover:border-red-300 transition-colors text-left group"
                         >
-                          <option value="no-meal">Skip</option>
-                          <option value="home">Home</option>
-                          <option value="restaurant">Restaurant</option>
-                        </select>
-                      </div>
-                    ))}
+                          <IconComponent className="w-8 h-8 text-red-600 mb-3 group-hover:scale-110 transition-transform" />
+                          <h3 className="font-medium text-gray-900 mb-1">{template.label}</h3>
+                          <p className="text-sm text-gray-600">{template.description}</p>
+                        </button>
+                      );
+                    })}
                   </div>
-                ))}
-              </div>
+
+                  {/* Custom Option - Full Width */}
+                  <button
+                    onClick={() => handleTemplateSelect('custom')}
+                    className="w-full p-4 bg-white border-2 border-gray-200 rounded-xl hover:border-red-300 transition-colors text-left group"
+                  >
+                    <div className="flex items-center">
+                      <Faders className="w-8 h-8 text-red-600 mr-3 group-hover:scale-110 transition-transform" />
+                      <div>
+                        <h3 className="font-medium text-gray-900">Custom</h3>
+                        <p className="text-sm text-gray-600">I'll set each meal myself</p>
+                      </div>
+                    </div>
+                  </button>
+                </>
+              ) : !showCustomize ? (
+                <>
+                  {/* Template Selected - Summary View */}
+                  <div className="space-y-4">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center">
+                        <CheckCircle className="w-5 h-5 text-green-500 mr-2" />
+                        <span className="font-medium text-gray-900">
+                          {mealScheduleTemplates.find(t => t.id === selectedTemplate)?.label}
+                        </span>
+                      </div>
+                      <button
+                        onClick={() => {
+                          setSelectedTemplate(null);
+                          setShowCustomize(false);
+                        }}
+                        className="text-sm text-red-600 hover:text-red-700"
+                      >
+                        Change
+                      </button>
+                    </div>
+
+                    <div className="bg-gray-50 rounded-xl p-4 space-y-3">
+                      <div>
+                        <p className="text-xs text-gray-500 mb-1">Weekdays (Mon-Fri)</p>
+                        <p className="text-sm">
+                          {formatDaySchedule(formData.weeklyMealSchedule.monday as DaySchedule)}
+                        </p>
+                      </div>
+                      <div>
+                        <p className="text-xs text-gray-500 mb-1">Weekends (Sat-Sun)</p>
+                        <p className="text-sm">
+                          {formatDaySchedule(formData.weeklyMealSchedule.saturday as DaySchedule)}
+                        </p>
+                      </div>
+                    </div>
+
+                    <div className="flex gap-3">
+                      <Button
+                        variant="outline"
+                        onClick={() => setShowCustomize(true)}
+                        className="flex-1 border-gray-300 text-gray-700 hover:bg-gray-50"
+                      >
+                        Customize days
+                      </Button>
+                    </div>
+                  </div>
+                </>
+              ) : (
+                <>
+                  {/* Customize View - Show Full Calendar */}
+                  <div className="space-y-4">
+                    <div className="flex items-center justify-between">
+                      <h3 className="font-medium text-gray-900">Customize your schedule</h3>
+                      <button
+                        onClick={() => setShowCustomize(false)}
+                        className="text-sm text-red-600 hover:text-red-700"
+                      >
+                        Done
+                      </button>
+                    </div>
+
+                    <div className="bg-white rounded-lg border border-neutral-200 overflow-hidden">
+                      {/* Header */}
+                      <div className="grid grid-cols-4 bg-neutral-50 border-b border-neutral-200">
+                        <div className="p-3 font-medium text-sm text-neutral-700">Day</div>
+                        <div className="p-3 font-medium text-sm text-neutral-700 text-center">Breakfast</div>
+                        <div className="p-3 font-medium text-sm text-neutral-700 text-center">Lunch</div>
+                        <div className="p-3 font-medium text-sm text-neutral-700 text-center">Dinner</div>
+                      </div>
+
+                      {/* Days */}
+                      {Object.entries(formData.weeklyMealSchedule).map(([day, meals]) => (
+                        <div key={day} className="grid grid-cols-4 border-b border-neutral-100 last:border-b-0">
+                          <div className="p-3 font-medium text-sm text-neutral-800 capitalize bg-neutral-25 flex items-center">
+                            {day}
+                          </div>
+                          {(['breakfast', 'lunch', 'dinner'] as const).map((meal) => (
+                            <div key={meal} className="p-2">
+                              <select
+                                value={meals[meal]}
+                                onChange={(e) => {
+                                  const newSchedule = {
+                                    ...formData.weeklyMealSchedule,
+                                    [day]: {
+                                      ...formData.weeklyMealSchedule[day],
+                                      [meal]: e.target.value
+                                    }
+                                  };
+                                  updateFormData("weeklyMealSchedule", newSchedule);
+                                }}
+                                className="w-full p-2 text-xs border border-neutral-200 rounded focus:border-red-300 focus:outline-none bg-white"
+                              >
+                                <option value="no-meal">Skip</option>
+                                <option value="home">Home</option>
+                                <option value="restaurant">Restaurant</option>
+                              </select>
+                            </div>
+                          ))}
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                </>
+              )}
 
               <div className="mt-3 text-xs text-neutral-500">
                 💡 Tip: We'll suggest home recipes for "Home" meals and find great local restaurants for "Restaurant" meals
               </div>
             </div>
+
           </div>
         );
 
-      case 4:
+      case 6:
         return (
           <div className="space-y-6">
             <div className="text-center mb-8">
-              <Utensils className="w-12 h-12 text-red-600 mx-auto mb-4" />
+              <ForkKnife className="w-12 h-12 text-red-600 mx-auto mb-4" />
               <h2 className="text-2xl font-medium text-gray-900 mb-2">Cuisine Preferences</h2>
               <p className="text-gray-600">Select up to 7 cuisines you enjoy</p>
             </div>
@@ -877,11 +1589,11 @@ function OnboardingSteps({ onComplete, onBack }: OnboardingStepsProps) {
           </div>
         );
 
-      case 5:
+      case 7:
         return (
           <div className="space-y-6">
             <div className="text-center mb-8">
-              <Apple className="w-12 h-12 text-red-600 mx-auto mb-4" />
+              <AppleIcon className="w-12 h-12 text-red-600 mx-auto mb-4" weight="regular" />
               <h2 className="text-2xl font-medium text-gray-900 mb-2">Food Preferences</h2>
               <p className="text-gray-600">Select foods you enjoy - more options will appear as you choose</p>
             </div>
@@ -989,7 +1701,7 @@ function OnboardingSteps({ onComplete, onBack }: OnboardingStepsProps) {
           </div>
         );
 
-      case 6:
+      case 8:
         return (
           <div className="space-y-6">
             {/* Meal/Diet Preferences Completion Indicator */}
@@ -1007,7 +1719,7 @@ function OnboardingSteps({ onComplete, onBack }: OnboardingStepsProps) {
             </div>
 
             <div className="text-center mb-8">
-              <Dumbbell className="w-12 h-12 text-red-600 mx-auto mb-4" />
+              <Barbell className="w-12 h-12 text-red-600 mx-auto mb-4" weight="regular" />
               <h2 className="text-2xl font-medium text-gray-900 mb-2">Workout Preferences</h2>
               <p className="text-gray-600">Let's design your fitness routine</p>
             </div>
@@ -1150,11 +1862,11 @@ function OnboardingSteps({ onComplete, onBack }: OnboardingStepsProps) {
           </div>
         );
 
-      case 7:
+      case 9:
         return (
           <div className="space-y-8">
             <div className="text-center mb-8">
-              <FlaskConical className="w-12 h-12 text-purple-600 mx-auto mb-4" />
+              <Flask className="w-12 h-12 text-purple-600 mx-auto mb-4" weight="regular" />
               <h2 className="text-2xl font-medium text-gray-900 mb-2">Health Metrics</h2>
               <p className="text-gray-600">Optional data to enhance your plan (skip if unavailable)</p>
             </div>
@@ -1261,8 +1973,8 @@ function OnboardingSteps({ onComplete, onBack }: OnboardingStepsProps) {
   };
 
   return (
-    <div className="min-h-screen bg-gray-50 p-6">
-      <div className="max-w-md mx-auto">
+    <div className="min-h-screen bg-gray-50 py-6 px-4 sm:px-6 lg:px-8">
+      <div className="max-w-md sm:max-w-lg md:max-w-xl lg:max-w-2xl mx-auto">
         <div className="mb-8">
           <div className="flex items-center justify-between mb-4">
             <h1 className="text-xl font-medium text-gray-900">Setup</h1>
@@ -1271,7 +1983,7 @@ function OnboardingSteps({ onComplete, onBack }: OnboardingStepsProps) {
           <Progress value={progress} className="h-3 bg-gray-200 [&>div]:bg-red-600" />
         </div>
 
-        <Card className="p-8 mb-6 border border-gray-200 bg-white">
+        <Card className="p-4 sm:p-6 lg:p-8 mb-6 border border-gray-200 bg-white">
           {isGeneratingMeals ? (
             <div className="text-center py-12">
               <div className="mb-6">
@@ -1292,21 +2004,21 @@ function OnboardingSteps({ onComplete, onBack }: OnboardingStepsProps) {
         </Card>
 
         {!isGeneratingMeals && (
-          <div className="flex gap-3">
+          <div className="flex gap-3 sm:gap-4 pt-4 border-t border-gray-100">
             <Button
               variant="outline"
               onClick={handlePrevious}
-              className="flex-1 h-12 border-gray-300 hover:border-gray-400 bg-white text-gray-900 hover:bg-gray-50"
+              className="flex-1 h-12 sm:h-14 px-4 sm:px-6 border-gray-300 hover:border-gray-400 bg-white text-gray-900 hover:bg-gray-50 text-sm sm:text-base"
             >
-              <ChevronLeft className="w-4 h-4 mr-2" />
+              <CaretLeft className="w-4 h-4 mr-2" weight="regular" />
               Back
             </Button>
             <Button
               onClick={handleNext}
-              className="flex-1 h-12 bg-red-600 hover:bg-red-700 text-white transition-all duration-200"
+              className="flex-1 h-12 sm:h-14 px-6 sm:px-8 bg-red-600 hover:bg-red-700 text-white transition-all duration-200 text-sm sm:text-base font-medium"
             >
               {currentStep === totalSteps ? "Complete" : "Next"}
-              {currentStep !== totalSteps && <ChevronRight className="w-4 h-4 ml-2" />}
+              {currentStep !== totalSteps && <CaretRight className="w-4 h-4 ml-2" weight="regular" />}
             </Button>
           </div>
         )}
@@ -1320,6 +2032,8 @@ function SurveyContent() {
   const router = useRouter();
   const [showSteps, setShowSteps] = useState(false);
   const [showProfileConfirmation, setShowProfileConfirmation] = useState(false);
+  const [showLoadingJourney, setShowLoadingJourney] = useState(false);
+  const [completedSurveyData, setCompletedSurveyData] = useState<SurveyData | null>(null);
   const [surveyData, setSurveyData] = useState<SurveyData | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [message, setMessage] = useState<{ ok?: boolean; error?: string } | null>(null);
@@ -1395,10 +2109,12 @@ function SurveyContent() {
 
       const result = await res.json();
 
-      // Store survey data with the returned survey ID
-      setSurveyData({ ...data, id: result.surveyId });
+      // Store survey data with the returned survey ID and show LoadingJourney
+      const completedData = { ...data, id: result.surveyId };
+      setCompletedSurveyData(completedData);
+      setSurveyData(completedData);
       setShowSteps(false);
-      setShowProfileConfirmation(true);
+      setShowLoadingJourney(true);
 
     } catch (error: unknown) {
       const errorMessage = error instanceof Error ? error.message : 'Failed to submit survey';
@@ -1420,11 +2136,23 @@ function SurveyContent() {
     setShowSteps(true);
   };
 
+  // LoadingJourney handlers
+  const handleLoadingComplete = () => {
+    // Generation complete, go to profile confirmation
+    setShowLoadingJourney(false);
+    setShowProfileConfirmation(true);
+  };
+
+  const handleSkipToDashboard = () => {
+    // User wants to skip ahead to dashboard with early arrival flag
+    router.push('/dashboard?earlyArrival=true');
+  };
+
   // Show completion message if survey was submitted successfully
   if (message?.ok) {
     return (
-      <div className="min-h-screen bg-gray-50 p-6 flex flex-col">
-        <div className="flex-1 flex flex-col justify-center max-w-sm mx-auto w-full">
+      <div className="min-h-screen bg-gray-50 py-6 px-4 sm:px-6 lg:px-8 flex flex-col">
+        <div className="flex-1 flex flex-col justify-center max-w-md sm:max-w-lg md:max-w-xl mx-auto w-full">
           <div className="text-center mb-12">
             <div className="mx-auto mb-6 flex items-center justify-center">
               <Logo variant="full" width={200} height={50} href="" />
@@ -1507,6 +2235,17 @@ function SurveyContent() {
           </Button>
         </div>
       </div>
+    );
+  }
+
+  // Show LoadingJourney after survey completion
+  if (showLoadingJourney && completedSurveyData) {
+    return (
+      <LoadingJourney
+        surveyData={completedSurveyData}
+        onComplete={handleLoadingComplete}
+        onSkipToDashboard={handleSkipToDashboard}
+      />
     );
   }
 

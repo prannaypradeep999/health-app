@@ -2,30 +2,38 @@ import { z } from 'zod';
 
 /**
  * Survey Schema - Supports progressive submission
- * 
+ *
  * The survey is submitted multiple times during the onboarding flow:
- * - Step 5: Triggers meal generation (home meals AWAITED, restaurants in background)
- * - Step 6: Triggers workout generation
+ * - Step 6: Triggers meal generation (home meals AWAITED, restaurants in background)
+ * - Step 7: Triggers workout generation
  * - Final: Completes the survey
- * 
+ *
  * Most fields are optional to allow partial submissions at each step.
- * 
+ *
  * CHANGES MADE:
  * - Made all fields optional (except those with defaults) to support progressive submission
  * - Added currentStep field to track which step is being submitted
- * - Removed unused schemas: MealOptionSchema, MealSchema, MealPlanSchema, 
+ * - Added enhanced goal selection with sub-options (primaryGoal, goalChallenge, etc.)
+ * - Removed unused schemas: MealOptionSchema, MealSchema, MealPlanSchema,
  *   MealFeedbackSchema, GenerateMealPlanRequestSchema, MealSelectionSchema
  */
+
+// Enhanced Goal Selection Enums
+export const PrimaryGoalEnum = z.enum(['lose_weight', 'build_muscle', 'get_healthier', 'maintain']);
+export const GoalChallengeEnum = z.enum(['snacking', 'eating_out', 'portions', 'late_night', 'dont_know']);
+export const FitnessLevelEnum = z.enum(['beginner', 'intermediate', 'advanced']);
+export const HealthFocusEnum = z.enum(['energy', 'digestion', 'mental_clarity', 'bloodwork', 'general']);
+export const MaintainFocusEnum = z.enum(['consistency', 'recomp', 'habits', 'intuitive']);
 export const SurveySchema = z.object({
   // Progressive step tracking (sent by frontend)
-  currentStep: z.number().int().min(1).max(7).optional(),
+  currentStep: z.number().int().min(1).max(9).optional(),
 
   // Step 1: Personal Information
   email: z.string().email("Invalid email format").optional().or(z.literal('')),
   firstName: z.string().optional().default(''),
   lastName: z.string().optional().default(''),
   age: z.number().int().min(13, "Must be at least 13 years old").max(120, "Invalid age").optional(),
-  sex: z.enum(['male', 'female', 'other']).optional(),
+  sex: z.enum(['male', 'female', 'nonbinary']).optional(),
   height: z.number().int().min(36, "Height must be at least 36 inches").max(96, "Height must be less than 96 inches").optional(),
   weight: z.number().int().min(50, "Weight must be at least 50 lbs").max(1000, "Weight must be less than 1000 lbs").optional(),
 
@@ -36,11 +44,18 @@ export const SurveySchema = z.object({
   zipCode: z.string().optional().default(''),
   country: z.string().default("United States"),
 
-  // Step 2: Health Goals
+  // Step 2: Health Goals (enhanced)
   goal: z.enum(['WEIGHT_LOSS', 'MUSCLE_GAIN', 'ENDURANCE', 'GENERAL_WELLNESS']).optional(),
+  primaryGoal: PrimaryGoalEnum.optional(),
+  goalChallenge: GoalChallengeEnum.optional(),
+  fitnessLevel: FitnessLevelEnum.optional(),
+  healthFocus: HealthFocusEnum.optional(),
+  maintainFocus: MaintainFocusEnum.optional(),
   activityLevel: z.enum(['SEDENTARY', 'LIGHTLY_ACTIVE', 'MODERATELY_ACTIVE', 'VERY_ACTIVE']).optional(),
   sportsInterests: z.string().default(""),
   fitnessTimeline: z.string().default(""),
+  preferredActivities: z.array(z.string()).default([]),
+  additionalGoalsNotes: z.string().default(""),
 
   // Step 3: Budget Preferences
   monthlyFoodBudget: z.number().int().min(0).max(1000).default(200),

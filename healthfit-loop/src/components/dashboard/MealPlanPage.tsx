@@ -9,19 +9,18 @@ import {
   ArrowLeft,
   Clock,
   Star,
-  ExternalLink,
-  Home,
-  TrendingUp,
+  ArrowSquareOut,
+  House,
+  ChartLineUp,
   Target,
-  Apple,
-  Dumbbell,
-  User,
+  ForkKnife,
+  Barbell,
+  UserCircle,
   MapPin,
   Plus,
   Calendar,
   ShoppingCart,
-  UtensilsCrossed
-} from "lucide-react";
+} from "@phosphor-icons/react";
 import MealLogModal from "./modals/MealLogModal";
 import { GroceryListSection } from './GroceryListSection';
 import { RestaurantListSection } from './RestaurantListSection';
@@ -651,8 +650,8 @@ export function MealPlanPage({ onNavigate, generationStatus }: MealPlanPageProps
                             <div className="w-4 h-4 border-2 border-current border-t-transparent rounded-full animate-spin mr-2" />
                           ) : null}
                           {currentMeal.source === 'restaurant' ?
-                            <><ExternalLink className="w-4 h-4 mr-1" />Order Now</> :
-                            <><Star className="w-4 h-4 mr-1" />Recipe</>
+                            <><ArrowSquareOut className="w-4 h-4 mr-1" weight="regular" />Order Now</> :
+                            <><Star className="w-4 h-4 mr-1" weight="regular" />Recipe</>
                           }
                         </Button>
 
@@ -680,7 +679,7 @@ export function MealPlanPage({ onNavigate, generationStatus }: MealPlanPageProps
                           : 'bg-gray-100 text-gray-600 border border-gray-300'
                       }`}>
                         {selectedOption === 'primary' ?
-                          <><Star className="w-3 h-3 mr-1" />Selected</> :
+                          <><Star className="w-3 h-3 mr-1" weight="bold" />Selected</> :
                           'Option'
                         }
                       </div>
@@ -703,7 +702,7 @@ export function MealPlanPage({ onNavigate, generationStatus }: MealPlanPageProps
                   className="bg-gradient-to-r from-purple-500 to-blue-500 hover:from-purple-600 hover:to-blue-600 text-white border-0 shadow-md transition-all duration-200 hover:scale-105 flex items-center gap-2"
                   size="sm"
                 >
-                  <ExternalLink className="w-4 h-4 mr-1" />
+                  <ArrowSquareOut className="w-4 h-4 mr-1" weight="regular" />
                   Switch Option
                 </Button>
               </div>
@@ -888,28 +887,28 @@ export function MealPlanPage({ onNavigate, generationStatus }: MealPlanPageProps
               <span className="text-xs">Home</span>
             </button>
             <button className="flex flex-col items-center justify-center text-primary">
-              <Apple className="w-5 h-5 mb-1" />
+              <ForkKnife className="w-5 h-5 mb-1" weight="regular" />
               <span className="text-xs">Meals</span>
             </button>
             <button
               className="flex flex-col items-center justify-center text-neutral-400"
               onClick={() => onNavigate("workout-plan")}
             >
-              <Dumbbell className="w-5 h-5 mb-1" />
+              <Barbell className="w-5 h-5 mb-1" weight="regular" />
               <span className="text-xs">Workouts</span>
             </button>
             <button
               className="flex flex-col items-center justify-center text-neutral-400"
               onClick={() => onNavigate("progress")}
             >
-              <TrendingUp className="w-5 h-5 mb-1" />
+              <ChartLineUp className="w-5 h-5 mb-1" weight="regular" />
               <span className="text-xs">Progress</span>
             </button>
             <button
               className="flex flex-col items-center justify-center text-neutral-400"
               onClick={() => onNavigate("account")}
             >
-              <User className="w-5 h-5 mb-1" />
+              <UserCircle className="w-5 h-5 mb-1" weight="regular" />
               <span className="text-xs">Account</span>
             </button>
           </div>
@@ -1006,7 +1005,7 @@ export function MealPlanPage({ onNavigate, generationStatus }: MealPlanPageProps
                 : 'border-transparent text-gray-600 hover:text-gray-900 hover:border-gray-300'
             }`}
           >
-            <UtensilsCrossed className="w-4 h-4" />
+            <ForkKnife className="w-4 h-4" />
             <span className="whitespace-nowrap">Restaurants</span>
           </button>
         </div>
@@ -1316,28 +1315,28 @@ export function MealPlanPage({ onNavigate, generationStatus }: MealPlanPageProps
             <span className="text-xs">Home</span>
           </button>
           <button className="flex flex-col items-center justify-center text-primary">
-            <Apple className="w-5 h-5 mb-1" />
+            <ForkKnife className="w-5 h-5 mb-1" weight="regular" />
             <span className="text-xs">Meals</span>
           </button>
           <button
             className="flex flex-col items-center justify-center text-neutral-400"
             onClick={() => onNavigate("workout-plan")}
           >
-            <Dumbbell className="w-5 h-5 mb-1" />
+            <Barbell className="w-5 h-5 mb-1" weight="regular" />
             <span className="text-xs">Workouts</span>
           </button>
           <button
             className="flex flex-col items-center justify-center text-neutral-400"
             onClick={() => onNavigate("progress")}
           >
-            <TrendingUp className="w-5 h-5 mb-1" />
+            <ChartLineUp className="w-5 h-5 mb-1" weight="regular" />
             <span className="text-xs">Progress</span>
           </button>
           <button
             className="flex flex-col items-center justify-center text-neutral-400"
             onClick={() => onNavigate("account")}
           >
-            <User className="w-5 h-5 mb-1" />
+            <UserCircle className="w-5 h-5 mb-1" weight="regular" />
             <span className="text-xs">Account</span>
           </button>
         </div>

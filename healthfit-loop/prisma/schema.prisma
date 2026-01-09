@@ -71,6 +71,13 @@ model SurveyResponse {
   sportsInterests        String     @default("")
   preferredNutrients     String[]   @default([])
   uploadedFiles          String[]   @default([])
+  primaryGoal            String?
+  goalChallenge          String?
+  fitnessLevel           String?
+  healthFocus            String?
+  maintainFocus          String?
+  preferredActivities    String[]   @default([])
+  additionalGoalsNotes   String     @default("")
   user                   User?      @relation(fields: [userId], references: [id])
   activeForUser          User?      @relation("ActiveSurvey")
 

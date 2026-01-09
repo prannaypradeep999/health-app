@@ -56,7 +56,9 @@
       "Bash(xargs:*)",
       "WebSearch",
       "Bash(npm run lint:*)",
-      "Bash(rm:*)"
+      "Bash(rm:*)",
+      "Bash(npx next lint:*)",
+      "Bash(yarn lint:*)"
     ],
     "deny": [],
     "ask": []
