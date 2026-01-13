@@ -103,6 +103,7 @@ export function LoadingJourney({ surveyData, onComplete, onSkipToDashboard }: Lo
   const [showSkipButton, setShowSkipButton] = useState(false);
   const [emailSent, setEmailSent] = useState(false);
   const [email, setEmail] = useState(surveyData?.email || '');
+  const [restaurantPreview, setRestaurantPreview] = useState<string[]>([]);
   const [overallProgress, setOverallProgress] = useState(0);
   const [elapsedTime, setElapsedTime] = useState(0);
   const [generationComplete, setGenerationComplete] = useState(false);
@@ -111,7 +112,7 @@ export function LoadingJourney({ surveyData, onComplete, onSkipToDashboard }: Lo
   // Round all values to nearest 10 for cleaner display
   const macroTargets = React.useMemo(() => {
     if (!surveyData?.age || !surveyData?.weight || !surveyData?.height) {
-      return { calories: 2000, protein: 150, carbs: 200, fat: 70 };
+      return null; // Return null instead of hardcoded fallback
     }
 
     const userProfile: UserProfile = {
@@ -156,6 +157,36 @@ export function LoadingJourney({ surveyData, onComplete, onSkipToDashboard }: Lo
       setCurrentTipIndex(prev => (prev + 1) % nutritionTips.length);
     }, 8000);
     return () => clearInterval(tipTimer);
+  }, []);
+
+  // Poll for early restaurant data
+  useEffect(() => {
+    const pollRestaurants = async () => {
+      try {
+        const res = await fetch('/api/ai/meals/current');
+        if (res.ok) {
+          const data = await res.json();
+          const restaurants = data.mealPlan?.planData?.restaurantMeals || [];
+          if (restaurants.length > 0) {
+            const names = [...new Set(restaurants.map((r: any) =>
+              r.primary?.restaurant || r.restaurant
+            ).filter(Boolean))].slice(0, 4);
+            setRestaurantPreview(names);
+          }
+        }
+      } catch (error) {
+        console.log('Restaurant preview not ready yet');
+      }
+    };
+
+    // Start polling after 30s (restaurants should be found by then)
+    const timer = setTimeout(() => {
+      pollRestaurants();
+      const interval = setInterval(pollRestaurants, 10000);
+      return () => clearInterval(interval);
+    }, 30000);
+
+    return () => clearTimeout(timer);
   }, []);
 
   // Poll for actual generation status
@@ -348,7 +379,9 @@ export function LoadingJourney({ surveyData, onComplete, onSkipToDashboard }: Lo
                     <p className={`text-sm mt-0.5 ${
                       stage.status === 'active' ? 'text-red-700' : 'text-gray-500'
                     }`}>
-                      {stage.description}
+                      {stage.id === 'restaurants' && restaurantPreview.length > 0
+                        ? `Found: ${restaurantPreview.join(', ')}`
+                        : stage.description}
                     </p>
                   </div>
                 </motion.div>
@@ -378,24 +411,31 @@ export function LoadingJourney({ surveyData, onComplete, onSkipToDashboard }: Lo
             <h3 className="font-semibold text-gray-900">Your Daily Targets</h3>
           </div>
 
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 sm:gap-3">
-            <div className="text-center p-3 bg-gray-50 rounded-xl">
-              <div className="text-lg sm:text-xl font-bold text-gray-900">{macroTargets.calories.toLocaleString()}</div>
-              <div className="text-xs text-gray-500">calories</div>
+          {macroTargets ? (
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 sm:gap-3">
+              <div className="text-center p-3 bg-gray-50 rounded-xl">
+                <div className="text-lg sm:text-xl font-bold text-gray-900">{macroTargets.calories.toLocaleString()}</div>
+                <div className="text-xs text-gray-500">calories</div>
+              </div>
+              <div className="text-center p-3 bg-blue-50 rounded-xl">
+                <div className="text-lg sm:text-xl font-bold text-blue-700">{macroTargets.protein}g</div>
+                <div className="text-xs text-blue-600">protein</div>
+              </div>
+              <div className="text-center p-3 bg-amber-50 rounded-xl">
+                <div className="text-lg sm:text-xl font-bold text-amber-700">{macroTargets.carbs}g</div>
+                <div className="text-xs text-amber-600">carbs</div>
+              </div>
+              <div className="text-center p-3 bg-green-50 rounded-xl">
+                <div className="text-lg sm:text-xl font-bold text-green-700">{macroTargets.fat}g</div>
+                <div className="text-xs text-green-600">fat</div>
+              </div>
             </div>
-            <div className="text-center p-3 bg-blue-50 rounded-xl">
-              <div className="text-lg sm:text-xl font-bold text-blue-700">{macroTargets.protein}g</div>
-              <div className="text-xs text-blue-600">protein</div>
+          ) : (
+            <div className="text-center p-4 bg-red-50 rounded-xl border border-red-200">
+              <div className="text-red-600 font-medium">Survey data incomplete</div>
+              <div className="text-red-500 text-sm mt-1">Please complete your profile to view nutrition targets</div>
             </div>
-            <div className="text-center p-3 bg-amber-50 rounded-xl">
-              <div className="text-lg sm:text-xl font-bold text-amber-700">{macroTargets.carbs}g</div>
-              <div className="text-xs text-amber-600">carbs</div>
-            </div>
-            <div className="text-center p-3 bg-green-50 rounded-xl">
-              <div className="text-lg sm:text-xl font-bold text-green-700">{macroTargets.fat}g</div>
-              <div className="text-xs text-green-600">fat</div>
-            </div>
-          </div>
+          )}
         </motion.div>
 
         {/* Nutrition Tip */}

@@ -7,6 +7,7 @@ import {
   createRestaurantMealGenerationPrompt,
   createRestaurantSelectionPrompt
 } from '@/lib/ai/prompts';
+import { calculateMacroTargets, UserProfile } from '@/lib/utils/nutrition';
 
 export const runtime = 'nodejs';
 
@@ -20,6 +21,75 @@ export const runtime = 'nodejs';
  * - Added filtering to remove restaurants without ordering links
  * - Improved validation and error handling
  */
+
+// Generate nutrition targets based on survey data
+function calculateNutritionTargets(surveyData: any): any {
+  if (!surveyData.age || !surveyData.sex || !surveyData.height || !surveyData.weight) {
+    // Provide defaults for missing data
+    return {
+      dailyCalories: 2000,
+      dailyProtein: 120,
+      dailyCarbs: 250,
+      dailyFat: 67,
+      mealTargets: {
+        breakfast: { calories: 500, protein: 25, carbs: 60, fat: 17 },
+        lunch: { calories: 650, protein: 35, carbs: 85, fat: 22 },
+        dinner: { calories: 750, protein: 45, carbs: 90, fat: 25 },
+        snack: { calories: 100, protein: 15, carbs: 15, fat: 3 }
+      }
+    };
+  }
+
+  const userProfile: UserProfile = {
+    age: surveyData.age,
+    sex: surveyData.sex,
+    height: surveyData.height,
+    weight: surveyData.weight,
+    activityLevel: surveyData.activityLevel || 'MODERATELY_ACTIVE',
+    goal: surveyData.goal || 'GENERAL_WELLNESS'
+  };
+
+  const macroTargets = calculateMacroTargets(userProfile);
+
+  // Calculate meal targets (approximate distribution)
+  const breakfastPercent = 0.25;
+  const lunchPercent = 0.32;
+  const dinnerPercent = 0.38;
+  const snackPercent = 0.05;
+
+  return {
+    dailyCalories: macroTargets.calories,
+    dailyProtein: macroTargets.protein,
+    dailyCarbs: macroTargets.carbs,
+    dailyFat: macroTargets.fat,
+    mealTargets: {
+      breakfast: {
+        calories: Math.round(macroTargets.calories * breakfastPercent),
+        protein: Math.round(macroTargets.protein * breakfastPercent),
+        carbs: Math.round(macroTargets.carbs * breakfastPercent),
+        fat: Math.round(macroTargets.fat * breakfastPercent)
+      },
+      lunch: {
+        calories: Math.round(macroTargets.calories * lunchPercent),
+        protein: Math.round(macroTargets.protein * lunchPercent),
+        carbs: Math.round(macroTargets.carbs * lunchPercent),
+        fat: Math.round(macroTargets.fat * lunchPercent)
+      },
+      dinner: {
+        calories: Math.round(macroTargets.calories * dinnerPercent),
+        protein: Math.round(macroTargets.protein * dinnerPercent),
+        carbs: Math.round(macroTargets.carbs * dinnerPercent),
+        fat: Math.round(macroTargets.fat * dinnerPercent)
+      },
+      snack: {
+        calories: Math.round(macroTargets.calories * snackPercent),
+        protein: Math.round(macroTargets.protein * snackPercent),
+        carbs: Math.round(macroTargets.carbs * snackPercent),
+        fat: Math.round(macroTargets.fat * snackPercent)
+      }
+    }
+  };
+}
 
 // Helper function to extract restaurant meals from weekly schedule
 function extractRestaurantMealsFromSchedule(weeklyMealSchedule: any): Array<{day: string, mealType: string}> {
@@ -123,7 +193,15 @@ async function findAndSelectBestRestaurants(surveyData: any): Promise<Restaurant
     
     // Use AI to select the best 6-8 restaurants
     const selectionPrompt = createRestaurantSelectionPrompt(uniqueRestaurants, surveyData);
-    
+
+    // Calculate estimated tokens (rough estimate: 1 token ≈ 4 characters)
+    const estimatedTokens = Math.ceil(selectionPrompt.length / 4);
+    console.log(`[RESTAURANT-SEARCH] 📤 Sending GPT restaurant selection request:`);
+    console.log(`[RESTAURANT-SEARCH]   - Prompt length: ${selectionPrompt.length} chars`);
+    console.log(`[RESTAURANT-SEARCH]   - Estimated tokens: ${estimatedTokens}`);
+    console.log(`[RESTAURANT-SEARCH]   - Restaurants to choose from: ${uniqueRestaurants.length}`);
+    console.log(`[RESTAURANT-SEARCH]   - Model: gpt-4o`);
+
     const response = await fetch('https://api.openai.com/v1/chat/completions', {
       method: 'POST',
       headers: {
@@ -137,9 +215,36 @@ async function findAndSelectBestRestaurants(surveyData: any): Promise<Restaurant
         temperature: 0.3
       })
     });
-    
+
+    console.log(`[RESTAURANT-SEARCH] 📥 GPT Response received:`);
+    console.log(`[RESTAURANT-SEARCH]   - Status: ${response.status} ${response.statusText}`);
+    console.log(`[RESTAURANT-SEARCH]   - Content-Type: ${response.headers.get('content-type')}`);
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      console.error(`[RESTAURANT-SEARCH] ❌ GPT API Error: ${response.status} ${response.statusText}`);
+      console.error(`[RESTAURANT-SEARCH] ❌ Error details: ${errorText}`);
+      // Fall back to first 8 restaurants instead of crashing
+      console.warn('[RESTAURANT-SEARCH] ⚠️ GPT selection failed, using first 8 restaurants');
+      return uniqueRestaurants.slice(0, 8);
+    }
+
     const data = await response.json();
+    console.log(`[RESTAURANT-SEARCH] 📊 GPT Response data:`);
+    console.log(`[RESTAURANT-SEARCH]   - Has choices: ${!!data.choices}`);
+    console.log(`[RESTAURANT-SEARCH]   - Choices length: ${data.choices?.length || 0}`);
+    console.log(`[RESTAURANT-SEARCH]   - Usage: ${JSON.stringify(data.usage)}`);
+    console.log(`[RESTAURANT-SEARCH]   - Error: ${data.error ? JSON.stringify(data.error) : 'none'}`);
+
+    if (data.error) {
+      console.error(`[RESTAURANT-SEARCH] ❌ GPT returned error: ${JSON.stringify(data.error)}`);
+      console.warn('[RESTAURANT-SEARCH] ⚠️ GPT selection failed, using first 8 restaurants');
+      return uniqueRestaurants.slice(0, 8);
+    }
+
     const content = data.choices?.[0]?.message?.content || '{}';
+    console.log(`[RESTAURANT-SEARCH] 📝 Raw content preview (first 500 chars): ${content.substring(0, 500)}...`);
+
     const result = cleanJsonResponse(content);
     
     // Map selected restaurants back to original data to preserve all fields
@@ -292,7 +397,8 @@ async function extractMenuInformation(restaurants: Restaurant[], surveyData: any
 async function selectRestaurantMealsForSchedule(
   restaurantMenuData: any[],
   restaurantMealsSchedule: Array<{day: string, mealType: string}>,
-  surveyData: any
+  surveyData: any,
+  nutritionTargets: any
 ): Promise<any[]> {
   console.log(`[RESTAURANT-SELECTION] 🍽️ Selecting ${restaurantMealsSchedule.length} restaurant meals from ${restaurantMenuData.length} restaurants with links...`);
   
@@ -306,9 +412,17 @@ async function selectRestaurantMealsForSchedule(
     const prompt = createRestaurantMealGenerationPrompt({
       restaurantMealsSchedule,
       restaurantMenuData,
-      surveyData
+      surveyData,
+      nutritionTargets
     });
     
+    // Calculate estimated tokens (rough estimate: 1 token ≈ 4 characters)
+    const estimatedTokens = Math.ceil(prompt.length / 4);
+    console.log(`[RESTAURANT-SELECTION] 📤 Sending GPT request:`);
+    console.log(`[RESTAURANT-SELECTION]   - Prompt length: ${prompt.length} chars`);
+    console.log(`[RESTAURANT-SELECTION]   - Estimated tokens: ${estimatedTokens}`);
+    console.log(`[RESTAURANT-SELECTION]   - Model: gpt-4o`);
+
     const response = await fetch('https://api.openai.com/v1/chat/completions', {
       method: 'POST',
       headers: {
@@ -322,9 +436,33 @@ async function selectRestaurantMealsForSchedule(
         temperature: 0.4
       })
     });
-    
+
+    console.log(`[RESTAURANT-SELECTION] 📥 GPT Response received:`);
+    console.log(`[RESTAURANT-SELECTION]   - Status: ${response.status} ${response.statusText}`);
+    console.log(`[RESTAURANT-SELECTION]   - Content-Type: ${response.headers.get('content-type')}`);
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      console.error(`[RESTAURANT-SELECTION] ❌ GPT API Error: ${response.status} ${response.statusText}`);
+      console.error(`[RESTAURANT-SELECTION] ❌ Error details: ${errorText}`);
+      throw new Error(`GPT API failed: ${response.status} ${response.statusText} - ${errorText}`);
+    }
+
     const data = await response.json();
+    console.log(`[RESTAURANT-SELECTION] 📊 GPT Response data:`);
+    console.log(`[RESTAURANT-SELECTION]   - Has choices: ${!!data.choices}`);
+    console.log(`[RESTAURANT-SELECTION]   - Choices length: ${data.choices?.length || 0}`);
+    console.log(`[RESTAURANT-SELECTION]   - Usage: ${JSON.stringify(data.usage)}`);
+    console.log(`[RESTAURANT-SELECTION]   - Error: ${data.error ? JSON.stringify(data.error) : 'none'}`);
+
+    if (data.error) {
+      console.error(`[RESTAURANT-SELECTION] ❌ GPT returned error: ${JSON.stringify(data.error)}`);
+      throw new Error(`GPT API error: ${data.error.message || data.error}`);
+    }
+
     const content = data.choices?.[0]?.message?.content || '{}';
+    console.log(`[RESTAURANT-SELECTION] 📝 Raw content preview (first 500 chars): ${content.substring(0, 500)}...`);
+
     const result = cleanJsonResponse(content);
     
     const selectedMeals = result?.restaurantMeals || [];
@@ -349,8 +487,21 @@ async function selectRestaurantMealsForSchedule(
 export async function POST(req: NextRequest) {
   const startTime = Date.now();
   console.log(`[RESTAURANT-GENERATION] 🚀 Starting restaurant meal generation at ${new Date().toISOString()}`);
-  
+
   try {
+    // Parse request data for coordinated meal plan ID
+    let requestData: { backgroundGeneration?: boolean; mealPlanId?: string } = {};
+    try {
+      requestData = await req.json();
+    } catch {
+      console.log(`[RESTAURANT-GENERATION] 📄 Empty request body, using defaults`);
+    }
+
+    console.log(`[RESTAURANT-GENERATION] 📋 Request data:`, {
+      backgroundGeneration: requestData.backgroundGeneration,
+      mealPlanId: requestData.mealPlanId || 'none - will find existing'
+    });
+
     const cookieStore = await cookies();
     const userId = cookieStore.get('user_id')?.value;
     const sessionId = cookieStore.get('guest_session')?.value;
@@ -387,7 +538,11 @@ export async function POST(req: NextRequest) {
     }
     
     console.log(`[RESTAURANT-GENERATION] ✅ Survey data found for ${surveyData.firstName}`);
-    
+
+    // Calculate nutrition targets
+    const nutritionTargets = calculateNutritionTargets(surveyData);
+    console.log(`[RESTAURANT-GENERATION] 📊 Calculated nutrition targets: ${nutritionTargets.dailyCalories} calories/day`);
+
     // Extract restaurant meals from schedule
     const restaurantMealsSchedule = extractRestaurantMealsFromSchedule(surveyData.weeklyMealSchedule);
     console.log(`[RESTAURANT-GENERATION] 🏪 Found ${restaurantMealsSchedule.length} restaurant meals in schedule`);
@@ -434,7 +589,7 @@ export async function POST(req: NextRequest) {
     
     // Phase 3: Select specific meals for schedule
     const mealSelectionStart = Date.now();
-    const selectedRestaurantMeals = await selectRestaurantMealsForSchedule(restaurantMenuData, restaurantMealsSchedule, surveyData);
+    const selectedRestaurantMeals = await selectRestaurantMealsForSchedule(restaurantMenuData, restaurantMealsSchedule, surveyData, nutritionTargets);
     const mealSelectionTime = Date.now() - mealSelectionStart;
     
     // Update existing meal plan with restaurant data
@@ -444,17 +599,32 @@ export async function POST(req: NextRequest) {
     try {
       console.log('[RESTAURANT-GENERATION] 💾 Updating meal plan with restaurant data...');
       
-      // Find the most recent partial meal plan
-      const existingMealPlan = await prisma.mealPlan.findFirst({
-        where: {
-          OR: [
-            { userId: userId || undefined },
-            { surveyId: surveyData.id }
-          ],
-          status: 'partial'
-        },
-        orderBy: { createdAt: 'desc' }
-      });
+      // Find the meal plan (coordinated ID or fallback to most recent partial)
+      let existingMealPlan;
+
+      if (requestData.mealPlanId) {
+        // Use coordinated meal plan ID
+        console.log(`[RESTAURANT-GENERATION] 🔗 Looking for coordinated meal plan ${requestData.mealPlanId}`);
+        existingMealPlan = await prisma.mealPlan.findUnique({
+          where: { id: requestData.mealPlanId }
+        });
+        if (!existingMealPlan) {
+          throw new Error(`Coordinated meal plan ${requestData.mealPlanId} not found`);
+        }
+      } else {
+        // Fallback to legacy behavior - find most recent partial meal plan
+        console.log(`[RESTAURANT-GENERATION] 🔍 Looking for most recent partial meal plan (legacy mode)`);
+        existingMealPlan = await prisma.mealPlan.findFirst({
+          where: {
+            OR: [
+              { userId: userId || undefined },
+              { surveyId: surveyData.id }
+            ],
+            status: 'partial'
+          },
+          orderBy: { createdAt: 'desc' }
+        });
+      }
       
       if (existingMealPlan) {
         // Update existing plan with restaurant data
@@ -489,6 +659,10 @@ export async function POST(req: NextRequest) {
           ...existingContext,
           days: updatedDays,
           restaurantMeals: selectedRestaurantMeals,
+          generators: {
+            ...existingContext.generators,
+            restaurants: 'completed'
+          },
           metadata: {
             ...existingContext.metadata,
             restaurantsStatus: 'completed',

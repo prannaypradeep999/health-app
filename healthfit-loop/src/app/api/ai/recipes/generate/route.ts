@@ -4,21 +4,39 @@ import { createRecipeGenerationPrompt } from '@/lib/ai/prompts';
 
 export async function POST(req: NextRequest) {
   try {
-    const { dishName, description, mealType } = await req.json();
+    const {
+      dishName,
+      description,
+      mealType,
+      // NEW parameters
+      nutritionTargets,
+      existingGroceryItems,
+      dietaryRestrictions
+    } = await req.json();
 
     if (!dishName) {
       return NextResponse.json({ error: 'Dish name is required' }, { status: 400 });
     }
 
-    // Check if recipe already exists in cache
+    // Check cache - but only use if nutrition targets match OR no specific targets requested
     const existingRecipe = await prisma.recipe.findFirst({
       where: {
         dishName: dishName.toLowerCase().trim()
       }
     });
 
+    // Always use cache if recipe exists for the dish
+
     if (existingRecipe) {
-      console.log(`[RECIPE] ✅ Found cached recipe for "${dishName}"`);
+      // Update hit count
+      await prisma.recipe.update({
+        where: { id: existingRecipe.id },
+        data: {
+          hitCount: { increment: 1 },
+          lastUsed: new Date()
+        }
+      });
+      console.log(`[RECIPE] ✅ Using cached recipe for "${dishName}" (hits: ${existingRecipe.hitCount + 1})`);
       return NextResponse.json({
         success: true,
         recipe: existingRecipe.recipeData,
@@ -26,10 +44,17 @@ export async function POST(req: NextRequest) {
       });
     }
 
-    console.log(`[RECIPE] 🍳 Generating new recipe for "${dishName}"`);
+    console.log(`[RECIPE] 🍳 Generating new recipe for "${dishName}" with targets:`, nutritionTargets);
 
     // Generate comprehensive recipe with GPT
-    const recipePrompt = createRecipeGenerationPrompt({ dishName, description, mealType });
+    const recipePrompt = createRecipeGenerationPrompt({
+      dishName,
+      description,
+      mealType,
+      nutritionTargets,
+      existingGroceryItems,
+      dietaryRestrictions
+    });
 
     const response = await fetch('https://api.openai.com/v1/chat/completions', {
       method: 'POST',
@@ -61,10 +86,16 @@ export async function POST(req: NextRequest) {
     const data = await response.json();
     const recipeData = JSON.parse(data.choices[0].message.content);
 
-    // Save recipe to cache
+    // Always save recipe to cache using upsert
     try {
-      await prisma.recipe.create({
-        data: {
+      await prisma.recipe.upsert({
+        where: { dishName: dishName.toLowerCase().trim() },
+        update: {
+          recipeData: recipeData,
+          hitCount: { increment: 1 },
+          lastUsed: new Date()
+        },
+        create: {
           dishName: dishName.toLowerCase().trim(),
           originalDishName: dishName,
           mealType: mealType,
@@ -72,7 +103,7 @@ export async function POST(req: NextRequest) {
           recipeData: recipeData
         }
       });
-      console.log(`[RECIPE] 💾 Cached recipe for "${dishName}"`);
+      console.log(`[RECIPE] 💾 Cached new recipe for "${dishName}"`);
     } catch (cacheError) {
       console.error('[RECIPE] Failed to cache recipe:', cacheError);
     }

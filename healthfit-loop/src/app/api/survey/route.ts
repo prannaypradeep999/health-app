@@ -8,12 +8,12 @@ export const runtime = 'nodejs';
 
 /**
  * Survey API Route
- * 
+ *
  * CHANGES MADE:
  * - Extracted buildSurveyData() helper to reduce code duplication
  * - Moved countRestaurantMeals() to top level
- * - Step 5: Now AWAITS home meal generation before returning (was fire-and-forget)
- * - Step 5: Restaurant generation still runs in background (fire-and-forget)
+ * - Removed dead code: step 5 and 6 blocks that never execute (frontend sends 7/8)
+ * - All generation now happens only on final submission (step 9)
  * - Removed dead triggerMealGeneration() function (was never called)
  * - Fixed all error.message TypeScript issues with proper type guards
  * - Removed unused surveyData parameter from triggerBackgroundWorkoutGeneration
@@ -123,19 +123,34 @@ export async function POST(req: Request) {
       });
     }
 
-    // Set cookies
+    // Set cookies (session cookies that expire on browser close)
     cookieStore.set('guest_session', sessionId, {
       httpOnly: true,
       secure: process.env.NODE_ENV === 'production',
       sameSite: 'lax',
-      maxAge: 60 * 60 * 24 * 7
+      path: '/'
     });
 
     cookieStore.set('survey_id', survey.id, {
       httpOnly: true,
       secure: process.env.NODE_ENV === 'production',
       sameSite: 'lax',
-      maxAge: 60 * 60 * 24 * 7
+      path: '/'
+    });
+
+    console.log('[SURVEY-API] ✅ Survey saved successfully:', {
+      surveyId: survey.id,
+      hasAge: !!survey.age,
+      hasWeight: !!survey.weight,
+      hasHeight: !!survey.height,
+      hasSex: !!survey.sex,
+      age: survey.age,
+      weight: survey.weight,
+      height: survey.height,
+      sex: survey.sex,
+      goal: survey.goal,
+      activityLevel: survey.activityLevel,
+      weeklyMealSchedule: JSON.stringify(survey.weeklyMealSchedule).substring(0, 200)
     });
 
     // Build base URL for internal API calls
@@ -143,52 +158,29 @@ export async function POST(req: Request) {
     const host = req.headers.get('host') || 'localhost:3000';
     const baseUrl = `${protocol}://${host}`;
 
-    // Trigger background processes based on step
-    if (payload.currentStep === 5) {
-      console.log('[MEAL-TRIGGER] 🍽️ Step 5 completed - starting meal generation');
-      console.log('[MEAL-TRIGGER] 📊 Survey data:', {
-        surveyId: survey.id,
-        sessionId,
-        goal: parsed.data.goal,
-        city: parsed.data.city,
-        cuisines: parsed.data.preferredCuisines?.length || 0,
-        foods: parsed.data.preferredFoods?.length || 0,
+    // Trigger generation processes on final submission only
+    if (!payload.currentStep || payload.currentStep === 9) {
+      console.log('[FINAL] 🎯 Final survey submission - creating meal plan and coordinating generation');
+
+      // Step 1: Create a single meal plan record UPFRONT
+      const mealPlan = await createCoordinatedMealPlan(survey.id);
+      console.log(`[FINAL] ✅ Created coordinated meal plan: ${mealPlan.id}`);
+
+      // Set mealPlanId cookie for direct lookup by /api/ai/meals/current
+      cookieStore.set('meal_plan_id', mealPlan.id, {
+        httpOnly: true,
+        secure: process.env.NODE_ENV === 'production',
+        sameSite: 'lax',
+        path: '/'
       });
+      console.log(`[FINAL] 🍪 Set meal_plan_id cookie: ${mealPlan.id}`);
 
-      // AWAIT home meals (this is the critical change - we wait for home meals to complete)
-      // This ensures the dashboard has home meals + grocery list ready
-      const homeMealsResult = await triggerHomeMealGeneration(survey.id, sessionId, baseUrl);
-
-      // Fire-and-forget restaurant generation (runs in background)
-      triggerRestaurantGeneration(survey.id, sessionId, baseUrl).catch(error => {
-        console.error('[RESTAURANT-TRIGGER] ❌ Background restaurant generation failed:', error);
-      });
-
-      return NextResponse.json({
-        ok: true,
-        surveyId: survey.id,
-        sessionId,
-        homeMealsReady: homeMealsResult.success,
-        groceryList: homeMealsResult.groceryList || null
-      });
-
-    } else if (payload.currentStep === 6) {
-      console.log('[WORKOUT-TRIGGER] 🏋️ Step 6 completed - triggering background workout generation');
-
-      // Fire-and-forget workout generation
-      triggerBackgroundWorkoutGeneration(survey.id, sessionId, baseUrl).catch(error => {
-        console.error('[WORKOUT-TRIGGER] ❌ Background workout generation failed:', error);
-      });
-
-    } else if (!payload.currentStep || payload.currentStep === 9) {
-      console.log('[FINAL] 🎯 Final survey submission - triggering all generation in parallel');
-
-      // Fire all generation processes in parallel (don't await any)
+      // Step 2: Fire all generation processes in parallel with shared mealPlanId
       // The LoadingJourney will poll for status updates
       Promise.all([
-        triggerHomeMealGeneration(survey.id, sessionId, baseUrl),
+        triggerHomeMealGeneration(survey.id, sessionId, baseUrl, mealPlan.id),
         triggerBackgroundWorkoutGeneration(survey.id, sessionId, baseUrl),
-        triggerRestaurantGeneration(survey.id, sessionId, baseUrl)
+        triggerRestaurantGeneration(survey.id, sessionId, baseUrl, mealPlan.id)
       ]).catch(error => {
         console.error('[FINAL] ❌ Generation error:', error);
       });
@@ -214,7 +206,7 @@ export async function POST(req: Request) {
       });
 
     } else {
-      console.log(`[PROGRESSIVE] ℹ️ Step ${payload.currentStep} completed`);
+      console.log(`[PROGRESSIVE] ℹ️ Step ${payload.currentStep} completed - data saved, no generation triggered`);
     }
 
     return NextResponse.json({
@@ -262,12 +254,79 @@ export async function GET(req: Request) {
       return NextResponse.json({ error: 'No survey found' }, { status: 404 });
     }
 
+    console.log('[SURVEY-API-GET] 📋 Returning survey:', {
+      surveyId: survey?.id,
+      hasAge: !!survey?.age,
+      hasWeight: !!survey?.weight,
+      hasHeight: !!survey?.height,
+      hasSex: !!survey?.sex,
+      goal: survey?.goal,
+      sessionId: sessionId || 'none',
+      userId: userId || 'none'
+    });
+
     return NextResponse.json({ survey });
 
   } catch (err) {
     console.error('[GET /api/survey] Error:', err);
     return NextResponse.json({ error: 'Server error' }, { status: 500 });
   }
+}
+
+// ============================================================================
+// MEAL PLAN COORDINATION
+// ============================================================================
+
+/**
+ * Create a coordinated meal plan that all generators will use
+ */
+async function createCoordinatedMealPlan(surveyId: string) {
+  console.log(`[COORDINATED-PLAN] 🗑️ Cleaning up old meal plans for survey ${surveyId}...`);
+
+  // Delete any existing meal plans for this survey (from previous attempts)
+  const deleted = await prisma.mealPlan.deleteMany({
+    where: { surveyId: surveyId }
+  });
+
+  if (deleted.count > 0) {
+    console.log(`[COORDINATED-PLAN] 🗑️ Deleted ${deleted.count} old meal plan(s)`);
+  }
+
+  // Get start of week date for consistent meal plans
+  const weekOfDate = new Date();
+  weekOfDate.setHours(0, 0, 0, 0);
+  // Set to Monday of current week
+  const dayOfWeek = weekOfDate.getDay();
+  const daysToMonday = dayOfWeek === 0 ? -6 : 1 - dayOfWeek;
+  weekOfDate.setDate(weekOfDate.getDate() + daysToMonday);
+
+  // Now create fresh coordinated meal plan
+  const mealPlan = await prisma.mealPlan.create({
+    data: {
+      surveyId: surveyId,
+      userId: null, // Set later if user registers
+      weekOf: weekOfDate,
+      userContext: {
+        coordinatedGeneration: true,
+        status: 'generating',
+        createdAt: new Date().toISOString(),
+        generators: {
+          homeMeals: 'pending',
+          restaurants: 'pending',
+          workouts: 'pending'
+        },
+        days: [],
+        homeMeals: [],
+        restaurantMeals: [],
+        groceryList: null
+      },
+      status: 'partial',  // Will be updated to 'complete' when all generation finishes
+      regenerationCount: 1
+    }
+  });
+
+  console.log(`[COORDINATED-PLAN] ✅ Created fresh shared meal plan ${mealPlan.id} for survey ${surveyId}`);
+  return mealPlan;
 }
 
 // ============================================================================
@@ -279,9 +338,10 @@ export async function GET(req: Request) {
  * Returns the result including grocery list
  */
 async function triggerHomeMealGeneration(
-  surveyId: string, 
-  sessionId: string, 
-  baseUrl: string
+  surveyId: string,
+  sessionId: string,
+  baseUrl: string,
+  mealPlanId?: string
 ): Promise<{ success: boolean; groceryList?: any; error?: string }> {
   const startTime = Date.now();
   try {
@@ -293,7 +353,10 @@ async function triggerHomeMealGeneration(
         'Content-Type': 'application/json',
         'Cookie': `survey_id=${surveyId}; guest_session=${sessionId}`
       },
-      body: JSON.stringify({ backgroundGeneration: true })
+      body: JSON.stringify({
+        backgroundGeneration: true,
+        mealPlanId: mealPlanId // Pass coordinated meal plan ID
+      })
     });
 
     const totalTime = Date.now() - startTime;
@@ -336,9 +399,10 @@ async function triggerHomeMealGeneration(
  * Triggers restaurant meal generation in the background (fire-and-forget)
  */
 async function triggerRestaurantGeneration(
-  surveyId: string, 
-  sessionId: string, 
-  baseUrl: string
+  surveyId: string,
+  sessionId: string,
+  baseUrl: string,
+  mealPlanId?: string
 ): Promise<void> {
   const startTime = Date.now();
   try {
@@ -350,7 +414,10 @@ async function triggerRestaurantGeneration(
         'Content-Type': 'application/json',
         'Cookie': `survey_id=${surveyId}; guest_session=${sessionId}`
       },
-      body: JSON.stringify({ backgroundGeneration: true })
+      body: JSON.stringify({
+        backgroundGeneration: true,
+        mealPlanId: mealPlanId // Pass coordinated meal plan ID
+      })
     });
 
     const totalTime = Date.now() - startTime;

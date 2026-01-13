@@ -64,6 +64,8 @@ export function DashboardContainer({ initialScreen = 'dashboard' }: DashboardCon
   const [loadingPreview, setLoadingPreview] = useState(false);
   const [shouldShowInitialPreview, setShouldShowInitialPreview] = useState(false);
   const [isEarlyArrival, setIsEarlyArrival] = useState(false);
+  const [isWaitingForFreshData, setIsWaitingForFreshData] = useState(false);
+  const [mealData, setMealData] = useState<any>(null);
 
   useEffect(() => {
     fetchSurveyData();
@@ -77,10 +79,54 @@ export function DashboardContainer({ initialScreen = 'dashboard' }: DashboardCon
     console.log('[DashboardContainer] URL params check:', { justCompleted, earlyArrival, href: window.location.href });
 
     if (justCompleted === 'true') {
-      console.log('[DashboardContainer] Survey just completed, will show initial preview');
+      console.log('[DashboardContainer] Survey just completed, waiting for fresh meal plan...');
       setShouldShowInitialPreview(true);
-      // Clean up URL
-      window.history.replaceState({}, '', window.location.pathname);
+      setIsWaitingForFreshData(true);
+
+      // Don't clean up URL yet - we need to know we're waiting
+      // Start aggressive polling for fresh data
+      const pollForFreshData = async () => {
+        console.log('[DashboardContainer] Polling for fresh meal plan data...');
+
+        try {
+          const response = await fetch('/api/ai/meals/current');
+          const data = await response.json();
+
+          if (data.mealPlan) {
+            // Check if this is the NEW meal plan (created in last 2 minutes)
+            const mealPlanCreatedAt = new Date(data.mealPlan?.planData?.metadata?.createdAt || 0);
+            const isRecent = (Date.now() - mealPlanCreatedAt.getTime()) < 120000; // Within last 2 minutes
+
+            console.log('[DashboardContainer] Meal plan check:', {
+              found: true,
+              createdAt: mealPlanCreatedAt.toISOString(),
+              isRecent,
+              ageSeconds: (Date.now() - mealPlanCreatedAt.getTime()) / 1000
+            });
+
+            if (isRecent) {
+              console.log('[DashboardContainer] ✅ Fresh meal plan received!');
+              setIsWaitingForFreshData(false);
+              setMealData(data);
+              // Now clean up URL
+              window.history.replaceState({}, '', window.location.pathname);
+              return;
+            }
+          }
+
+          console.log('[DashboardContainer] Still waiting for fresh data...');
+          // Keep polling more frequently for fresh data
+          setTimeout(pollForFreshData, 2000);
+
+        } catch (error) {
+          console.error('[DashboardContainer] Error polling for fresh data:', error);
+          // Keep trying
+          setTimeout(pollForFreshData, 3000);
+        }
+      };
+
+      // Start polling immediately
+      pollForFreshData();
     } else if (earlyArrival === 'true') {
       console.log('[DashboardContainer] Early arrival - generation still in progress');
       setIsEarlyArrival(true);
@@ -119,9 +165,36 @@ export function DashboardContainer({ initialScreen = 'dashboard' }: DashboardCon
 
   const fetchSurveyData = async () => {
     try {
+      console.log('[DASHBOARD-CONTAINER] 🔍 Fetching survey data...');
       const response = await fetch('/api/survey');
+      console.log('[DASHBOARD-CONTAINER] Response status:', response.status);
+
       if (response.ok) {
         const data = await response.json();
+        console.log('[DASHBOARD-CONTAINER] 📋 Survey data received:', {
+          hasData: !!data.survey,
+          surveyId: data.survey?.id,
+          firstName: data.survey?.firstName,
+          age: data.survey?.age,
+          weight: data.survey?.weight,
+          height: data.survey?.height,
+          sex: data.survey?.sex,
+          goal: data.survey?.goal,
+          activityLevel: data.survey?.activityLevel,
+          isGuest: data.survey?.isGuest
+        });
+
+        // Check for missing critical fields
+        const missingFields = [];
+        if (!data.survey?.age) missingFields.push('age');
+        if (!data.survey?.weight) missingFields.push('weight');
+        if (!data.survey?.height) missingFields.push('height');
+        if (!data.survey?.sex) missingFields.push('sex');
+
+        if (missingFields.length > 0) {
+          console.error('[DASHBOARD-CONTAINER] ⚠️ MISSING CRITICAL FIELDS:', missingFields);
+        }
+
         setSurveyData(data.survey);
 
         // If we should show initial preview and we have survey data, show it
@@ -333,7 +406,8 @@ export function DashboardContainer({ initialScreen = 'dashboard' }: DashboardCon
     goal: surveyData.goal,
     activityLevel: surveyData.activityLevel,
     calorieTarget: nutritionTargets.calories,
-    macroTargets: nutritionTargets
+    macroTargets: nutritionTargets,
+    activeSurvey: surveyData
   };
 
   const renderScreen = () => {

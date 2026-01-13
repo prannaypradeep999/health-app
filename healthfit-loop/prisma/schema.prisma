@@ -23,6 +23,7 @@ model User {
   verificationToken   String?              @unique
   mealConsumptionLogs MealConsumptionLog[]
   mealFeedback        MealFeedback[]
+  mealFeedbackLogs    MealFeedbackLog[]
   mealPlans           MealPlan[]
   surveys             SurveyResponse[]
   activeSurvey        SurveyResponse?      @relation("ActiveSurvey", fields: [activeSurveyId], references: [id])
@@ -151,6 +152,7 @@ model MealOption {
   updatedAt       DateTime       @updatedAt
   selectedForMeal Meal[]         @relation("SelectedOption")
   feedback        MealFeedback[]
+  feedbackLogs    MealFeedbackLog[]
   meal            Meal           @relation(fields: [mealId], references: [id], onDelete: Cascade)
 
   @@unique([mealId, optionNumber])
@@ -414,6 +416,39 @@ model WorkoutProfile {
 
   @@index([userId])
   @@index([surveyId])
+}
+
+model MealFeedbackLog {
+  id              String      @id @default(cuid())
+  userId          String?
+  sessionId       String?     // For guest users
+  mealOptionId    String
+
+  // Feedback data
+  feedbackType    String      // 'loved' | 'disliked' | 'neutral'
+
+  // Denormalized for easy querying (don't need joins)
+  dishName        String
+  restaurantName  String?
+  isHomemade      Boolean     @default(false)
+  mealType        String      // 'breakfast' | 'lunch' | 'dinner'
+  day             String      // 'monday', 'tuesday', etc.
+
+  // Week tracking
+  weekNumber      Int
+  weekOf          DateTime
+
+  createdAt       DateTime    @default(now())
+
+  user            User?       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  mealOption      MealOption  @relation(fields: [mealOptionId], references: [id], onDelete: Cascade)
+
+  @@unique([mealOptionId])  // One feedback per meal option
+  @@index([userId])
+  @@index([sessionId])
+  @@index([dishName])
+  @@index([feedbackType])
+  @@index([weekOf])
 }
 
 enum HealthGoal {

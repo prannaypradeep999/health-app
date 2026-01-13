@@ -47,21 +47,30 @@ interface RestaurantListSectionProps {
 }
 
 export function RestaurantListSection({ restaurants, metadata }: RestaurantListSectionProps) {
-  console.log('[RESTAURANT-SECTION-DEBUG] Received restaurants:', restaurants);
-  restaurants.forEach(restaurant => {
-    console.log('[RESTAURANT-SECTION-DEBUG]', restaurant.name, '- ordering links:', restaurant.orderingLinks);
-
-    // Debug: Check count vs renderable buttons
-    const knownPlatforms = ['doordash', 'ubereats', 'grubhub', 'direct'];
-    const renderableCount = knownPlatforms.filter(platform =>
-      restaurant.orderingLinks?.[platform] &&
-      String(restaurant.orderingLinks[platform]).trim() !== ''
-    ).length;
-
-    if (restaurant.linksFound !== renderableCount) {
-      console.warn(`[RESTAURANT-DEBUG] Count mismatch for ${restaurant.name}: linksFound=${restaurant.linksFound}, renderable=${renderableCount}`);
-    }
+  console.log('[RESTAURANT-SECTION] 🍽️ Component mounted with:', {
+    hasRestaurants: !!restaurants,
+    restaurantsCount: restaurants?.length || 0,
+    restaurantNames: restaurants?.map(r => r.name) || [],
+    metadata: metadata
   });
+
+  if (restaurants && restaurants.length > 0) {
+    restaurants.forEach((restaurant, idx) => {
+      console.log(`[RESTAURANT-SECTION] Restaurant ${idx + 1}:`, {
+        name: restaurant.name,
+        cuisine: restaurant.cuisine,
+        address: restaurant.address,
+        hasOrderingLinks: !!restaurant.orderingLinks,
+        orderingLinksKeys: Object.keys(restaurant.orderingLinks || {}),
+        linksFound: restaurant.linksFound,
+        doordash: restaurant.orderingLinks?.doordash ? 'YES' : 'NO',
+        ubereats: restaurant.orderingLinks?.ubereats ? 'YES' : 'NO',
+        grubhub: restaurant.orderingLinks?.grubhub ? 'YES' : 'NO',
+        direct: restaurant.orderingLinks?.direct ? 'YES' : 'NO',
+        error: restaurant.error
+      });
+    });
+  }
 
   const openOrderingLink = (url: string, platform: string) => {
     window.open(url, '_blank');
@@ -86,7 +95,7 @@ export function RestaurantListSection({ restaurants, metadata }: RestaurantListS
   return (
     <div className="bg-white border border-gray-200 rounded-2xl shadow-md overflow-hidden">
       {/* Header */}
-      <div className="bg-gradient-to-r from-orange-50 to-red-50 border-b border-gray-200 px-6 py-4">
+      <div className="bg-gradient-to-r from-orange-50 to-red-50 border-b border-gray-200 px-4 sm:px-6 py-4">
         <div className="flex items-center justify-between">
           <div className="flex items-center space-x-3">
             <div className="w-10 h-10 bg-gradient-to-r from-[#c1272d] to-red-600 rounded-xl flex items-center justify-center shadow-md">
@@ -110,7 +119,7 @@ export function RestaurantListSection({ restaurants, metadata }: RestaurantListS
         </div>
 
         {/* Quick stats */}
-        <div className="flex items-center gap-4 mt-3 text-sm text-gray-600">
+        <div className="flex flex-wrap items-center gap-2 sm:gap-4 mt-3 text-xs sm:text-sm text-gray-600">
           <div className="flex items-center gap-1">
             <Truck className="w-4 h-4 text-[#c1272d]" weight="regular" />
             <span className="font-medium">{totalOrderingLinks} ordering links</span>
@@ -125,13 +134,13 @@ export function RestaurantListSection({ restaurants, metadata }: RestaurantListS
       </div>
 
       {/* Horizontal scroll restaurant cards */}
-      <div className="p-6">
+      <div className="p-4 sm:p-6">
         <div className="overflow-x-auto">
           <div className="flex space-x-4 pb-2" style={{ minWidth: 'max-content' }}>
             {restaurants.map((restaurant, index) => (
               <div
                 key={index}
-                className="w-80 flex-shrink-0 bg-gradient-to-br from-gray-50 to-white border-2 border-gray-200 rounded-xl overflow-hidden hover:shadow-lg hover:border-[#c1272d]/20 transition-all duration-300 group"
+                className="w-72 sm:w-80 flex-shrink-0 bg-gradient-to-br from-gray-50 to-white border-2 border-gray-200 rounded-xl overflow-hidden hover:shadow-lg hover:border-[#c1272d]/20 transition-all duration-300 group"
               >
                 {/* Restaurant header */}
                 <div className="p-4 border-b border-gray-200 bg-white">

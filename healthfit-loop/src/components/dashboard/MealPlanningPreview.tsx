@@ -47,23 +47,404 @@ interface Restaurant {
   error?: string;
 }
 
-interface GroceryItem {
+// Support both old and new grocery formats
+interface GroceryStoreOption {
+  store: string;
+  displayName: string;
+  price: number;
+  isRecommended: boolean;
+  reason?: string;
+  storeAddress: string;
+  priceConfidence: 'exact' | 'estimate';
+}
+
+interface EnrichedGroceryItem {
+  item: string;
+  quantity: string;
+  uses: string;
+  category: string;
+  storeOptions: GroceryStoreOption[];
+}
+
+// Legacy format for backwards compatibility
+interface LegacyGroceryItem {
   name: string;
   quantity: string;
   estimatedCost: number;
   uses: string;
 }
 
-interface GroceryList {
-  proteins: GroceryItem[];
-  vegetables: GroceryItem[];
-  grains: GroceryItem[];
-  dairy?: GroceryItem[];
-  pantryStaples?: GroceryItem[];
-  snacks?: GroceryItem[];
+interface EnrichedGroceryList {
+  items: EnrichedGroceryItem[];
+  stores: { name: string; address: string; type: string }[];
+  storeTotals: { store: string; total: number }[];
+  recommendedStore: string;
+  savings: string;
+  priceSearchSuccess: boolean;
+  error?: string;
+}
+
+interface LegacyGroceryList {
+  proteins: LegacyGroceryItem[];
+  vegetables: LegacyGroceryItem[];
+  grains: LegacyGroceryItem[];
+  dairy?: LegacyGroceryItem[];
+  pantryStaples?: LegacyGroceryItem[];
+  snacks?: LegacyGroceryItem[];
   totalEstimatedCost: number;
   weeklyBudgetUsed: string;
   error?: string;
+}
+
+// Union type to support both
+type GroceryList = EnrichedGroceryList | LegacyGroceryList;
+
+// Helper to detect which format
+function isEnrichedGroceryList(list: GroceryList): list is EnrichedGroceryList {
+  return 'items' in list && Array.isArray(list.items) && list.items.length > 0 && 'storeOptions' in list.items[0];
+}
+
+// Enhanced Grocery Preview Component
+interface EnrichedGroceryPreviewProps {
+  groceryData: EnrichedGroceryList;
+  checkedItems: Set<string>;
+  onToggleItem: (category: string, index: number) => void;
+}
+
+function EnrichedGroceryPreview({ groceryData, checkedItems, onToggleItem }: EnrichedGroceryPreviewProps) {
+  // Group items by category
+  const itemsByCategory: Record<string, EnrichedGroceryItem[]> = {};
+  groceryData.items.forEach((item) => {
+    if (!itemsByCategory[item.category]) {
+      itemsByCategory[item.category] = [];
+    }
+    itemsByCategory[item.category].push(item);
+  });
+
+  const categoryIcons: Record<string, { emoji: string; color: string; bgColor: string; borderColor: string; textColor: string }> = {
+    proteins: { emoji: '🥩', color: 'from-red-500 to-pink-600', bgColor: 'bg-red-50', borderColor: 'border-red-200', textColor: 'text-red-700' },
+    vegetables: { emoji: '🥬', color: 'from-green-500 to-emerald-600', bgColor: 'bg-green-50', borderColor: 'border-green-200', textColor: 'text-green-700' },
+    grains: { emoji: '🌾', color: 'from-amber-500 to-orange-600', bgColor: 'bg-amber-50', borderColor: 'border-amber-200', textColor: 'text-amber-700' },
+    dairy: { emoji: '🥛', color: 'from-blue-500 to-cyan-600', bgColor: 'bg-blue-50', borderColor: 'border-blue-200', textColor: 'text-blue-700' },
+    pantryStaples: { emoji: '🧂', color: 'from-purple-500 to-violet-600', bgColor: 'bg-purple-50', borderColor: 'border-purple-200', textColor: 'text-purple-700' },
+    snacks: { emoji: '🥜', color: 'from-pink-500 to-rose-600', bgColor: 'bg-pink-50', borderColor: 'border-pink-200', textColor: 'text-pink-700' }
+  };
+
+  const recommendedStoreTotal = groceryData.storeTotals?.find(st => st.store === groceryData.recommendedStore);
+  const totalItems = groceryData.items.length;
+
+  const isItemChecked = (category: string, index: number) => {
+    return checkedItems.has(`${category}-${index}`);
+  };
+
+  return (
+    <div className="space-y-6">
+      {/* Store Recommendation Banner */}
+      {groceryData.recommendedStore && (
+        <div className="bg-gradient-to-r from-green-100 to-emerald-100 border-2 border-green-300 rounded-2xl p-6 shadow-md">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center space-x-4">
+              <div className="w-12 h-12 bg-gradient-to-r from-green-500 to-emerald-600 rounded-xl flex items-center justify-center shadow-lg">
+                <Star className="w-6 h-6 text-white" fill="currentColor" />
+              </div>
+              <div>
+                <h4 className="text-lg font-bold text-gray-900 mb-1">Best Value Store</h4>
+                <p className="text-green-700 font-semibold flex items-center gap-2">
+                  <MapPin className="w-4 h-4" />
+                  {groceryData.recommendedStore}
+                </p>
+                {groceryData.stores?.find(s => s.name === groceryData.recommendedStore)?.address && (
+                  <p className="text-sm text-gray-600">
+                    {groceryData.stores.find(s => s.name === groceryData.recommendedStore)?.address}
+                  </p>
+                )}
+              </div>
+            </div>
+            <div className="text-right">
+              {recommendedStoreTotal && (
+                <div className="text-2xl font-bold text-green-600 mb-1">
+                  ${recommendedStoreTotal.total.toFixed(2)}
+                </div>
+              )}
+              {groceryData.savings && (
+                <Badge className="bg-green-200 text-green-800 border border-green-400 text-sm font-medium">
+                  {groceryData.savings}
+                </Badge>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Grouped by Category */}
+      <div className="grid gap-4">
+        {Object.entries(itemsByCategory).map(([category, items]) => {
+          const categoryInfo = categoryIcons[category] || categoryIcons.pantryStaples;
+          const categoryTotal = items.reduce((sum, item) => {
+            const bestOption = item.storeOptions?.find(opt => opt.store === groceryData.recommendedStore) || item.storeOptions?.[0];
+            return sum + (bestOption?.price || 0);
+          }, 0);
+
+          return (
+            <div key={category} className={`bg-white border-2 ${categoryInfo.borderColor} rounded-xl shadow-md overflow-hidden`}>
+              {/* Category header */}
+              <div className={`${categoryInfo.bgColor} border-b ${categoryInfo.borderColor} px-4 py-3`}>
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center space-x-3">
+                    <div className={`w-8 h-8 bg-gradient-to-r ${categoryInfo.color} rounded-lg flex items-center justify-center shadow-sm`}>
+                      <span className="text-sm">{categoryInfo.emoji}</span>
+                    </div>
+                    <div>
+                      <h4 className={`font-bold ${categoryInfo.textColor} uppercase text-sm tracking-wide`}>
+                        {category.replace(/([A-Z])/g, ' $1')} ({items.length})
+                      </h4>
+                    </div>
+                  </div>
+                  <div className={`text-lg font-bold ${categoryInfo.textColor}`}>
+                    ${categoryTotal.toFixed(2)}
+                  </div>
+                </div>
+              </div>
+
+              {/* Items list */}
+              <div className="p-4 space-y-3">
+                {items.map((item, index) => {
+                  const bestOption = item.storeOptions?.find(opt => opt.store === groceryData.recommendedStore) || item.storeOptions?.[0];
+                  const isChecked = isItemChecked(category, index);
+
+                  return (
+                    <div
+                      key={index}
+                      className={`flex items-center gap-3 p-3 rounded-lg transition-all duration-200 ${
+                        isChecked ? 'bg-green-50 border border-green-200' : 'bg-gray-50 border border-gray-200 hover:bg-gray-100'
+                      }`}
+                    >
+                      {/* Checkbox */}
+                      <button
+                        onClick={() => onToggleItem(category, index)}
+                        className="flex-shrink-0 transition-transform duration-200 hover:scale-110"
+                      >
+                        {isChecked ? (
+                          <CheckCircle className="w-5 h-5 text-green-600" />
+                        ) : (
+                          <Circle className="w-5 h-5 text-gray-400" />
+                        )}
+                      </button>
+
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center justify-between">
+                          <div className="flex items-center gap-2 flex-wrap min-w-0">
+                            <p className={`font-medium text-gray-900 ${isChecked ? 'line-through' : ''}`}>
+                              {bestOption?.displayName || item.item}
+                            </p>
+                            <Badge variant="outline" className="text-xs">
+                              {item.quantity}
+                            </Badge>
+                          </div>
+                          <div className="flex items-center gap-2 flex-shrink-0">
+                            <span className={`font-bold ${isChecked ? 'text-green-600 line-through' : 'text-gray-900'}`}>
+                              {bestOption?.priceConfidence === 'estimate' ? '~' : ''}${bestOption?.price.toFixed(2) || '0.00'}
+                            </span>
+                            {bestOption?.priceConfidence && (
+                              <Badge variant="outline" className={`text-xs ${
+                                bestOption.priceConfidence === 'exact'
+                                  ? 'text-green-600 border-green-300'
+                                  : 'text-amber-600 border-amber-300'
+                              }`}>
+                                {bestOption.priceConfidence}
+                              </Badge>
+                            )}
+                          </div>
+                        </div>
+                        {item.uses && (
+                          <p className="text-xs text-gray-500 mt-1 italic">"{item.uses}"</p>
+                        )}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          );
+        })}
+      </div>
+
+      {/* Summary Footer */}
+      <div className="bg-gradient-to-r from-blue-50 to-indigo-50 border border-blue-200 rounded-xl p-4 shadow-md">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center space-x-3">
+            <div className="w-10 h-10 bg-gradient-to-r from-blue-500 to-indigo-600 rounded-lg flex items-center justify-center shadow-md">
+              <Sparkles className="w-5 h-5 text-white" />
+            </div>
+            <div>
+              <h4 className="font-bold text-gray-900">Smart Shopping Summary</h4>
+              <p className="text-sm text-gray-600">{totalItems} items optimized for your goals</p>
+            </div>
+          </div>
+          <div className="text-right">
+            <div className="text-xl font-bold text-blue-600">
+              {recommendedStoreTotal ? `$${recommendedStoreTotal.total.toFixed(2)}` : 'Calculating...'}
+            </div>
+            <p className="text-xs text-gray-500">Full comparison on dashboard</p>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// Legacy Grocery Preview Component
+interface LegacyGroceryPreviewProps {
+  groceryList: LegacyGroceryList;
+  checkedItems: Set<string>;
+  onToggleItem: (category: string, index: number) => void;
+}
+
+function LegacyGroceryPreview({ groceryList, checkedItems, onToggleItem }: LegacyGroceryPreviewProps) {
+  const isGroceryItemChecked = (category: string, index: number) => {
+    return checkedItems.has(`${category}-${index}`);
+  };
+
+  return (
+    <div className="space-y-6">
+      {/* Budget Overview Card */}
+      <div className="bg-gradient-to-r from-green-50 to-emerald-50 border border-green-200 rounded-2xl p-6 shadow-md">
+        <div className="flex items-center justify-between">
+          <div>
+            <h4 className="text-lg font-bold text-gray-900 mb-1 flex items-center gap-2">
+              <DollarSign className="w-5 h-5 text-green-600" />
+              Weekly Budget Breakdown
+            </h4>
+            <p className="text-sm text-gray-600">Estimated costs for this week's groceries</p>
+          </div>
+          <div className="text-right">
+            <div className="text-3xl font-bold text-green-600 mb-1">
+              ${groceryList.totalEstimatedCost?.toFixed(2)}
+            </div>
+            <Badge className="bg-green-100 text-green-700 border border-green-300 text-sm font-medium">
+              {groceryList.weeklyBudgetUsed} of budget
+            </Badge>
+          </div>
+        </div>
+      </div>
+
+      {/* Category Cards Grid */}
+      <div className="grid gap-6">
+        {Object.entries(groceryList).map(([category, items]) => {
+          if (!Array.isArray(items) || category === 'totalEstimatedCost' || category === 'weeklyBudgetUsed') return null;
+
+          const categoryIcons: Record<string, any> = {
+            proteins: { emoji: '🥩', color: 'from-red-500 to-pink-600', bgColor: 'bg-red-50', borderColor: 'border-red-200', textColor: 'text-red-700' },
+            vegetables: { emoji: '🥬', color: 'from-green-500 to-emerald-600', bgColor: 'bg-green-50', borderColor: 'border-green-200', textColor: 'text-green-700' },
+            grains: { emoji: '🌾', color: 'from-amber-500 to-orange-600', bgColor: 'bg-amber-50', borderColor: 'border-amber-200', textColor: 'text-amber-700' },
+            dairy: { emoji: '🥛', color: 'from-blue-500 to-cyan-600', bgColor: 'bg-blue-50', borderColor: 'border-blue-200', textColor: 'text-blue-700' },
+            pantryStaples: { emoji: '🧂', color: 'from-purple-500 to-violet-600', bgColor: 'bg-purple-50', borderColor: 'border-purple-200', textColor: 'text-purple-700' },
+            snacks: { emoji: '🥜', color: 'from-pink-500 to-rose-600', bgColor: 'bg-pink-50', borderColor: 'border-pink-200', textColor: 'text-pink-700' }
+          };
+
+          const categoryInfo = categoryIcons[category] || categoryIcons.pantryStaples;
+          const categoryTotal = items.reduce((sum: number, item: LegacyGroceryItem) => sum + (item.estimatedCost || 0), 0);
+
+          return (
+            <div key={category} className={`bg-white border-2 ${categoryInfo.borderColor} rounded-2xl shadow-lg hover:shadow-xl transition-all duration-300 overflow-hidden group`}>
+              {/* Category header */}
+              <div className={`${categoryInfo.bgColor} border-b ${categoryInfo.borderColor} px-6 py-4`}>
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center space-x-3">
+                    <div className={`w-10 h-10 bg-gradient-to-r ${categoryInfo.color} rounded-xl flex items-center justify-center shadow-md`}>
+                      <span className="text-lg">{categoryInfo.emoji}</span>
+                    </div>
+                    <div>
+                      <h4 className={`text-lg font-bold ${categoryInfo.textColor} capitalize`}>
+                        {category.replace(/([A-Z])/g, ' $1')}
+                      </h4>
+                      <p className="text-sm text-gray-600">{items.length} essential items</p>
+                    </div>
+                  </div>
+                  <div className="text-right">
+                    <div className={`text-xl font-bold ${categoryInfo.textColor}`}>
+                      ${categoryTotal.toFixed(2)}
+                    </div>
+                    <p className="text-xs text-gray-500">category total</p>
+                  </div>
+                </div>
+              </div>
+
+              {/* Items list */}
+              <div className="p-6">
+                <div className="space-y-4">
+                  {items.map((item: LegacyGroceryItem, index: number) => (
+                    <div
+                      key={index}
+                      className={`group/item relative bg-white border-2 rounded-xl p-4 transition-all duration-300 hover:shadow-md ${
+                        isGroceryItemChecked(category, index)
+                          ? 'border-green-200 bg-green-50'
+                          : 'border-gray-200 hover:border-gray-300'
+                      }`}
+                    >
+                      <div className="flex items-start gap-4">
+                        {/* Checkbox */}
+                        <button
+                          onClick={() => onToggleItem(category, index)}
+                          className="flex-shrink-0 mt-1 transition-transform duration-200 hover:scale-110"
+                        >
+                          {isGroceryItemChecked(category, index) ? (
+                            <CheckCircle className="w-6 h-6 text-green-600 drop-shadow-sm" />
+                          ) : (
+                            <Circle className="w-6 h-6 text-gray-400 group-hover/item:text-gray-600" />
+                          )}
+                        </button>
+
+                        <div className={`flex-1 transition-all duration-300 ${
+                          isGroceryItemChecked(category, index) ? 'opacity-60' : ''
+                        }`}>
+                          {/* Item header */}
+                          <div className="flex items-start justify-between mb-2">
+                            <h5 className={`font-bold text-gray-900 ${
+                              isGroceryItemChecked(category, index) ? 'line-through' : ''
+                            }`}>
+                              {item.name}
+                            </h5>
+                            <div className="text-right">
+                              <span className={`text-lg font-bold ${
+                                isGroceryItemChecked(category, index) ? 'text-green-600 line-through' : 'text-gray-900'
+                              }`}>
+                                ${item.estimatedCost?.toFixed(2)}
+                              </span>
+                            </div>
+                          </div>
+
+                          {/* Quantity */}
+                          <div className="flex items-center gap-2 mb-2">
+                            <div className={`inline-flex items-center px-2 py-1 rounded-lg text-xs font-medium ${
+                              categoryInfo.bgColor
+                            } ${categoryInfo.textColor} border ${categoryInfo.borderColor}`}>
+                              <span className="mr-1">📎</span>
+                              {item.quantity}
+                            </div>
+                          </div>
+
+                          {/* Uses */}
+                          <div className={`bg-gray-50 border border-gray-200 rounded-lg p-3 ${
+                            isGroceryItemChecked(category, index) ? 'opacity-60' : ''
+                          }`}>
+                            <p className="text-sm text-gray-700 leading-relaxed flex items-start gap-2">
+                              <span className="text-[#8b5cf6] text-xs">✨</span>
+                              <span className="italic">"{item.uses}"</span>
+                            </p>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
 }
 
 interface PreviewData {
@@ -232,7 +613,17 @@ export function MealPlanningPreview({
               }`}
             >
               <ShoppingCart className="w-4 h-4" />
-              Grocery List (${data?.groceryList?.totalEstimatedCost?.toFixed(2) || '0.00'})
+              Grocery List ($
+              {(() => {
+                if (!data?.groceryList) return '0.00';
+                if (isEnrichedGroceryList(data.groceryList)) {
+                  const recommendedStoreTotal = data.groceryList.storeTotals?.find(st => st.store === data.groceryList.recommendedStore);
+                  return recommendedStoreTotal?.total.toFixed(2) || '0.00';
+                } else {
+                  return data.groceryList.totalEstimatedCost?.toFixed(2) || '0.00';
+                }
+              })()})
+
             </button>
           </div>
         </div>
@@ -518,151 +909,20 @@ export function MealPlanningPreview({
                     </div>
                   </div>
 
-                  {/* Budget Overview Card */}
-                  <div className="bg-gradient-to-r from-green-50 to-emerald-50 border border-green-200 rounded-2xl p-6 shadow-md">
-                    <div className="flex items-center justify-between">
-                      <div>
-                        <h4 className="text-lg font-bold text-gray-900 mb-1 flex items-center gap-2">
-                          <DollarSign className="w-5 h-5 text-green-600" />
-                          Weekly Budget Breakdown
-                        </h4>
-                        <p className="text-sm text-gray-600">Estimated costs for this week's groceries</p>
-                      </div>
-                      <div className="text-right">
-                        <div className="text-3xl font-bold text-green-600 mb-1">
-                          ${data.groceryList.totalEstimatedCost?.toFixed(2)}
-                        </div>
-                        <Badge className="bg-green-100 text-green-700 border border-green-300 text-sm font-medium">
-                          {data.groceryList.weeklyBudgetUsed} of budget
-                        </Badge>
-                      </div>
-                    </div>
-                  </div>
-
-                  {/* Category Cards Grid */}
-                  <div className="grid gap-6">
-                    {Object.entries(data.groceryList).map(([category, items]) => {
-                      if (!Array.isArray(items) || category === 'totalEstimatedCost' || category === 'weeklyBudgetUsed') return null;
-
-                      const categoryIcons = {
-                        proteins: { emoji: '🥩', color: 'from-red-500 to-pink-600', bgColor: 'bg-red-50', borderColor: 'border-red-200', textColor: 'text-red-700' },
-                        vegetables: { emoji: '🥬', color: 'from-green-500 to-emerald-600', bgColor: 'bg-green-50', borderColor: 'border-green-200', textColor: 'text-green-700' },
-                        grains: { emoji: '🌾', color: 'from-amber-500 to-orange-600', bgColor: 'bg-amber-50', borderColor: 'border-amber-200', textColor: 'text-amber-700' },
-                        dairy: { emoji: '🥛', color: 'from-blue-500 to-cyan-600', bgColor: 'bg-blue-50', borderColor: 'border-blue-200', textColor: 'text-blue-700' },
-                        pantryStaples: { emoji: '🧂', color: 'from-purple-500 to-violet-600', bgColor: 'bg-purple-50', borderColor: 'border-purple-200', textColor: 'text-purple-700' },
-                        snacks: { emoji: '🥜', color: 'from-pink-500 to-rose-600', bgColor: 'bg-pink-50', borderColor: 'border-pink-200', textColor: 'text-pink-700' }
-                      };
-
-                      const categoryInfo = categoryIcons[category] || categoryIcons.pantryStaples;
-                      const categoryTotal = items.reduce((sum, item) => sum + (item.estimatedCost || 0), 0);
-
-                      return (
-                        <div key={category} className={`bg-white border-2 ${categoryInfo.borderColor} rounded-2xl shadow-lg hover:shadow-xl transition-all duration-300 overflow-hidden group`}>
-                          {/* Category header */}
-                          <div className={`${categoryInfo.bgColor} border-b ${categoryInfo.borderColor} px-6 py-4`}>
-                            <div className="flex items-center justify-between">
-                              <div className="flex items-center space-x-3">
-                                <div className={`w-10 h-10 bg-gradient-to-r ${categoryInfo.color} rounded-xl flex items-center justify-center shadow-md`}>
-                                  <span className="text-lg">{categoryInfo.emoji}</span>
-                                </div>
-                                <div>
-                                  <h4 className={`text-lg font-bold ${categoryInfo.textColor} capitalize`}>
-                                    {category.replace(/([A-Z])/g, ' $1')}
-                                  </h4>
-                                  <p className="text-sm text-gray-600">{items.length} essential items</p>
-                                </div>
-                              </div>
-                              <div className="text-right">
-                                <div className={`text-xl font-bold ${categoryInfo.textColor}`}>
-                                  ${categoryTotal.toFixed(2)}
-                                </div>
-                                <p className="text-xs text-gray-500">category total</p>
-                              </div>
-                            </div>
-                          </div>
-
-                          {/* Items list */}
-                          <div className="p-6">
-                            <div className="space-y-4">
-                              {items.map((item: GroceryItem, index: number) => (
-                                <div
-                                  key={index}
-                                  className={`group/item relative bg-white border-2 rounded-xl p-4 transition-all duration-300 hover:shadow-md ${
-                                    isGroceryItemChecked(category, index)
-                                      ? 'border-green-200 bg-green-50'
-                                      : 'border-gray-200 hover:border-gray-300'
-                                  }`}
-                                >
-                                  <div className="flex items-start gap-4">
-                                    {/* Checkbox */}
-                                    <button
-                                      onClick={() => toggleGroceryItem(category, index)}
-                                      className="flex-shrink-0 mt-1 transition-transform duration-200 hover:scale-110"
-                                    >
-                                      {isGroceryItemChecked(category, index) ? (
-                                        <CheckCircle className="w-6 h-6 text-green-600 drop-shadow-sm" />
-                                      ) : (
-                                        <Circle className="w-6 h-6 text-gray-400 group-hover/item:text-gray-600" />
-                                      )}
-                                    </button>
-
-                                    <div className={`flex-1 transition-all duration-300 ${
-                                      isGroceryItemChecked(category, index) ? 'opacity-60' : ''
-                                    }`}>
-                                      {/* Item header */}
-                                      <div className="flex items-start justify-between mb-2">
-                                        <h5 className={`font-bold text-gray-900 ${
-                                          isGroceryItemChecked(category, index) ? 'line-through' : ''
-                                        }`}>
-                                          {item.name}
-                                        </h5>
-                                        <div className="text-right">
-                                          <span className={`text-lg font-bold ${
-                                            isGroceryItemChecked(category, index) ? 'text-green-600 line-through' : 'text-gray-900'
-                                          }`}>
-                                            ${item.estimatedCost?.toFixed(2)}
-                                          </span>
-                                        </div>
-                                      </div>
-
-                                      {/* Quantity */}
-                                      <div className="flex items-center gap-2 mb-2">
-                                        <div className={`inline-flex items-center px-2 py-1 rounded-lg text-xs font-medium ${
-                                          categoryInfo.bgColor
-                                        } ${categoryInfo.textColor} border ${categoryInfo.borderColor}`}>
-                                          <span className="mr-1">📎</span>
-                                          {item.quantity}
-                                        </div>
-                                      </div>
-
-                                      {/* Uses */}
-                                      <div className={`bg-gray-50 border border-gray-200 rounded-lg p-3 ${
-                                        isGroceryItemChecked(category, index) ? 'opacity-60' : ''
-                                      }`}>
-                                        <p className="text-sm text-gray-700 leading-relaxed flex items-start gap-2">
-                                          <span className="text-[#8b5cf6] text-xs">✨</span>
-                                          <span className="italic">"{item.uses}"</span>
-                                        </p>
-                                      </div>
-                                    </div>
-                                  </div>
-
-                                  {/* Checked overlay indicator */}
-                                  {isGroceryItemChecked(category, index) && (
-                                    <div className="absolute top-2 right-2">
-                                      <div className="w-6 h-6 bg-green-500 rounded-full flex items-center justify-center shadow-lg">
-                                        <CheckCircle className="w-4 h-4 text-white" />
-                                      </div>
-                                    </div>
-                                  )}
-                                </div>
-                              ))}
-                            </div>
-                          </div>
-                        </div>
-                      );
-                    })}
-                  </div>
+                  {/* Dynamic Grocery Display */}
+                  {isEnrichedGroceryList(data.groceryList) ? (
+                    <EnrichedGroceryPreview
+                      groceryData={data.groceryList}
+                      checkedItems={checkedGroceryItems}
+                      onToggleItem={toggleGroceryItem}
+                    />
+                  ) : (
+                    <LegacyGroceryPreview
+                      groceryList={data.groceryList}
+                      checkedItems={checkedGroceryItems}
+                      onToggleItem={toggleGroceryItem}
+                    />
+                  )}
 
                   {/* Error handling */}
                   {data.groceryList.error && (

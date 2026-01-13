@@ -25,6 +25,49 @@ export interface PerplexityMenuResponse {
   error?: string;
 }
 
+// Grocery store interfaces
+export interface GroceryStore {
+  name: string;
+  address: string;
+  distance?: string;
+  type: 'budget' | 'mid-range' | 'premium';
+}
+
+export interface GroceryStoreSearchResponse {
+  stores: GroceryStore[];
+  location: string;
+  searchSuccess: boolean;
+  error?: string;
+}
+
+export interface StoreOption {
+  store: string;
+  displayName: string;  // Item name with brand if relevant (e.g., "TJ's Free Range Chicken Breast")
+  price: number;
+  isRecommended: boolean;
+  reason?: string;  // "Best value", "Lowest price", "Best quality"
+  storeAddress: string;  // Street address only (e.g., "123 Main St")
+  priceConfidence: 'exact' | 'estimate';  // Whether this is an exact price or estimate
+}
+
+export interface GroceryItemWithPrices {
+  item: string;
+  quantity: string;
+  uses: string;
+  category: string;
+  storeOptions: StoreOption[];
+}
+
+export interface GroceryPriceResponse {
+  items: GroceryItemWithPrices[];
+  stores: GroceryStore[];
+  storeTotals: { store: string; total: number }[];
+  recommendedStore: string;
+  savings: string;  // "Save $16.50 vs Store X"
+  priceSearchSuccess: boolean;
+  error?: string;
+}
+
 export class PerplexityClient {
   private apiKey: string;
   private baseUrl = 'https://api.perplexity.ai/chat/completions';
@@ -151,6 +194,220 @@ export class PerplexityClient {
         extractionSuccess: false,
         linksFound: 0,
         error: (error as Error).message
+      };
+    }
+  }
+
+  /**
+   * Find top 3 grocery stores near user's location
+   */
+  async getLocalGroceryStores(zipcode: string, city: string): Promise<GroceryStoreSearchResponse> {
+    console.log(`[PERPLEXITY-GROCERY] 🏪 Finding grocery stores near ${zipcode}...`);
+
+    try {
+      const query = `Find the top 3 grocery stores near ${zipcode} ${city}.
+
+Requirements:
+- Include a mix: one budget-friendly option, one mid-range, one premium
+- Provide actual store names and approximate addresses
+- If you cannot find stores for this exact location, suggest the most common/popular grocery chains that typically serve the ${city} region or state
+
+For each store provide:
+- Store name (actual chain name)
+- Address or nearest cross streets
+- Distance if known
+- Type: "budget", "mid-range", or "premium"
+
+Return as JSON only, no other text:
+{
+  "stores": [
+    {"name": "Store Name", "address": "123 Main St", "distance": "0.5 mi", "type": "budget"}
+  ]
+}`;
+
+      const response = await fetch(this.baseUrl, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${this.apiKey}`,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          model: 'sonar',
+          messages: [
+            {
+              role: 'system',
+              content: 'You are a helpful assistant that finds local grocery stores. Return accurate, real store information in JSON format only. No markdown, no explanation, just the JSON object. Always provide 3 stores - use common regional chains if exact location data is unavailable.'
+            },
+            { role: 'user', content: query }
+          ],
+          temperature: 0.1
+        })
+      });
+
+      if (!response.ok) {
+        throw new Error(`Perplexity API error: ${response.status}`);
+      }
+
+      const data = await response.json();
+      const content = data.choices?.[0]?.message?.content || '';
+
+      // Parse JSON from response
+      const jsonMatch = content.match(/\{[\s\S]*\}/);
+      if (!jsonMatch) {
+        throw new Error('No JSON found in response');
+      }
+
+      const parsed = JSON.parse(jsonMatch[0]);
+      console.log(`[PERPLEXITY-GROCERY] ✅ Found ${parsed.stores?.length || 0} stores`);
+
+      return {
+        stores: parsed.stores || [],
+        location: `${city}, ${zipcode}`,
+        searchSuccess: parsed.stores?.length > 0
+      };
+
+    } catch (error) {
+      console.error('[PERPLEXITY-GROCERY] ❌ Store search error:', error);
+      return {
+        stores: [],
+        location: `${city}, ${zipcode}`,
+        searchSuccess: false,
+        error: error instanceof Error ? error.message : 'Failed to find stores'
+      };
+    }
+  }
+
+  /**
+   * Get real prices for grocery items at specified stores
+   */
+  async getGroceryPrices(
+    items: Array<{ name: string; quantity: string; uses: string; category: string }>,
+    stores: GroceryStore[],
+    city: string,
+    userGoal: string
+  ): Promise<GroceryPriceResponse> {
+    console.log(`[PERPLEXITY-GROCERY] 💰 Getting prices for ${items.length} items at ${stores.length} stores...`);
+
+    const storeNames = stores.map(s => s.name).join(', ');
+
+    try {
+      // Build item list for query
+      const itemList = items.map(i => `- ${i.name} (${i.quantity})`).join('\n');
+
+      const query = `Find current grocery prices for these items at ${storeNames} in ${city}:
+
+${itemList}
+
+For each item at each store:
+1. displayName: Include brand name ONLY if it matters for health/quality (e.g., "Organic Chicken Breast", "Cage-Free Eggs"). Generic items like milk, bananas, rice should NOT have brand names - just use the item name.
+2. price: Current approximate price for the quantity specified based on typical ${city} grocery prices.
+3. storeAddress: The store's street address only (e.g., "123 Main St") - NO city, state, or zip
+4. priceConfidence: Set to "exact" if you found actual store data/website prices, "estimate" if using typical market pricing
+5. isRecommended: Mark ONE option per item as recommended (best value for a "${userGoal}" health goal)
+6. reason: Brief reason if recommended (e.g., "Best value", "Best quality")
+
+User's health goal: ${userGoal}
+Prioritize: Quality ingredients that support their goals, balanced with good value
+
+Calculate storeTotals by summing all item prices for each store.
+Identify recommendedStore (best overall value with good quality).
+Calculate savings vs the most expensive store option.
+
+Return as JSON only:
+{
+  "items": [
+    {
+      "item": "Chicken Breast",
+      "quantity": "2 lbs",
+      "uses": "Grilled chicken salad",
+      "category": "proteins",
+      "storeOptions": [
+        {
+          "store": "Store1",
+          "displayName": "Organic Chicken Breast",
+          "price": 7.49,
+          "storeAddress": "123 Main St",
+          "priceConfidence": "exact",
+          "isRecommended": true,
+          "reason": "Best value"
+        },
+        {
+          "store": "Store2",
+          "displayName": "Chicken Breast",
+          "price": 8.99,
+          "storeAddress": "456 Oak Ave",
+          "priceConfidence": "estimate",
+          "isRecommended": false
+        }
+      ]
+    }
+  ],
+  "storeTotals": [
+    {"store": "Store1", "total": 52.40},
+    {"store": "Store2", "total": 61.20}
+  ],
+  "recommendedStore": "Store1",
+  "savings": "Save $8.80 vs Store2"
+}`;
+
+      const response = await fetch(this.baseUrl, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${this.apiKey}`,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          model: 'sonar',
+          messages: [
+            {
+              role: 'system',
+              content: 'You are a grocery price expert. Provide accurate, current grocery prices based on typical prices in the specified city. Include brand descriptors only when they matter for health/quality. Always return valid JSON only, no markdown or explanation.'
+            },
+            { role: 'user', content: query }
+          ],
+          temperature: 0.2
+        })
+      });
+
+      if (!response.ok) {
+        throw new Error(`Perplexity API error: ${response.status}`);
+      }
+
+      const data = await response.json();
+      const content = data.choices?.[0]?.message?.content || '';
+
+      // Parse JSON from response
+      const jsonMatch = content.match(/\{[\s\S]*\}/);
+      if (!jsonMatch) {
+        throw new Error('No JSON found in response');
+      }
+
+      const parsed = JSON.parse(jsonMatch[0]);
+
+      console.log(`[PERPLEXITY-GROCERY] ✅ Got prices for ${parsed.items?.length || 0} items`);
+      console.log(`[PERPLEXITY-GROCERY] 💡 Recommended store: ${parsed.recommendedStore}`);
+
+      return {
+        items: parsed.items || [],
+        stores: stores,
+        storeTotals: parsed.storeTotals || [],
+        recommendedStore: parsed.recommendedStore || '',
+        savings: parsed.savings || '',
+        priceSearchSuccess: parsed.items?.length > 0
+      };
+
+    } catch (error) {
+      console.error('[PERPLEXITY-GROCERY] ❌ Price search error:', error);
+
+      // Return empty - UI will show grocery list without price comparison
+      return {
+        items: [],
+        stores: stores,
+        storeTotals: [],
+        recommendedStore: '',
+        savings: '',
+        priceSearchSuccess: false,
+        error: error instanceof Error ? error.message : 'Failed to get prices'
       };
     }
   }

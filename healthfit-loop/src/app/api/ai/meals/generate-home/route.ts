@@ -42,22 +42,45 @@ function extractHomeMealsFromSchedule(weeklyMealSchedule: any): Array<{day: stri
   return homeMeals;
 }
 
+// Helper function to merge days arrays combining home and restaurant meals
+function mergeDaysWithRestaurantMeals(newHomeDays: any[], existingDays: any[]): any[] {
+  console.log(`[MERGE-DAYS] 🔄 Merging days - Home: ${newHomeDays.length}, Existing: ${existingDays.length}`);
+
+  // Start with the new home days structure
+  const mergedDays = [...newHomeDays];
+
+  // For each day in the merged structure, check if the existing structure has restaurant meals
+  mergedDays.forEach((day, dayIndex) => {
+    // Find the corresponding day in existing structure
+    const existingDay = existingDays.find(ed => ed.day === day.day || ed.date === day.date);
+
+    if (existingDay && existingDay.meals) {
+      // Merge meals for each meal type, keeping restaurant meals from existing
+      ['breakfast', 'lunch', 'dinner'].forEach(mealType => {
+        const existingMeal = existingDay.meals[mealType];
+        const newHomeMeal = day.meals[mealType];
+
+        // If existing meal is a restaurant meal, keep it; otherwise use new home meal
+        if (existingMeal && existingMeal.source === 'restaurant') {
+          console.log(`[MERGE-DAYS] 🏪 Preserving restaurant meal: ${day.day} ${mealType} - ${existingMeal.primary?.dish || 'Unknown'}`);
+          day.meals[mealType] = existingMeal;
+        } else if (newHomeMeal && newHomeMeal.source !== 'restaurant') {
+          console.log(`[MERGE-DAYS] 🏠 Keeping home meal: ${day.day} ${mealType} - ${newHomeMeal.name || 'Unknown'}`);
+          // Keep the new home meal (already in place)
+        }
+      });
+    }
+  });
+
+  console.log(`[MERGE-DAYS] ✅ Merged ${mergedDays.length} days with combined home and restaurant meals`);
+  return mergedDays;
+}
+
 // Generate nutrition targets based on survey data
 function calculateNutritionTargets(surveyData: any): any {
   if (!surveyData.age || !surveyData.sex || !surveyData.height || !surveyData.weight) {
-    // Provide defaults for missing data
-    return {
-      dailyCalories: 2000,
-      dailyProtein: 120,
-      dailyCarbs: 250,
-      dailyFat: 67,
-      mealTargets: {
-        breakfast: { calories: 500, protein: 25, carbs: 60, fat: 17 },
-        lunch: { calories: 650, protein: 35, carbs: 85, fat: 22 },
-        dinner: { calories: 750, protein: 45, carbs: 90, fat: 25 },
-        snack: { calories: 100, protein: 15, carbs: 15, fat: 3 }
-      }
-    };
+    // Return null to indicate incomplete data instead of hardcoded fallbacks
+    return null;
   }
 
   const userProfile: UserProfile = {
@@ -279,18 +302,56 @@ async function enhanceMealsWithImages(homeMeals: any[]): Promise<any[]> {
   return enhancedMeals;
 }
 
+/**
+ * Trigger background grocery price lookup
+ * Runs after meal plan is saved to enrich grocery list with real local prices
+ */
+async function triggerGroceryPriceLookup(surveyId: string) {
+  console.log('[HOME-MEALS] 🛒 Triggering background grocery price lookup...');
+
+  try {
+    const baseUrl = process.env.NEXT_PUBLIC_BASE_URL || process.env.VERCEL_URL || 'http://localhost:3000';
+    const url = baseUrl.startsWith('http') ? baseUrl : `https://${baseUrl}`;
+
+    // Fire and forget - don't await
+    fetch(`${url}/api/ai/meals/generate-groceries`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Cookie': `survey_id=${surveyId}`
+      }
+    }).then(async res => {
+      if (res.ok) {
+        const data = await res.json();
+        console.log(`[HOME-MEALS] ✅ Grocery prices complete: ${data.itemCount} items, best store: ${data.recommendedStore}`);
+      } else {
+        console.warn('[HOME-MEALS] ⚠️ Grocery price lookup failed:', res.status);
+      }
+    }).catch(err => {
+      console.error('[HOME-MEALS] ❌ Grocery price lookup error:', err.message);
+    });
+  } catch (error) {
+    console.error('[HOME-MEALS] ❌ Failed to trigger grocery price lookup:', error);
+  }
+}
+
 export async function POST(req: NextRequest) {
   const startTime = Date.now();
   console.log(`[HOME-GENERATION] 🚀 Starting home meal generation at ${new Date().toISOString()}`);
 
   try {
     // Parse request data (may be empty)
-    let requestData: { backgroundGeneration?: boolean } = {};
+    let requestData: { backgroundGeneration?: boolean; mealPlanId?: string } = {};
     try {
       requestData = await req.json();
     } catch {
       console.log(`[HOME-GENERATION] 📄 Empty request body, using defaults`);
     }
+
+    console.log(`[HOME-GENERATION] 📋 Request data:`, {
+      backgroundGeneration: requestData.backgroundGeneration,
+      mealPlanId: requestData.mealPlanId || 'none - will create new'
+    });
 
     const cookieStore = await cookies();
     const userId = cookieStore.get('user_id')?.value;
@@ -348,6 +409,13 @@ export async function POST(req: NextRequest) {
 
     // Calculate nutrition targets
     const nutritionTargets = calculateNutritionTargets(surveyData);
+    if (!nutritionTargets) {
+      console.error(`[HOME-GENERATION] ❌ Survey data incomplete - missing required fields (age, sex, height, weight)`);
+      return NextResponse.json({
+        error: 'Survey data incomplete',
+        message: 'Missing required profile information (age, sex, height, weight)'
+      }, { status: 400 });
+    }
     console.log(`[HOME-GENERATION] 📊 Calculated nutrition targets: ${nutritionTargets.dailyCalories} calories/day`);
 
     // Generate home meals (now includes grocery list)
@@ -414,18 +482,90 @@ export async function POST(req: NextRequest) {
     };
 
     try {
-      console.log(`[HOME-GENERATION] 💾 Saving initial home meal plan to database...`);
-      const createdMealPlan = await prisma.mealPlan.create({
-        data: {
-          surveyId: surveyData.id,
-          userId: cleanUserId || null, // FIXED: was using 'userId' instead of 'cleanUserId'
-          weekOf: weekOfDate,
-          userContext: initialMealPlan as any,
-          status: 'partial',
-          regenerationCount: 1
+      let mealPlan;
+
+      if (requestData.mealPlanId) {
+        // Update existing coordinated meal plan - MERGE with existing restaurant data
+        console.log(`[HOME-GENERATION] 💾 Updating coordinated meal plan ${requestData.mealPlanId} with home meals...`);
+
+        // First, fetch the existing meal plan to get current context
+        const existingMealPlan = await prisma.mealPlan.findUnique({
+          where: { id: requestData.mealPlanId }
+        });
+
+        if (!existingMealPlan) {
+          throw new Error(`Coordinated meal plan ${requestData.mealPlanId} not found`);
         }
-      });
-      console.log(`[HOME-GENERATION] ✅ Home meal plan saved with ID: ${createdMealPlan.id}`);
+
+        const existingContext = existingMealPlan.userContext as any;
+        console.log(`[HOME-GENERATION] 🔄 Merging home meals with existing context...`);
+        console.log(`[HOME-GENERATION] 📊 Existing context has:`, {
+          hasRestaurantMeals: !!(existingContext.restaurantMeals?.length),
+          restaurantCount: existingContext.restaurantMeals?.length || 0,
+          hasDays: !!(existingContext.days?.length),
+          daysCount: existingContext.days?.length || 0
+        });
+
+        // Merge days arrays - combine home meals with any existing restaurant meals
+        const mergedDays = mergeDaysWithRestaurantMeals(initialMealPlan.days, existingContext.days || []);
+
+        // Check if both home and restaurant meals are now present
+        const hasRestaurantMeals = existingContext.restaurantMeals?.length > 0;
+        const hasHomeMeals = initialMealPlan.homeMeals?.length > 0;
+        const newStatus = (hasRestaurantMeals && hasHomeMeals) ? 'complete' : 'partial';
+
+        console.log(`[HOME-GENERATION] 📋 Merge summary:`, {
+          homeMealsCount: initialMealPlan.homeMeals?.length || 0,
+          restaurantMealsCount: existingContext.restaurantMeals?.length || 0,
+          mergedDaysCount: mergedDays.length,
+          newStatus
+        });
+
+        // Update with merged data, preserving existing restaurant context
+        mealPlan = await prisma.mealPlan.update({
+          where: { id: requestData.mealPlanId },
+          data: {
+            userContext: {
+              ...initialMealPlan,
+              // Preserve existing restaurant meals
+              restaurantMeals: existingContext.restaurantMeals || [],
+              // Use merged days that include both home and restaurant meals
+              days: mergedDays,
+              // Update generator status
+              generators: {
+                ...existingContext.generators,
+                homeMeals: 'completed'
+              },
+              // Preserve any existing metadata and merge with new
+              metadata: {
+                ...existingContext.metadata,
+                ...initialMealPlan.metadata
+              }
+            } as any,
+            status: newStatus
+          }
+        });
+
+        console.log(`[HOME-GENERATION] ✅ Updated coordinated meal plan ${requestData.mealPlanId} with merged data (status: ${newStatus})`);
+      } else {
+        // Create new meal plan (legacy behavior)
+        console.log(`[HOME-GENERATION] 💾 Creating new meal plan (legacy mode)...`);
+        mealPlan = await prisma.mealPlan.create({
+          data: {
+            surveyId: surveyData.id,
+            userId: cleanUserId || null,
+            weekOf: weekOfDate,
+            userContext: initialMealPlan as any,
+            status: 'partial',
+            regenerationCount: 1
+          }
+        });
+        console.log(`[HOME-GENERATION] ✅ Created new meal plan ${mealPlan.id} (legacy mode)`);
+      }
+
+      // Trigger grocery price lookup in background
+      triggerGroceryPriceLookup(surveyData.id);
+
     } catch (dbError) {
       console.error(`[HOME-GENERATION] ❌ Failed to save home meal plan:`, dbError);
       // Continue anyway since we have the data

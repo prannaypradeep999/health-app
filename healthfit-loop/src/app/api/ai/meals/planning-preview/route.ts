@@ -154,7 +154,8 @@ export async function POST(req: NextRequest) {
     // FIX: Extract grocery list with multiple fallback paths and better debugging
     let groceryList: any = null;
     let groceryCostSource = 'unknown';
-    
+    let isEnrichedFormat = false;
+
     // Try multiple paths to find grocery list
     if (mealPlanData.groceryList) {
       groceryList = mealPlanData.groceryList;
@@ -169,6 +170,15 @@ export async function POST(req: NextRequest) {
       groceryCostSource = 'mealPlanData.weeklyGroceryList';
       console.log(`[PLANNING-PREVIEW] 🛒 Found weeklyGroceryList`);
     }
+
+    // Check if grocery list is enriched format (has store pricing data)
+    if (groceryList && Array.isArray(groceryList.items) && groceryList.items.length > 0) {
+      const firstItem = groceryList.items[0];
+      if (firstItem.storeOptions && Array.isArray(firstItem.storeOptions) && firstItem.storeOptions.length > 0) {
+        isEnrichedFormat = true;
+        console.log(`[PLANNING-PREVIEW] ✨ Detected enriched grocery format with store pricing`);
+      }
+    }
     
     // FIX: Debug log the grocery list structure
     if (groceryList) {
@@ -180,48 +190,79 @@ export async function POST(req: NextRequest) {
       console.log(`[PLANNING-PREVIEW] ⚠️ No grocery list found in any location`);
     }
     
-    // Build grocery list with proper cost extraction
-    const finalGroceryList = groceryList ? {
-      proteins: groceryList.proteins || [],
-      vegetables: groceryList.vegetables || [],
-      grains: groceryList.grains || [],
-      dairy: groceryList.dairy || [],
-      pantryStaples: groceryList.pantryStaples || groceryList.pantry || [],
-      snacks: groceryList.snacks || [],
-      fruits: groceryList.fruits || [],
-      beverages: groceryList.beverages || [],
-      condiments: groceryList.condiments || [],
-      frozen: groceryList.frozen || [],
-      // FIX: Try multiple property names for cost
-      totalEstimatedCost: groceryList.totalEstimatedCost || 
-                          groceryList.estimatedCost || 
-                          groceryList.totalCost || 
-                          groceryList.cost ||
-                          calculateEstimatedCost(groceryList) ||
-                          0,
-      weeklyBudgetUsed: groceryList.weeklyBudgetUsed || 
-                        groceryList.budgetUsed || 
-                        calculateBudgetUsed(groceryList, surveyData.monthlyFoodBudget) ||
-                        "0%"
-    } : {
-      proteins: [],
-      vegetables: [],
-      grains: [],
-      dairy: [],
-      pantryStaples: [],
-      snacks: [],
-      totalEstimatedCost: 0,
-      weeklyBudgetUsed: "0%",
-      error: "Grocery list not yet generated"
-    };
+    // Build grocery list - pass through enriched format if available, otherwise use legacy format
+    let finalGroceryList: any;
 
-    const categoryCount = Object.keys(finalGroceryList).filter(k => 
-      Array.isArray(finalGroceryList[k]) && finalGroceryList[k].length > 0
-    ).length;
+    if (isEnrichedFormat && groceryList) {
+      // Pass through enriched format with store pricing data
+      finalGroceryList = {
+        items: groceryList.items || [],
+        stores: groceryList.stores || [],
+        storeTotals: groceryList.storeTotals || [],
+        recommendedStore: groceryList.recommendedStore || '',
+        savings: groceryList.savings || '',
+        priceSearchSuccess: groceryList.priceSearchSuccess || false,
+        error: groceryList.error || undefined
+      };
+      console.log(`[PLANNING-PREVIEW] ✨ Returning enriched grocery format with ${finalGroceryList.items.length} items and ${finalGroceryList.stores.length} stores`);
+    } else if (groceryList) {
+      // Legacy format
+      finalGroceryList = {
+        proteins: groceryList.proteins || [],
+        vegetables: groceryList.vegetables || [],
+        grains: groceryList.grains || [],
+        dairy: groceryList.dairy || [],
+        pantryStaples: groceryList.pantryStaples || groceryList.pantry || [],
+        snacks: groceryList.snacks || [],
+        fruits: groceryList.fruits || [],
+        beverages: groceryList.beverages || [],
+        condiments: groceryList.condiments || [],
+        frozen: groceryList.frozen || [],
+        // FIX: Try multiple property names for cost
+        totalEstimatedCost: groceryList.totalEstimatedCost ||
+                            groceryList.estimatedCost ||
+                            groceryList.totalCost ||
+                            groceryList.cost ||
+                            calculateEstimatedCost(groceryList) ||
+                            0,
+        weeklyBudgetUsed: groceryList.weeklyBudgetUsed ||
+                          groceryList.budgetUsed ||
+                          calculateBudgetUsed(groceryList, surveyData.monthlyFoodBudget) ||
+                          "0%"
+      };
+      console.log(`[PLANNING-PREVIEW] 📦 Returning legacy grocery format`);
+    } else {
+      // Fallback - empty legacy format
+      finalGroceryList = {
+        proteins: [],
+        vegetables: [],
+        grains: [],
+        dairy: [],
+        pantryStaples: [],
+        snacks: [],
+        totalEstimatedCost: 0,
+        weeklyBudgetUsed: "0%",
+        error: "Grocery list not yet generated"
+      };
+    }
+
+    const categoryCount = isEnrichedFormat
+      ? (finalGroceryList.items ? finalGroceryList.items.length : 0)
+      : Object.keys(finalGroceryList).filter(k =>
+          Array.isArray(finalGroceryList[k]) && finalGroceryList[k].length > 0
+        ).length;
     
     console.log(`[PLANNING-PREVIEW] 🛒 Grocery list source: ${groceryCostSource}`);
-    console.log(`[PLANNING-PREVIEW] 🛒 Categories with items: ${categoryCount}`);
-    console.log(`[PLANNING-PREVIEW] 💰 Final estimated cost: $${finalGroceryList.totalEstimatedCost}`);
+    console.log(`[PLANNING-PREVIEW] 🛒 Items/Categories: ${categoryCount} ${isEnrichedFormat ? 'items' : 'categories with items'}`);
+
+    if (isEnrichedFormat) {
+      const recommendedStoreTotal = finalGroceryList.storeTotals?.find((st: any) => st.store === finalGroceryList.recommendedStore);
+      const totalCost = recommendedStoreTotal?.total || 0;
+      console.log(`[PLANNING-PREVIEW] 💰 Total cost at ${finalGroceryList.recommendedStore}: $${totalCost.toFixed(2)}`);
+      console.log(`[PLANNING-PREVIEW] 💸 Savings: ${finalGroceryList.savings || 'None calculated'}`);
+    } else {
+      console.log(`[PLANNING-PREVIEW] 💰 Final estimated cost: $${finalGroceryList.totalEstimatedCost || 0}`);
+    }
 
     // Generate explanations based on existing data
     const explanations = {
@@ -254,8 +295,15 @@ export async function POST(req: NextRequest) {
     const totalTime = Date.now() - startTime;
     console.log(`[PLANNING-PREVIEW] ✅ Preview from existing data completed in ${totalTime}ms`);
     console.log(`[PLANNING-PREVIEW] 🏪 Restaurants: ${restaurants.length}`);
-    console.log(`[PLANNING-PREVIEW] 🛒 Grocery categories with items: ${categoryCount}`);
-    console.log(`[PLANNING-PREVIEW] 💰 Final grocery cost: $${finalGroceryList.totalEstimatedCost}`);
+    console.log(`[PLANNING-PREVIEW] 🛒 Grocery ${isEnrichedFormat ? 'items' : 'categories with items'}: ${categoryCount}`);
+
+    if (isEnrichedFormat) {
+      const recommendedStoreTotal = finalGroceryList.storeTotals?.find((st: any) => st.store === finalGroceryList.recommendedStore);
+      const totalCost = recommendedStoreTotal?.total || 0;
+      console.log(`[PLANNING-PREVIEW] 💰 Final grocery cost at ${finalGroceryList.recommendedStore}: $${totalCost.toFixed(2)}`);
+    } else {
+      console.log(`[PLANNING-PREVIEW] 💰 Final grocery cost: $${finalGroceryList.totalEstimatedCost || 0}`);
+    }
 
     return NextResponse.json({
       success: true,

@@ -212,53 +212,92 @@ export async function clearAuthCookie(): Promise<void> {
 /**
  * Migrate guest data to user account
  */
-export async function migrateGuestToUser(sessionId: string, userId: string): Promise<void> {
+/**
+ * Migrate guest data to user account
+ * Called during login/register to preserve guest survey and plans
+ */
+export async function migrateGuestToUser(authSessionId: string, userId: string): Promise<void> {
   const cookieStore = await cookies();
   const guestSessionId = cookieStore.get('guest_session')?.value;
   const surveyId = cookieStore.get('survey_id')?.value;
 
+  console.log(`[Auth Migration] Starting migration for user ${userId}`);
+  console.log(`[Auth Migration] Guest session: ${guestSessionId}, Survey ID: ${surveyId}`);
+
   if (!guestSessionId && !surveyId) {
-    return; // No guest data to migrate
+    console.log('[Auth Migration] No guest data to migrate');
+    return;
   }
 
   try {
-    // Find guest survey response
-    const surveyResponse = surveyId
-      ? await prisma.surveyResponse.findUnique({ where: { id: surveyId } })
-      : await prisma.surveyResponse.findFirst({ where: { sessionId: guestSessionId } });
+    // Find guest survey response - try surveyId first, then sessionId
+    let surveyResponse = null;
 
-    if (surveyResponse && surveyResponse.isGuest) {
-      // Migrate survey response to user
-      await prisma.surveyResponse.update({
-        where: { id: surveyResponse.id },
-        data: {
-          userId,
-          isGuest: false
-        }
+    if (surveyId) {
+      surveyResponse = await prisma.surveyResponse.findUnique({
+        where: { id: surveyId }
       });
-
-      // Migrate meal plans
-      await prisma.mealPlan.updateMany({
-        where: { surveyId: surveyResponse.id },
-        data: { userId }
-      });
-
-      // Migrate workout plans
-      await prisma.workoutPlan.updateMany({
-        where: { surveyId: surveyResponse.id },
-        data: { userId }
-      });
-
-      // Set active survey for user
-      await prisma.user.update({
-        where: { id: userId },
-        data: { activeSurveyId: surveyResponse.id }
-      });
-
-      console.log(`[Auth] Successfully migrated guest data for user ${userId}`);
+      console.log(`[Auth Migration] Found survey by ID: ${surveyResponse?.id}`);
     }
+
+    if (!surveyResponse && guestSessionId) {
+      surveyResponse = await prisma.surveyResponse.findFirst({
+        where: { sessionId: guestSessionId },
+        orderBy: { createdAt: 'desc' }
+      });
+      console.log(`[Auth Migration] Found survey by session: ${surveyResponse?.id}`);
+    }
+
+    if (!surveyResponse) {
+      console.log('[Auth Migration] No survey found to migrate');
+      return;
+    }
+
+    if (surveyResponse.userId && surveyResponse.userId !== userId) {
+      console.log(`[Auth Migration] Survey already belongs to different user: ${surveyResponse.userId}`);
+      return;
+    }
+
+    // Migrate survey response
+    await prisma.surveyResponse.update({
+      where: { id: surveyResponse.id },
+      data: { userId, isGuest: false }
+    });
+    console.log(`[Auth Migration] Migrated survey ${surveyResponse.id}`);
+
+    // Migrate meal plans
+    const mealPlansUpdated = await prisma.mealPlan.updateMany({
+      where: { surveyId: surveyResponse.id },
+      data: { userId }
+    });
+    console.log(`[Auth Migration] Migrated ${mealPlansUpdated.count} meal plans`);
+
+    // Migrate workout plans
+    const workoutPlansUpdated = await prisma.workoutPlan.updateMany({
+      where: { surveyId: surveyResponse.id },
+      data: { userId }
+    });
+    console.log(`[Auth Migration] Migrated ${workoutPlansUpdated.count} workout plans`);
+
+    // Migrate profiles
+    await prisma.foodProfile.updateMany({
+      where: { surveyId: surveyResponse.id },
+      data: { userId }
+    });
+    await prisma.workoutProfile.updateMany({
+      where: { surveyId: surveyResponse.id },
+      data: { userId }
+    });
+
+    // Set active survey for user
+    await prisma.user.update({
+      where: { id: userId },
+      data: { activeSurveyId: surveyResponse.id }
+    });
+
+    console.log(`[Auth Migration] ✅ Successfully migrated all guest data for user ${userId}`);
+
   } catch (error) {
-    console.error('[Auth] Error migrating guest data:', error);
-    // Don't throw error - account creation should succeed even if migration fails
+    console.error('[Auth Migration] ❌ Error migrating guest data:', error);
   }
 }

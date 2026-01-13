@@ -4,6 +4,17 @@ export interface RecipeContext {
   dishName: string;
   description?: string;
   mealType: string;
+  // NEW: Add nutrition targets
+  nutritionTargets?: {
+    calories: number;
+    protein: number;
+    carbs: number;
+    fat: number;
+  };
+  // NEW: Add existing grocery list items to use
+  existingGroceryItems?: string[];
+  // NEW: User dietary restrictions
+  dietaryRestrictions?: string[];
 }
 
 export interface Recipe {
@@ -39,17 +50,39 @@ export interface Recipe {
 
 // Main Recipe Generation Prompt
 export const createRecipeGenerationPrompt = (context: RecipeContext): string => {
+  const nutritionSection = context.nutritionTargets ? `
+NUTRITION TARGETS (recipe MUST match these closely):
+- Calories: ${context.nutritionTargets.calories} cal (±50 cal)
+- Protein: ${context.nutritionTargets.protein}g (±5g)
+- Carbs: ${context.nutritionTargets.carbs}g (±10g)
+- Fat: ${context.nutritionTargets.fat}g (±5g)
+
+IMPORTANT: Adjust portion sizes and ingredients to hit these targets.` : '';
+
+  const grocerySection = context.existingGroceryItems?.length ? `
+PREFERRED INGREDIENTS (prioritize using these from user's grocery list):
+${context.existingGroceryItems.map(item => `- ${item}`).join('\n')}
+
+Try to use ingredients from this list when possible to minimize waste.` : '';
+
+  const dietarySection = context.dietaryRestrictions?.length ? `
+DIETARY RESTRICTIONS (must follow):
+${context.dietaryRestrictions.map(r => `- ${r}`).join('\n')}` : '';
+
   return `You are a professional chef and nutritionist. Generate a comprehensive, detailed recipe for "${context.dishName}".
 
 DISH DETAILS:
 - Name: ${context.dishName}
 - Description: ${context.description || 'No description provided'}
 - Meal Type: ${context.mealType}
+${nutritionSection}
+${grocerySection}
+${dietarySection}
 
 REQUIREMENTS:
 1. Create a complete recipe with detailed ingredients and step-by-step instructions
-2. Include accurate nutritional information
-3. Provide a comprehensive grocery list with specific quantities
+2. ${context.nutritionTargets ? 'CRITICAL: Match the nutrition targets above as closely as possible' : 'Include accurate nutritional information'}
+3. ${context.existingGroceryItems?.length ? 'Prioritize ingredients from the user\'s existing grocery list' : 'Provide a comprehensive grocery list with specific quantities'}
 4. Make it practical and achievable for home cooking
 5. Focus on fresh, healthy ingredients
 
@@ -93,10 +126,10 @@ RESPONSE FORMAT - Return ONLY valid JSON:
     "Let rest for 5 minutes before slicing and serving."
   ],
   "nutrition": {
-    "calories": 320,
-    "protein": 45,
-    "carbs": 2,
-    "fat": 14,
+    "calories": ${context.nutritionTargets?.calories || 320},
+    "protein": ${context.nutritionTargets?.protein || 45},
+    "carbs": ${context.nutritionTargets?.carbs || 2},
+    "fat": ${context.nutritionTargets?.fat || 14},
     "fiber": 0,
     "sodium": 580
   },

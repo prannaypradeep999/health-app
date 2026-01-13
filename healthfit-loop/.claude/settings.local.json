@@ -58,7 +58,8 @@
       "Bash(npm run lint:*)",
       "Bash(rm:*)",
       "Bash(npx next lint:*)",
-      "Bash(yarn lint:*)"
+      "Bash(yarn lint:*)",
+      "Bash(open http://localhost:3000)"
     ],
     "deny": [],
     "ask": []

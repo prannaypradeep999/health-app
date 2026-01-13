@@ -20,6 +20,7 @@ export interface RestaurantMealContext {
   restaurantMealsSchedule: Array<{day: string, mealType: string}>;
   restaurantMenuData: any[];
   surveyData: any;
+  nutritionTargets?: any;
 }
 
 // Home meal generation prompt for 7-day system (NOW INCLUDES GROCERY LIST)
@@ -39,16 +40,169 @@ NUTRITION TARGETS PER MEAL:
 - Dinner: ${nutritionTargets.mealTargets.dinner.calories} calories, ${nutritionTargets.mealTargets.dinner.protein}g protein
 
 USER PREFERENCES & GOALS:
+- Name: ${surveyData.firstName || 'User'}
+- Age: ${surveyData.age}, Sex: ${surveyData.sex}
+- Weight: ${surveyData.weight} lbs, Height: ${surveyData.height} inches
 - Primary Goal: ${surveyData.primaryGoal || surveyData.goal || 'General Wellness'}
 - Main Challenge: ${surveyData.goalChallenge || 'None specified'}
 - Health Focus: ${surveyData.healthFocus || 'General wellness'}
 - Fitness Level: ${surveyData.fitnessLevel || 'Not specified'}
 - Maintain Focus: ${surveyData.maintainFocus || 'Not specified'}
 - Activity Level: ${surveyData.activityLevel || 'MODERATELY_ACTIVE'}
-- Diet Restrictions: ${(surveyData.dietPrefs || []).join(', ') || 'None'}
-- Preferred Foods: ${(surveyData.preferredFoods || []).slice(0, 10).join(', ') || 'No specific preferences'}
-- Preferred Cuisines: ${(surveyData.preferredCuisines || []).join(', ') || 'Varied'}
-- Budget: $${surveyData.monthlyFoodBudget || 200}/month
+- Sports/Activities: ${surveyData.sportsInterests || surveyData.preferredActivities?.join(', ') || 'General fitness'}
+- Budget: ${surveyData.monthlyFoodBudget || 200}/month (approximately ${Math.round((surveyData.monthlyFoodBudget || 200) / 4)}/week)
+
+⚠️ DIETARY RESTRICTIONS (STRICTLY ENFORCE - NO EXCEPTIONS):
+${(() => {
+  const restrictions = surveyData.dietPrefs || [];
+  if (restrictions.length === 0) return '- No dietary restrictions - full ingredient selection available';
+
+  let rules = '';
+  restrictions.forEach(pref => {
+    if (pref === 'Vegetarian') {
+      rules += `- VEGETARIAN: Absolutely NO meat, poultry, or fish. Eggs and dairy ARE allowed.\n`;
+    }
+    if (pref === 'Vegan') {
+      rules += `- VEGAN: Absolutely NO animal products whatsoever. No meat, fish, eggs, dairy, honey, or gelatin.\n`;
+    }
+    if (pref === 'Gluten-Free') {
+      rules += `- GLUTEN-FREE: NO wheat, barley, rye, or gluten-containing grains. Use rice, quinoa, certified GF oats.\n`;
+    }
+    if (pref === 'Dairy-Free') {
+      rules += `- DAIRY-FREE: NO milk, cheese, yogurt, butter, or cream. Use plant-based alternatives.\n`;
+    }
+    if (pref === 'Keto') {
+      rules += `- KETO: Maximum 20-30g net carbs per day. High fat, moderate protein. No grains, sugar, most fruits.\n`;
+    }
+    if (pref === 'Paleo') {
+      rules += `- PALEO: No grains, legumes, dairy, refined sugar, or processed foods. Focus on whole foods.\n`;
+    }
+    if (pref === 'Low-Carb') {
+      rules += `- LOW-CARB: Keep total carbs under 100g/day. Prioritize protein and healthy fats.\n`;
+    }
+    if (pref === 'Pescatarian') {
+      rules += `- PESCATARIAN: No meat or poultry. Fish and seafood ARE allowed, plus eggs and dairy.\n`;
+    }
+    if (pref === 'Halal') {
+      rules += `- HALAL: No pork or pork products. Meat must be halal-certified. No alcohol in cooking.\n`;
+    }
+    if (pref === 'Low-Sodium') {
+      rules += `- LOW-SODIUM: Keep sodium under 1500mg/day. Avoid processed foods, use herbs/spices for flavor.\n`;
+    }
+  });
+  return rules || '- Standard dietary guidelines apply';
+})()}
+
+🥗 PREFERRED FOODS (PRIORITIZE THESE INGREDIENTS):
+${(() => {
+  const foods = surveyData.preferredFoods || [];
+  if (foods.length === 0) return '- No specific preferences - use varied healthy ingredients';
+
+  return `The user specifically selected these foods as favorites - USE THEM FREQUENTLY:
+${foods.map(food => `- ${food}`).join('\n')}
+
+⚠️ Build meals around these preferred ingredients. If user selected "Salmon", include salmon dishes 2-3x/week.
+If user selected "Rice" and "Chicken", make rice bowls with chicken a staple.`;
+})()}
+
+🍳 PREFERRED CUISINES (MATCH COOKING STYLES):
+${(() => {
+  const cuisines = surveyData.preferredCuisines || [];
+  if (cuisines.length === 0) return '- Varied cuisines - mix different cooking styles';
+
+  return `User enjoys these cuisines - incorporate their cooking styles and flavor profiles:
+${cuisines.map(cuisine => `- ${cuisine}`).join('\n')}
+
+Design meals that feel like these cuisines. For Mediterranean, use olive oil, herbs, lemon.
+For Mexican, use cumin, lime, cilantro. For Asian cuisines, use ginger, soy sauce, sesame.`;
+})()}
+
+💊 NUTRIENT PRIORITIES (INCLUDE THESE IN MEALS):
+${(() => {
+  const nutrients = surveyData.preferredNutrients || [];
+  if (nutrients.length === 0) return '- Standard balanced nutrition';
+
+  let nutrientGuide = `User wants meals rich in these nutrients - actively include foods that provide them:\n`;
+
+  nutrients.forEach(nutrient => {
+    if (nutrient.includes('Iron')) {
+      nutrientGuide += `- IRON-RICH: Include spinach, red meat (if allowed), lentils, fortified cereals, pumpkin seeds\n`;
+    }
+    if (nutrient.includes('Vitamin D')) {
+      nutrientGuide += `- VITAMIN D: Include fatty fish (salmon, mackerel), egg yolks, fortified milk/alternatives, mushrooms\n`;
+    }
+    if (nutrient.includes('B12')) {
+      nutrientGuide += `- VITAMIN B12: Include meat, fish, eggs, dairy, or fortified plant milks (critical for vegans)\n`;
+    }
+    if (nutrient.includes('Omega-3')) {
+      nutrientGuide += `- OMEGA-3: Include salmon, sardines, walnuts, flaxseed, chia seeds - aim for fatty fish 2-3x/week\n`;
+    }
+    if (nutrient.includes('Calcium')) {
+      nutrientGuide += `- CALCIUM: Include dairy, fortified plant milk, leafy greens (kale, bok choy), almonds, sardines with bones\n`;
+    }
+    if (nutrient.includes('Magnesium')) {
+      nutrientGuide += `- MAGNESIUM: Include dark chocolate, avocado, nuts, seeds, legumes, whole grains\n`;
+    }
+    if (nutrient.includes('Zinc')) {
+      nutrientGuide += `- ZINC: Include oysters, beef, pumpkin seeds, chickpeas, cashews, yogurt\n`;
+    }
+    if (nutrient.includes('Fiber')) {
+      nutrientGuide += `- FIBER-RICH: Include beans, lentils, whole grains, vegetables, berries - aim for 25-35g/day\n`;
+    }
+    if (nutrient.includes('Protein')) {
+      nutrientGuide += `- PROTEIN-RICH: Prioritize protein at every meal - eggs, Greek yogurt, lean meats, legumes, tofu\n`;
+    }
+    if (nutrient.includes('Probiotic')) {
+      nutrientGuide += `- PROBIOTIC: Include yogurt, kefir, kimchi, sauerkraut, miso, kombucha in the meal plan\n`;
+    }
+    if (nutrient.includes('Antioxidant')) {
+      nutrientGuide += `- ANTIOXIDANT-RICH: Include berries, dark leafy greens, dark chocolate, pecans, artichokes, red cabbage\n`;
+    }
+    if (nutrient.includes('Vitamin C')) {
+      nutrientGuide += `- VITAMIN C: Include citrus, bell peppers, strawberries, broccoli, Brussels sprouts\n`;
+    }
+    if (nutrient.includes('Vitamin A')) {
+      nutrientGuide += `- VITAMIN A: Include sweet potato, carrots, spinach, kale, eggs, liver (if allowed)\n`;
+    }
+    if (nutrient.includes('Folate')) {
+      nutrientGuide += `- FOLATE: Include leafy greens, legumes, asparagus, eggs, fortified grains\n`;
+    }
+    if (nutrient.includes('Potassium')) {
+      nutrientGuide += `- POTASSIUM: Include bananas, potatoes, beans, spinach, avocado, coconut water\n`;
+    }
+    if (nutrient.includes('Biotin')) {
+      nutrientGuide += `- BIOTIN: Include eggs (especially yolks), nuts, seeds, salmon, avocado, sweet potato\n`;
+    }
+  });
+
+  return nutrientGuide;
+})()}
+
+🩺 BIOMARKER CONSIDERATIONS:
+${(() => {
+  const biomarkers = surveyData.biomarkerJson || surveyData.biomarkers || {};
+  if (Object.keys(biomarkers).length === 0) return '- No biomarker data provided';
+
+  let advice = '';
+  if (biomarkers.cholesterol && biomarkers.cholesterol > 200) {
+    advice += `- HIGH CHOLESTEROL (${biomarkers.cholesterol}): Reduce saturated fats, increase fiber, include oats, nuts, fatty fish. Limit red meat to 1-2x/week.\n`;
+  }
+  if (biomarkers.vitaminD && biomarkers.vitaminD < 30) {
+    advice += `- LOW VITAMIN D (${biomarkers.vitaminD}): Prioritize vitamin D foods: fatty fish, fortified milk, egg yolks, mushrooms exposed to UV.\n`;
+  }
+  if (biomarkers.iron && biomarkers.iron < 60) {
+    advice += `- LOW IRON (${biomarkers.iron}): Include iron-rich foods with vitamin C to boost absorption. Red meat, spinach, lentils + citrus.\n`;
+  }
+
+  return advice || '- Biomarker values within normal range';
+})()}
+
+📝 USER'S ADDITIONAL NOTES:
+${surveyData.additionalGoalsNotes
+  ? `"${surveyData.additionalGoalsNotes}"
+
+Consider any food-related preferences or restrictions mentioned here.`
+  : '- No additional notes'}
 
 ${(() => {
   // Comprehensive goal-specific guidance
@@ -160,12 +314,16 @@ REQUIREMENTS:
 1. Generate EXACTLY ${homeMeals.length} recipes - one for each meal in the schedule above
 2. Each meal MUST hit its nutrition targets (±50 calories)
 3. MAXIMUM VARIETY - no repeated main ingredients across the week
-4. Use diverse cuisines and cooking methods
+4. Use diverse cuisines matching user's preferred cuisines: ${(surveyData.preferredCuisines || []).join(', ') || 'varied'}
 5. Mix easy (15-20 min) and moderate (30-45 min) prep times
 6. Include complete ingredient lists and basic instructions
 7. Consider batch cooking possibilities for similar meals
 8. Generate a CONSOLIDATED GROCERY LIST from all ingredients
-9. ⚠️ CRITICAL: You MUST provide BOTH a primary AND alternative option for EVERY meal. NEVER leave alternative empty or null.
+9. ⚠️ CRITICAL: Provide BOTH primary AND alternative for EVERY meal
+10. ⚠️ DIETARY RESTRICTIONS ARE NON-NEGOTIABLE - never include forbidden ingredients
+11. ⚠️ PRIORITIZE user's preferred foods: ${(surveyData.preferredFoods || []).slice(0, 15).join(', ') || 'varied ingredients'}
+12. ⚠️ Include nutrient-rich foods based on user's preferences: ${(surveyData.preferredNutrients || []).join(', ') || 'balanced nutrition'}
+13. Stay within weekly budget of ~${Math.round((surveyData.monthlyFoodBudget || 200) / 4)}
 
 Return a JSON object with this EXACT structure:
 
@@ -210,44 +368,51 @@ Return a JSON object with this EXACT structure:
   ],
   "groceryList": {
     "proteins": [
-      {"name": "Chicken breast", "quantity": "2 lbs", "estimatedCost": 12.99, "uses": "Multiple protein-rich meals"},
-      {"name": "Eggs", "quantity": "1 dozen", "estimatedCost": 4.99, "uses": "Breakfast, baking"}
+      {"name": "Chicken breast", "quantity": "2 lbs", "uses": "Multiple protein-rich meals"},
+      {"name": "Eggs", "quantity": "1 dozen", "uses": "Breakfast, baking"},
+      {"name": "Salmon fillet", "quantity": "1 lb", "uses": "Dinner entrees"}
     ],
     "vegetables": [
-      {"name": "Spinach", "quantity": "2 bags", "estimatedCost": 5.99, "uses": "Salads, smoothies, cooking"},
-      {"name": "Broccoli", "quantity": "2 heads", "estimatedCost": 4.99, "uses": "Side dishes, stir-fries"}
+      {"name": "Spinach", "quantity": "2 bags (10oz each)", "uses": "Salads, smoothies, cooking"},
+      {"name": "Broccoli", "quantity": "2 heads", "uses": "Side dishes, stir-fries"},
+      {"name": "Bell peppers", "quantity": "3 mixed colors", "uses": "Salads, stir-fries, snacking"}
     ],
     "grains": [
-      {"name": "Brown rice", "quantity": "2 lbs bag", "estimatedCost": 4.49, "uses": "Base for bowls and sides"},
-      {"name": "Oats", "quantity": "1 container", "estimatedCost": 4.99, "uses": "Breakfast, baking"}
+      {"name": "Brown rice", "quantity": "2 lb bag", "uses": "Base for bowls and sides"},
+      {"name": "Oats", "quantity": "42oz container", "uses": "Breakfast, baking"},
+      {"name": "Whole wheat bread", "quantity": "1 loaf", "uses": "Toast, sandwiches"}
     ],
     "dairy": [
-      {"name": "Greek yogurt", "quantity": "32oz container", "estimatedCost": 6.99, "uses": "Breakfast, snacks, cooking"}
+      {"name": "Greek yogurt", "quantity": "32oz container", "uses": "Breakfast, snacks, cooking"},
+      {"name": "Milk", "quantity": "1 gallon", "uses": "Cereal, smoothies, cooking"}
     ],
     "pantryStaples": [
-      {"name": "Olive oil", "quantity": "500ml bottle", "estimatedCost": 8.99, "uses": "Cooking, dressings"}
+      {"name": "Olive oil", "quantity": "500ml bottle", "uses": "Cooking, dressings"},
+      {"name": "Honey", "quantity": "12oz bottle", "uses": "Sweetening, marinades"}
     ],
     "snacks": [
-      {"name": "Mixed nuts", "quantity": "1 lb", "estimatedCost": 9.99, "uses": "Healthy snacking"}
+      {"name": "Mixed nuts", "quantity": "1 lb bag", "uses": "Healthy snacking"},
+      {"name": "Dark chocolate", "quantity": "3.5oz bar (85% cacao)", "uses": "Healthy treat"}
     ]
-  },
-  "totalEstimatedCost": 85.50,
-  "weeklyBudgetUsed": "43%"
+  }
 }
 
 GROCERY LIST RULES:
 1. Consolidate duplicate ingredients across all meals (combine amounts)
 2. Round up quantities for practical shopping (e.g., can't buy 1.5 eggs)
-3. Estimate prices based on typical US grocery store prices
+3. Do NOT include prices - real prices will be added from local stores later
 4. Use these EXACT categories: proteins, vegetables, grains, dairy, pantryStaples, snacks
-5. Each item MUST have: name, quantity, estimatedCost, uses
+5. Each item MUST have exactly 3 fields: name, quantity, uses
 6. Include ONLY ingredients from the primary recipes (not alternatives)
-7. Calculate realistic total cost and weeklyBudgetUsed as percentage of user's monthly budget / 4`;
+7. Be SPECIFIC with quantities - include package sizes when relevant:
+   - Good: "2 lb bag", "32oz container", "1 dozen", "3 medium"
+   - Bad: "some", "a few", "as needed"
+8. The "uses" field should list which meals use this ingredient`;
 }
 
 // Restaurant meal generation prompt for 7-day system
 export function createRestaurantMealGenerationPrompt(context: RestaurantMealContext): string {
-  const { restaurantMealsSchedule, restaurantMenuData, surveyData } = context;
+  const { restaurantMealsSchedule, restaurantMenuData, surveyData, nutritionTargets } = context;
 
   // Build detailed restaurant info with ordering links prominently displayed
   const restaurantDetails = restaurantMenuData.map(restaurant => {
@@ -281,25 +446,55 @@ ${restaurantMealsSchedule.map(meal => `- ${meal.day} ${meal.mealType}`).join('\n
 AVAILABLE RESTAURANTS WITH VERIFIED ORDERING LINKS:
 ${restaurantDetails}
 
+NUTRITION TARGETS PER MEAL (IMPORTANT - meals should be within ±100 calories):
+${nutritionTargets ? `- Breakfast: ${nutritionTargets.mealTargets?.breakfast?.calories || 500} calories, ${nutritionTargets.mealTargets?.breakfast?.protein || 30}g protein
+- Lunch: ${nutritionTargets.mealTargets?.lunch?.calories || 600} calories, ${nutritionTargets.mealTargets?.lunch?.protein || 40}g protein
+- Dinner: ${nutritionTargets.mealTargets?.dinner?.calories || 700} calories, ${nutritionTargets.mealTargets?.dinner?.protein || 45}g protein` : `- Breakfast: 500 calories, 30g protein
+- Lunch: 600 calories, 40g protein
+- Dinner: 700 calories, 45g protein`}
+
 USER PREFERENCES & GOALS:
 - Primary Goal: ${surveyData.primaryGoal || surveyData.goal || 'General Wellness'}
 - Main Challenge: ${surveyData.goalChallenge || 'None specified'}
 - Health Focus: ${surveyData.healthFocus || 'General wellness'}
 - Fitness Level: ${surveyData.fitnessLevel || 'Not specified'}
 - Maintain Focus: ${surveyData.maintainFocus || 'Not specified'}
-- Diet Restrictions: ${(surveyData.dietPrefs || []).join(', ') || 'None'}
-- Preferred Cuisines: ${(surveyData.preferredCuisines || []).join(', ')}
-- Budget: $${surveyData.monthlyFoodBudget || 200}/month
+- Preferred Cuisines: ${(surveyData.preferredCuisines || []).join(', ') || 'Varied'}
+- Budget: ${surveyData.monthlyFoodBudget || 200}/month
+
+⚠️ DIETARY RESTRICTIONS (MUST FILTER MENU ITEMS):
+${(() => {
+  const restrictions = surveyData.dietPrefs || [];
+  if (restrictions.length === 0) return '- No restrictions - any menu items allowed';
+
+  return restrictions.map(pref => {
+    if (pref === 'Vegetarian') return '- VEGETARIAN: Only select dishes without meat, poultry, or fish';
+    if (pref === 'Vegan') return '- VEGAN: Only select dishes with no animal products (no meat, dairy, eggs)';
+    if (pref === 'Gluten-Free') return '- GLUTEN-FREE: Avoid bread, pasta, breaded items unless marked GF';
+    if (pref === 'Dairy-Free') return '- DAIRY-FREE: Avoid dishes with cheese, cream sauces, butter';
+    if (pref === 'Keto') return '- KETO: Select high-fat, low-carb options. Skip rice, bread, pasta sides';
+    if (pref === 'Halal') return '- HALAL: Skip pork dishes and non-halal meats';
+    return `- ${pref}: Apply appropriate restrictions`;
+  }).join('\n');
+})()}
+
+🥗 PREFERRED FOODS (SELECT DISHES FEATURING THESE):
+${(surveyData.preferredFoods || []).length > 0
+  ? `Prioritize menu items containing: ${surveyData.preferredFoods.slice(0, 10).join(', ')}`
+  : '- No specific ingredient preferences'}
 
 ⚠️ CRITICAL REQUIREMENTS:
 1. Select EXACTLY ${restaurantMealsSchedule.length} meals matching the schedule
-2. For EACH meal, provide BOTH a primary AND alternative option from DIFFERENT restaurants
-3. ⚠️ ORDERING LINKS ARE REQUIRED: Copy the EXACT orderingLinks from the restaurant data above
-4. Distribute across different restaurants for variety
-5. Consider meal timing (lighter lunches, heartier dinners)
-6. Stay within budget and dietary preferences
-7. Use ONLY restaurants and menu items from the data provided above
-8. NEVER leave orderingLinks empty - copy them directly from the restaurant data
+2. ⚠️ CALORIE TARGETS: Each meal MUST be within ±100 calories of the target above
+3. For EACH meal, provide BOTH a primary AND alternative option from DIFFERENT restaurants
+4. ⚠️ ORDERING LINKS ARE REQUIRED: Copy the EXACT orderingLinks from the restaurant data above
+5. Distribute across different restaurants for variety
+6. Consider meal timing (lighter lunches, heartier dinners)
+7. Stay within budget and dietary preferences
+8. Use ONLY restaurants and menu items from the data provided above
+9. NEVER leave orderingLinks empty - copy them directly from the restaurant data
+10. ⚠️ DIETARY RESTRICTIONS ARE ABSOLUTE - never select forbidden menu items
+11. ⚠️ PREFERRED FOODS: When available, prioritize dishes featuring user's preferred ingredients
 
 Return ONLY this JSON structure:
 {

@@ -12,48 +12,86 @@ export async function GET() {
     const userId = cookieStore.get('user_id')?.value;
     const sessionId = cookieStore.get('guest_session')?.value;
     const surveyId = cookieStore.get('survey_id')?.value;
+    const mealPlanId = cookieStore.get('meal_plan_id')?.value;
 
     // Clean up undefined/null strings from cookies (including literal strings and actual nulls)
     const cleanUserId = (!userId || userId === 'undefined' || userId === 'null' || userId === null) ? undefined : userId;
     const cleanSurveyId = (!surveyId || surveyId === 'undefined' || surveyId === 'null' || surveyId === null) ? undefined : surveyId;
     const cleanSessionId = (!sessionId || sessionId === 'undefined' || sessionId === 'null' || sessionId === null) ? undefined : sessionId;
+    const cleanMealPlanId = (!mealPlanId || mealPlanId === 'undefined' || mealPlanId === 'null' || mealPlanId === null) ? undefined : mealPlanId;
 
     // Always log for debugging the session issue
-    console.log(`[MealCurrent] Raw cookies - userId: "${userId}", surveyId: "${surveyId}", sessionId: "${sessionId}"`);
-    console.log(`[MealCurrent] Cleaned cookies - userId: "${cleanUserId}", surveyId: "${cleanSurveyId}", sessionId: "${cleanSessionId}"`);
-    console.log(`[MealCurrent] Session info - userId: ${cleanUserId}, surveyId: ${cleanSurveyId}, sessionId: ${cleanSessionId}`);
+    console.log(`[MealCurrent] Raw cookies - userId: "${userId}", surveyId: "${surveyId}", sessionId: "${sessionId}", mealPlanId: "${mealPlanId}"`);
+    console.log(`[MealCurrent] Cleaned cookies - userId: "${cleanUserId}", surveyId: "${cleanSurveyId}", sessionId: "${cleanSessionId}", mealPlanId: "${cleanMealPlanId}"`);
 
-    if (!cleanUserId && !cleanSurveyId && !cleanSessionId) {
+    if (!cleanUserId && !cleanSurveyId && !cleanSessionId && !cleanMealPlanId) {
       return NextResponse.json(
         { error: 'No user session found' },
         { status: 401 }
       );
     }
 
-    // If we have a sessionId, find the survey first (same logic as workouts)
-    let surveyFromSession = null;
-    if (cleanSessionId && !cleanSurveyId) {
-      surveyFromSession = await prisma.surveyResponse.findFirst({
-        where: { sessionId: cleanSessionId }
+    // PRIORITY 1: If we have a direct mealPlanId, use it (fastest, most accurate)
+    let mealPlan = null;
+    if (cleanMealPlanId) {
+      console.log(`[MealCurrent] Using direct mealPlanId from cookie: ${cleanMealPlanId}`);
+      mealPlan = await prisma.mealPlan.findUnique({
+        where: { id: cleanMealPlanId }
       });
-      if (shouldLog) console.log(`[MealCurrent] Found survey from session: ${surveyFromSession?.id}`);
+
+      if (mealPlan) {
+        console.log(`[MealCurrent] ✅ Found meal plan via direct ID: ${mealPlan.id}, status: ${mealPlan.status}`);
+      } else {
+        console.log(`[MealCurrent] ⚠️ Meal plan ID from cookie not found, falling back to other methods`);
+      }
     }
 
+    // PRIORITY 2: Query by sessionId to get the NEWEST survey and its meal plan
+    if (!mealPlan && cleanSessionId) {
+      console.log(`[MealCurrent] Looking for latest survey via sessionId: ${cleanSessionId}`);
 
-    // Query by survey ID - try both complete and partial status
-    // This ensures we get the latest plan regardless of restaurant completion status
-    const mealPlan = await prisma.mealPlan.findFirst({
-      where: {
-        surveyId: cleanSurveyId || surveyFromSession?.id,
-        // Accept active, complete and partial plans - this fixes the issue where meal plans use different status values
-        status: { in: ['active', 'complete', 'partial'] }
-      },
-      orderBy: [
-        // Prefer complete plans, but get most recent if only partial exists
-        { status: 'desc' }, // 'complete' comes before 'partial' alphabetically when reversed
-        { createdAt: 'desc' }
-      ]
-    });
+      // Find the LATEST survey for this session (fixes stale data issue)
+      const latestSurvey = await prisma.surveyResponse.findFirst({
+        where: { sessionId: cleanSessionId },
+        orderBy: { createdAt: 'desc' }  // Get newest survey for this session
+      });
+
+      if (latestSurvey) {
+        console.log(`[MealCurrent] Found latest survey for session: ${latestSurvey.id} (created: ${latestSurvey.createdAt})`);
+
+        // Find meal plan for this latest survey
+        mealPlan = await prisma.mealPlan.findFirst({
+          where: {
+            surveyId: latestSurvey.id,
+            status: { in: ['active', 'complete', 'partial'] }
+          },
+          orderBy: { createdAt: 'desc' }  // Always get newest
+        });
+
+        if (mealPlan) {
+          console.log(`[MealCurrent] ✅ Found meal plan via latest survey: ${mealPlan.id}, status: ${mealPlan.status}`);
+        }
+      } else {
+        console.log(`[MealCurrent] No survey found for sessionId: ${cleanSessionId}`);
+      }
+    }
+
+    // PRIORITY 3: Fall back to direct surveyId lookup
+    if (!mealPlan && cleanSurveyId) {
+      console.log(`[MealCurrent] Falling back to direct surveyId lookup: ${cleanSurveyId}`);
+
+      mealPlan = await prisma.mealPlan.findFirst({
+        where: {
+          surveyId: cleanSurveyId,
+          status: { in: ['active', 'complete', 'partial'] }
+        },
+        orderBy: { createdAt: 'desc' }  // Always get newest
+      });
+
+      if (mealPlan) {
+        console.log(`[MealCurrent] ✅ Found meal plan via direct surveyId: ${mealPlan.id}, status: ${mealPlan.status}`);
+      }
+    }
 
     const finalMealPlan = mealPlan;
 
@@ -137,6 +175,66 @@ export async function GET() {
     let metadata = userContext?.metadata || {};
     let days = userContext?.days || [];
 
+    // MERGE: Inject restaurant meals into days structure if they exist separately
+    if (restaurantMeals.length > 0 && days.length > 0) {
+      console.log(`[MealCurrent] 🔄 Merging ${restaurantMeals.length} restaurant meals into days structure`);
+
+      restaurantMeals.forEach((restaurantMeal: any) => {
+        const dayName = restaurantMeal.day?.toLowerCase(); // e.g., "monday"
+        const mealType = restaurantMeal.mealType?.toLowerCase(); // e.g., "lunch"
+
+        if (!dayName || !mealType) {
+          console.log(`[MealCurrent] ⚠️ Skipping restaurant meal - missing day or mealType:`, { dayName, mealType });
+          return;
+        }
+
+        // Find the matching day in days array
+        const dayIndex = days.findIndex((d: any) => d.day?.toLowerCase() === dayName);
+
+        if (dayIndex !== -1) {
+          // Ensure meals object exists
+          if (!days[dayIndex].meals) {
+            days[dayIndex].meals = {};
+          }
+
+          // Check if this slot already has a home meal - restaurant should override or coexist
+          const existingMeal = days[dayIndex].meals[mealType];
+
+          // Only add restaurant meal if slot is empty OR existing meal is not already a restaurant meal
+          if (!existingMeal || !existingMeal.primary?.source || existingMeal.primary?.source !== 'restaurant') {
+            // Format the restaurant meal to match expected structure
+            const formattedMeal = {
+              primary: {
+                source: 'restaurant',
+                restaurant: restaurantMeal.primary?.restaurant || restaurantMeal.restaurant,
+                dish: restaurantMeal.primary?.dish || restaurantMeal.dish,
+                description: restaurantMeal.primary?.description || restaurantMeal.description,
+                calories: restaurantMeal.primary?.estimatedCalories || restaurantMeal.primary?.calories || restaurantMeal.estimatedCalories || restaurantMeal.calories,
+                protein: restaurantMeal.primary?.protein || restaurantMeal.protein,
+                carbs: restaurantMeal.primary?.carbs || restaurantMeal.carbs,
+                fat: restaurantMeal.primary?.fat || restaurantMeal.fat,
+                price: restaurantMeal.primary?.price || restaurantMeal.price,
+                cuisine: restaurantMeal.primary?.cuisine || restaurantMeal.cuisine,
+                address: restaurantMeal.primary?.address || restaurantMeal.address,
+                orderingLinks: restaurantMeal.primary?.orderingLinks || restaurantMeal.orderingLinks,
+                imageUrl: restaurantMeal.primary?.imageUrl || restaurantMeal.imageUrl
+              },
+              alternatives: restaurantMeal.alternatives || []
+            };
+
+            days[dayIndex].meals[mealType] = formattedMeal;
+            console.log(`[MealCurrent] ✅ Merged restaurant meal: ${dayName} ${mealType} - ${formattedMeal.primary.dish} from ${formattedMeal.primary.restaurant}`);
+          } else {
+            console.log(`[MealCurrent] ⏭️ Skipping - slot already has restaurant meal: ${dayName} ${mealType}`);
+          }
+        } else {
+          console.log(`[MealCurrent] ⚠️ Day not found for restaurant meal: ${dayName}`);
+        }
+      });
+
+      console.log(`[MealCurrent] 🔄 Merge complete - days now have restaurant meals integrated`);
+    }
+
     // Extract grocery and meal count data
     let groceryList = userContext?.groceryList || null;
     let totalEstimatedCost = userContext?.totalEstimatedCost || 0;
@@ -198,6 +296,20 @@ export async function GET() {
       restaurantMealsCount: restaurantMealCount,
       nutritionTargets
     };
+
+    console.log('[MEALS-CURRENT-API] 📤 Returning meal plan:', {
+      hasMealPlan: !!mealPlan,
+      mealPlanId: mealPlan?.id,
+      status: mealPlan?.status,
+      hasUserContext: !!mealPlan?.userContext,
+      hasDays: !!days,
+      daysCount: days?.length || 0,
+      hasRestaurantMeals: !!((mealPlan?.userContext as any)?.restaurantMeals),
+      restaurantMealsCount: ((mealPlan?.userContext as any)?.restaurantMeals || []).length,
+      hasGroceryList: !!((mealPlan?.userContext as any)?.groceryList),
+      groceryListHasStores: !!((mealPlan?.userContext as any)?.groceryList?.stores),
+      groceryListPriceSuccess: ((mealPlan?.userContext as any)?.groceryList?.priceSearchSuccess)
+    });
 
     if (shouldLog) console.log(`[MealCurrent] Returning 7-day structured plan: ${days.length} days, ${weeklyPlan.length} total meals (${restaurantMealCount} restaurant)`);
     return NextResponse.json({

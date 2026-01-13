@@ -70,8 +70,38 @@ export function MealPlanPage({ onNavigate, generationStatus }: MealPlanPageProps
   const [loggedMeals, setLoggedMeals] = useState<any[]>([]);
   const [activeTab, setActiveTab] = useState<'meals' | 'grocery' | 'restaurants'>('meals');
   const [checkedGroceryItems, setCheckedGroceryItems] = useState<{[key: string]: boolean}>({});
+  const [selectedMealOptions, setSelectedMealOptions] = useState<{[key: string]: 'primary' | 'alternative'}>({});
+
+  // Recipe modal state - lifted to parent to prevent reset on re-render
+  const [activeRecipeModal, setActiveRecipeModal] = useState<{
+    mealType: string;
+    recipeData: any;
+  } | null>(null);
+
+  // Loading state for recipe generation - also lifted to parent
+  const [loadingRecipeMeal, setLoadingRecipeMeal] = useState<string | null>(null);
+
+  // ADD: Meal feedback state
+  const [mealFeedback, setMealFeedback] = useState<{
+    [mealOptionId: string]: 'loved' | 'disliked' | 'neutral' | null
+  }>({});
+  const [showFeedbackFor, setShowFeedbackFor] = useState<string | null>(null);
 
   const days = getDaysStartingFromToday();
+
+  // Get selected option for a specific meal
+  const getSelectedOption = (day: string, mealType: string): 'primary' | 'alternative' => {
+    return selectedMealOptions[`${day}-${mealType}`] || 'primary';
+  };
+
+  // Toggle selected option for a specific meal
+  const toggleMealOption = (day: string, mealType: string) => {
+    const key = `${day}-${mealType}`;
+    setSelectedMealOptions(prev => ({
+      ...prev,
+      [key]: prev[key] === 'alternative' ? 'primary' : 'alternative'
+    }));
+  };
 
   useEffect(() => {
     if (generationStatus.mealsGenerated) {
@@ -82,10 +112,9 @@ export function MealPlanPage({ onNavigate, generationStatus }: MealPlanPageProps
 
     // Load persisted eaten meals from localStorage (same key as dashboard)
     const savedEatenMeals = localStorage.getItem('eatenMeals');
-    console.log('MealPlanPage useEffect - Loading from localStorage:', savedEatenMeals);
     if (savedEatenMeals) {
       const parsed = JSON.parse(savedEatenMeals);
-      console.log('MealPlanPage useEffect - Parsed eatenMeals:', parsed);
+      console.log('[MealPlan] Loaded eaten meals:', Object.keys(parsed).length);
       setEatenMeals(parsed);
     }
     setIsInitialized(true);
@@ -93,14 +122,14 @@ export function MealPlanPage({ onNavigate, generationStatus }: MealPlanPageProps
     // Listen for localStorage changes from other tabs/windows
     const handleStorageChange = (e: StorageEvent) => {
       if (e.key === 'eatenMeals' && e.newValue) {
-        console.log('MealPlanPage - localStorage changed in another tab:', e.newValue);
+        console.log('[MealPlan] Updated from storage');
         setEatenMeals(JSON.parse(e.newValue));
       }
     };
 
     // Listen for custom events from same tab (dashboard)
     const handleEatenMealsUpdate = (e: CustomEvent) => {
-      console.log('MealPlanPage - received eatenMealsUpdate event:', e.detail);
+      console.log('[MealPlan] Update event received');
       // Only update if the new state is different and has content
       if (e.detail && Object.keys(e.detail).length > 0) {
         setEatenMeals(e.detail);
@@ -116,13 +145,50 @@ export function MealPlanPage({ onNavigate, generationStatus }: MealPlanPageProps
     };
   }, [generationStatus.mealsGenerated]);
 
+  // Load existing feedback for current week's meals
+  useEffect(() => {
+    const loadExistingFeedback = async () => {
+      if (!mealData?.mealPlan?.planData?.days) return;
+
+      try {
+        // Get all meal option IDs from current plan
+        const mealOptionIds: string[] = [];
+        mealData.mealPlan.planData.days.forEach((day: any) => {
+          if (day.meals) {
+            Object.values(day.meals).forEach((meal: any) => {
+              if (meal?.primary?.id) mealOptionIds.push(meal.primary.id);
+              if (meal?.alternative?.id) mealOptionIds.push(meal.alternative.id);
+            });
+          }
+        });
+
+        if (mealOptionIds.length === 0) return;
+
+        // Query feedback for these IDs
+        const response = await fetch('/api/meals/feedback/batch', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ mealOptionIds })
+        });
+
+        if (response.ok) {
+          const data = await response.json();
+          setMealFeedback(data.feedback || {});
+        }
+      } catch (error) {
+        console.error('[Feedback] Failed to load existing:', error);
+      }
+    };
+
+    loadExistingFeedback();
+  }, [mealData?.mealPlan?.planData?.days]);
+
   // Save eaten meals to localStorage whenever it changes (same as dashboard)
   useEffect(() => {
     // Only save and dispatch if we're initialized and have some data
     if (isInitialized && Object.keys(eatenMeals).length > 0) {
-      console.log('MealPlanPage - Saving to localStorage:', eatenMeals);
+      console.log('[MealPlan] Saving eaten meals:', Object.keys(eatenMeals).length);
       localStorage.setItem('eatenMeals', JSON.stringify(eatenMeals));
-      console.log('MealPlanPage - Saved to localStorage, checking:', localStorage.getItem('eatenMeals'));
 
       // Dispatch custom event to notify other components in the same tab (like dashboard)
       const event = new CustomEvent('eatenMealsUpdate', { detail: eatenMeals });
@@ -137,8 +203,7 @@ export function MealPlanPage({ onNavigate, generationStatus }: MealPlanPageProps
         const data = await response.json();
         setMealData(data);
         setNutritionTargets(data.mealPlan?.nutritionTargets);
-        console.log('Fetched meal data:', data);
-        console.log('Nutrition targets:', data.mealPlan?.nutritionTargets);
+        console.log('[MealPlan] Fetched meal data for', data.mealPlan?.planData?.days?.length || 0, 'days');
       }
     } catch (error) {
       console.error('Failed to fetch meal data:', error);
@@ -150,13 +215,10 @@ export function MealPlanPage({ onNavigate, generationStatus }: MealPlanPageProps
   // Get current day's meals - 7-day structured format only
   const getCurrentMeals = () => {
     if (mealData && mealData.mealPlan && mealData.mealPlan.planData && mealData.mealPlan.planData.days) {
-      console.log('Looking for meals for day:', selectedDay);
-
       // Find the day object that matches our selected day
       const dayData = mealData.mealPlan.planData.days.find((day: any) => day.day === selectedDay);
 
       if (dayData && dayData.meals) {
-        console.log('Found day data:', dayData);
         return {
           breakfast: dayData.meals.breakfast,
           lunch: dayData.meals.lunch,
@@ -166,7 +228,6 @@ export function MealPlanPage({ onNavigate, generationStatus }: MealPlanPageProps
     }
 
     // No real meal data available
-    console.log('No real meal data found - showing empty state');
     return {
       breakfast: null,
       lunch: null,
@@ -310,19 +371,35 @@ export function MealPlanPage({ onNavigate, generationStatus }: MealPlanPageProps
   // Toggle meal eaten status for specific meal option
   const toggleMealEaten = (mealType: string, optionIndex: number = 0, optionType: 'primary' | 'alternative' = 'primary') => {
     const mealKey = `${selectedDay}-${mealType}-${optionType}-${optionIndex}`;
-    console.log('MealPlanPage - toggleMealEaten called');
-    console.log('MealPlanPage - selectedDay:', selectedDay);
-    console.log('MealPlanPage - mealKey:', mealKey);
-    console.log('MealPlanPage - current eatenMeals:', eatenMeals);
+    console.log('[MealPlan] Toggle eaten:', mealKey);
+
+    const wasEaten = isMealEaten(mealType, optionIndex, optionType);
 
     setEatenMeals(prev => {
       const newState = {
         ...prev,
         [mealKey]: !prev[mealKey]
       };
-      console.log('MealPlanPage - new eatenMeals state:', newState);
       return newState;
     });
+
+    // Show feedback prompt after marking as eaten (not unmarking)
+    if (!wasEaten) {
+      // Get the meal option ID for feedback
+      const meals = getCurrentMeals();
+      const meal = meals[mealType as keyof typeof meals];
+      let mealOptionId = null;
+
+      if (meal && meal[optionType]) {
+        mealOptionId = meal[optionType].id;
+      }
+
+      if (mealOptionId) {
+        setTimeout(() => {
+          setShowFeedbackFor(mealOptionId);
+        }, 300);
+      }
+    }
   };
 
   // Check if a specific meal option is eaten
@@ -347,13 +424,66 @@ export function MealPlanPage({ onNavigate, generationStatus }: MealPlanPageProps
     setLoggedMeals(prev => prev.filter(m => m.id !== mealId));
   };
 
+  // Handle meal feedback (Love it / Meh)
+  const handleMealFeedback = async (
+    mealOptionId: string,
+    feedbackType: 'loved' | 'disliked',
+    mealInfo: {
+      dishName: string;
+      restaurantName?: string;
+      isHomemade: boolean;
+      mealType: string;
+      day: string;
+    }
+  ) => {
+    console.log('[MEAL-PLAN] ❤️ Meal reaction:', {
+      mealOptionId,
+      feedbackType,
+      mealType: mealInfo.mealType,
+      dishName: mealInfo.dishName,
+      restaurantName: mealInfo.restaurantName,
+      isHomemade: mealInfo.isHomemade,
+      timestamp: new Date().toISOString()
+    });
+
+    try {
+      // Optimistic update
+      setMealFeedback(prev => ({ ...prev, [mealOptionId]: feedbackType }));
+      setShowFeedbackFor(null);
+
+      const response = await fetch('/api/meals/feedback', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          mealOptionId,
+          feedbackType,
+          dishName: mealInfo.dishName,
+          restaurantName: mealInfo.restaurantName,
+          isHomemade: mealInfo.isHomemade,
+          mealType: mealInfo.mealType,
+          day: mealInfo.day,
+          weekNumber: mealData?.mealPlan?.weekNumber || 1,
+          weekOf: mealData?.mealPlan?.weekOf
+        })
+      });
+
+      if (!response.ok) {
+        throw new Error('Failed to save feedback');
+      }
+
+      const data = await response.json();
+      console.log('[Feedback]', data.message);
+    } catch (error) {
+      console.error('[Feedback] Error:', error);
+      // Revert on error
+      setMealFeedback(prev => ({ ...prev, [mealOptionId]: null }));
+    }
+  };
+
   const totalCalories = getTotalCalories();
 
   const MealCard = ({ meal, type }: { meal: any, type: string }) => {
-    const [showRecipe, setShowRecipe] = useState(false);
-    const [recipeData, setRecipeData] = useState<any>(null);
-    const [loadingRecipe, setLoadingRecipe] = useState(false);
-    const [selectedOption, setSelectedOption] = useState<'primary' | 'alternative'>('primary'); // NEW: Track selected option
+    const selectedOption = getSelectedOption(selectedDay, type);
     const [userRating, setUserRating] = useState(0);
     const [hoveredStar, setHoveredStar] = useState(0);
 
@@ -364,11 +494,14 @@ export function MealPlanPage({ onNavigate, generationStatus }: MealPlanPageProps
     const hasAlternative = meal.alternative && meal.alternative.name && meal.alternative.name !== "Alternative not available";
 
     const handleRecipeClick = async (selectedMeal: any) => {
+      console.log('🍳 [Recipe] Click started:', selectedMeal?.name || selectedMeal?.dish);
+
       const isRestaurant = selectedMeal.source === "restaurant";
       const mealName = isRestaurant ? selectedMeal.dish : selectedMeal.name;
       const description = isRestaurant ? selectedMeal.dish_description : selectedMeal.description;
 
       if (isRestaurant) {
+        console.log('🍳 [Recipe] Restaurant meal - opening external link');
         const orderingUrl = selectedMeal.orderingUrl || selectedMeal.website || selectedMeal.menu_url;
         if (orderingUrl) {
           window.open(orderingUrl, '_blank');
@@ -381,32 +514,62 @@ export function MealPlanPage({ onNavigate, generationStatus }: MealPlanPageProps
         return;
       }
 
-      if (recipeData) {
-        setShowRecipe(true);
+      if (activeRecipeModal?.mealType === type && activeRecipeModal?.recipeData) {
+        console.log('🍳 [Recipe] Using cached recipe');
+        // Already showing this recipe
         return;
       }
 
-      setLoadingRecipe(true);
+      setLoadingRecipeMeal(type);
+      console.log('🍳 [Recipe] Generating...');
       try {
+        // Get grocery list from mealData (available in parent scope)
+        const groceryList = mealData?.mealPlan?.groceryList || mealData?.mealPlan?.planData?.groceryList;
+        const groceryItems = groceryList?.items?.map((item: any) => item.name || item.ingredient).filter(Boolean) || [];
+
         const response = await fetch('/api/ai/recipes/generate', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             dishName: mealName,
             description: description,
-            mealType: type
+            mealType: type,
+            // NEW: Pass nutrition targets from the meal
+            nutritionTargets: {
+              calories: selectedMeal.calories || 0,
+              protein: selectedMeal.protein || 0,
+              carbs: selectedMeal.carbs || 0,
+              fat: selectedMeal.fat || 0
+            },
+            // NEW: Pass existing grocery items
+            existingGroceryItems: groceryItems,
+            // NEW: Pass dietary restrictions if available
+            dietaryRestrictions: [] // TODO: Get from user survey if available
           })
         });
 
-        if (response.ok) {
-          const data = await response.json();
-          setRecipeData(data.recipe);
-          setShowRecipe(true);
+        if (!response.ok) {
+          const errorData = await response.json().catch(() => ({}));
+          throw new Error(errorData.error || `Recipe generation failed: ${response.status}`);
+        }
+
+        const data = await response.json();
+        if (data.success && data.recipe) {
+          console.log('🍳 [Recipe] Success! Opening modal');
+          setActiveRecipeModal({
+            mealType: type,
+            recipeData: data.recipe
+          });
+        } else {
+          throw new Error(data.error || 'Failed to generate recipe');
         }
       } catch (error) {
-        console.error('Failed to generate recipe:', error);
+        console.error('🍳 [Recipe] ERROR:', error);
+        // Show error to user instead of silent failure
+        alert('Failed to generate recipe. Please try again.');
       } finally {
-        setLoadingRecipe(false);
+        setLoadingRecipeMeal(null);
+        console.log('🍳 [Recipe] Done');
       }
     };
 
@@ -416,9 +579,11 @@ export function MealPlanPage({ onNavigate, generationStatus }: MealPlanPageProps
 
     // NEW: Handle option toggle
     const toggleOption = () => {
-      setSelectedOption(selectedOption === 'primary' ? 'alternative' : 'primary');
+      toggleMealOption(selectedDay, type);
       // Reset recipe data when switching options
-      setRecipeData(null);
+      if (activeRecipeModal?.mealType === type) {
+        setActiveRecipeModal(null);
+      }
     };
 
     const SingleMealOption = ({
@@ -492,7 +657,55 @@ export function MealPlanPage({ onNavigate, generationStatus }: MealPlanPageProps
                     className="h-4 w-4 text-green-600 focus:ring-green-500 border-gray-300 rounded"
                   />
                   <span className="text-xs text-gray-600">Eaten</span>
+
+                  {/* Show saved feedback icon */}
+                  {mealFeedback[mealOption.id] === 'loved' && (
+                    <span className="text-red-500 text-sm">❤️</span>
+                  )}
+                  {mealFeedback[mealOption.id] === 'disliked' && (
+                    <span className="text-gray-400 text-sm">👎</span>
+                  )}
                 </div>
+
+                {/* Feedback prompt - shows after marking eaten */}
+                {showFeedbackFor === mealOption.id && isMealEaten(type, optionIndex, optionType) && (
+                  <div className="mt-2 p-2 bg-gray-50 rounded-lg border animate-fadeIn w-full">
+                    <p className="text-xs text-gray-500 mb-2">How was it?</p>
+                    <div className="flex gap-2">
+                      <button
+                        onClick={() => handleMealFeedback(mealOption.id, 'loved', {
+                          dishName: mealOption.dishName || mealOption.recipeName || 'Unknown Dish',
+                          restaurantName: mealOption.restaurantName,
+                          isHomemade: !mealOption.restaurantName,
+                          mealType: type,
+                          day: selectedDay
+                        })}
+                        className="flex-1 py-1.5 px-3 text-sm bg-white border border-red-200 text-red-600 rounded-lg hover:bg-red-50 transition-colors flex items-center justify-center gap-1"
+                      >
+                        <span>❤️</span> Love it
+                      </button>
+                      <button
+                        onClick={() => handleMealFeedback(mealOption.id, 'disliked', {
+                          dishName: mealOption.dishName || mealOption.recipeName || 'Unknown Dish',
+                          restaurantName: mealOption.restaurantName,
+                          isHomemade: !mealOption.restaurantName,
+                          mealType: type,
+                          day: selectedDay
+                        })}
+                        className="flex-1 py-1.5 px-3 text-sm bg-white border border-gray-200 text-gray-600 rounded-lg hover:bg-gray-100 transition-colors flex items-center justify-center gap-1"
+                      >
+                        <span>👎</span> Meh
+                      </button>
+                      <button
+                        onClick={() => setShowFeedbackFor(null)}
+                        className="px-2 text-gray-400 hover:text-gray-600"
+                        title="Skip"
+                      >
+                        ✕
+                      </button>
+                    </div>
+                  </div>
+                )}
 
                 <Badge
                   variant="secondary"
@@ -562,10 +775,10 @@ export function MealPlanPage({ onNavigate, generationStatus }: MealPlanPageProps
                 size="sm"
                 variant="outline"
                 onClick={() => handleRecipeClick(mealOption)}
-                disabled={loadingRecipe}
+                disabled={loadingRecipeMeal === type}
                 className="text-xs px-3 py-1 h-7 border-purple-300 text-purple-700 hover:bg-purple-50"
               >
-                {loadingRecipe ? (
+                {loadingRecipeMeal === type ? (
                   <div className="w-3 h-3 border-2 border-current border-t-transparent rounded-full animate-spin" />
                 ) : isRestaurant ? (
                   "Order"
@@ -590,14 +803,14 @@ export function MealPlanPage({ onNavigate, generationStatus }: MealPlanPageProps
 
           {/* Current Selected Meal Display */}
           {currentMeal && (
-            <div className="p-6">
-              <div className="flex items-start space-x-4">
+            <div className="p-4 sm:p-6">
+              <div className="flex flex-col sm:flex-row items-start space-y-4 sm:space-y-0 sm:space-x-4">
                 {/* Large Image */}
                 <div className="flex-shrink-0">
                   <ImageWithFallback
                     src={currentMeal.imageUrl || currentMeal.image || "https://images.unsplash.com/photo-1662993924949-2b2d68c08cee"}
                     alt={currentMeal.name || currentMeal.dish || `${type} meal`}
-                    className="w-24 h-24 object-cover rounded-xl shadow-md"
+                    className="w-full sm:w-24 h-48 sm:h-24 object-cover rounded-xl shadow-md"
                   />
                 </div>
 
@@ -605,7 +818,7 @@ export function MealPlanPage({ onNavigate, generationStatus }: MealPlanPageProps
                 <div className="flex-1 min-w-0">
                   <div className="flex items-start justify-between mb-3">
                     <div className="flex-1">
-                      <h4 className="text-xl font-bold text-gray-900 mb-1">
+                      <h4 className="text-lg sm:text-xl font-bold text-gray-900 mb-1">
                         {currentMeal.source === 'restaurant' ? currentMeal.dish : currentMeal.name}
                       </h4>
                       <p className="text-sm text-gray-600 mb-2 leading-relaxed">
@@ -623,7 +836,7 @@ export function MealPlanPage({ onNavigate, generationStatus }: MealPlanPageProps
                       )}
 
                       {/* Nutrition Info */}
-                      <div className="flex items-center gap-4 text-sm text-gray-600 mb-3">
+                      <div className="flex flex-wrap items-center gap-2 sm:gap-4 text-sm text-gray-600 mb-3">
                         <div className="bg-green-50 px-2 py-1 rounded-lg border border-green-200">
                           <span className="text-green-700 font-medium">{currentMeal.estimatedCalories || currentMeal.calories || 0} cal</span>
                         </div>
@@ -638,15 +851,15 @@ export function MealPlanPage({ onNavigate, generationStatus }: MealPlanPageProps
                       </div>
 
                       {/* Action Buttons */}
-                      <div className="flex items-center gap-3">
+                      <div className="flex flex-wrap items-center gap-2 sm:gap-3">
                         <Button
                           variant="outline"
                           size="sm"
                           onClick={() => handleRecipeClick(currentMeal)}
-                          disabled={loadingRecipe}
+                          disabled={loadingRecipeMeal === type}
                           className="bg-purple-50 border-purple-300 text-purple-700 hover:bg-purple-100 transition-colors"
                         >
-                          {loadingRecipe ? (
+                          {loadingRecipeMeal === type ? (
                             <div className="w-4 h-4 border-2 border-current border-t-transparent rounded-full animate-spin mr-2" />
                           ) : null}
                           {currentMeal.source === 'restaurant' ?
@@ -672,7 +885,7 @@ export function MealPlanPage({ onNavigate, generationStatus }: MealPlanPageProps
                     </div>
 
                     {/* Selection Indicator */}
-                    <div className="flex items-center gap-2 ml-4">
+                    <div className="flex items-center gap-2 ml-0 sm:ml-4 mt-2 sm:mt-0">
                       <div className={`px-3 py-1 rounded-full text-xs font-medium ${
                         selectedOption === 'primary'
                           ? 'bg-purple-100 text-purple-700 border border-purple-300'
@@ -692,10 +905,10 @@ export function MealPlanPage({ onNavigate, generationStatus }: MealPlanPageProps
 
           {/* Toggle Switch - Only show if alternative exists */}
           {hasAlternative && (
-            <div className="border-t border-gray-200 bg-gray-50 px-6 py-4">
-              <div className="flex items-center justify-between">
+            <div className="border-t border-gray-200 bg-gray-50 px-4 sm:px-6 py-3 sm:py-4">
+              <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2 sm:gap-0">
                 <div className="text-sm text-gray-600">
-                  Switch to: <span className="font-medium text-gray-900">{selectedOption === 'primary' ? meal.alternative?.name || meal.alternative?.dish : meal.primary?.name || meal.primary?.dish}</span>
+                  Switch to: <span className="font-medium text-gray-900 block sm:inline">{selectedOption === 'primary' ? meal.alternative?.name || meal.alternative?.dish : meal.primary?.name || meal.primary?.dish}</span>
                 </div>
                 <Button
                   onClick={toggleOption}
@@ -720,18 +933,18 @@ export function MealPlanPage({ onNavigate, generationStatus }: MealPlanPageProps
         </div>
 
         {/* Recipe Modal - Clean & Professional */}
-        {showRecipe && recipeData && (
+        {activeRecipeModal?.mealType === type && activeRecipeModal?.recipeData && (
           <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4">
             <div className="bg-white rounded-xl border border-gray-200 shadow-lg max-w-3xl max-h-[90vh] overflow-y-auto w-full">
               {/* Header */}
               <div className="border-b border-gray-200 p-4 sm:p-6 bg-gradient-to-r from-purple-50 to-white">
                 <div className="flex items-center justify-between">
                   <div>
-                    <h2 className="text-lg sm:text-xl font-semibold text-gray-900">{recipeData.name}</h2>
-                    <p className="text-gray-600 mt-1 text-xs sm:text-sm">{recipeData.description}</p>
+                    <h2 className="text-lg sm:text-xl font-semibold text-gray-900">{activeRecipeModal.recipeData.name}</h2>
+                    <p className="text-gray-600 mt-1 text-xs sm:text-sm">{activeRecipeModal.recipeData.description}</p>
                   </div>
                   <button
-                    onClick={() => setShowRecipe(false)}
+                    onClick={() => setActiveRecipeModal(null)}
                     className="w-8 h-8 text-gray-400 hover:text-gray-600 rounded-full flex items-center justify-center transition-colors hover:bg-gray-100"
                   >
                     <span className="text-lg">×</span>
@@ -744,19 +957,19 @@ export function MealPlanPage({ onNavigate, generationStatus }: MealPlanPageProps
                 <div className="bg-gray-50 rounded-lg p-4">
                   <div className="grid grid-cols-4 gap-3 text-center">
                     <div className="bg-white rounded-lg p-3 border border-gray-200">
-                      <div className="text-sm sm:text-base font-semibold text-purple-600">{recipeData.prepTime}</div>
+                      <div className="text-sm sm:text-base font-semibold text-purple-600">{activeRecipeModal.recipeData.prepTime}</div>
                       <div className="text-xs text-gray-600">Prep Time</div>
                     </div>
                     <div className="bg-white rounded-lg p-3 border border-gray-200">
-                      <div className="text-sm sm:text-base font-semibold text-purple-600">{recipeData.cookTime}</div>
+                      <div className="text-sm sm:text-base font-semibold text-purple-600">{activeRecipeModal.recipeData.cookTime}</div>
                       <div className="text-xs text-gray-600">Cook Time</div>
                     </div>
                     <div className="bg-white rounded-lg p-3 border border-gray-200">
-                      <div className="text-sm sm:text-base font-semibold text-purple-600">{recipeData.servings}</div>
+                      <div className="text-sm sm:text-base font-semibold text-purple-600">{activeRecipeModal.recipeData.servings}</div>
                       <div className="text-xs text-gray-600">Servings</div>
                     </div>
                     <div className="bg-white rounded-lg p-3 border border-gray-200">
-                      <div className="text-sm sm:text-base font-semibold text-purple-600">{recipeData.difficulty}</div>
+                      <div className="text-sm sm:text-base font-semibold text-purple-600">{activeRecipeModal.recipeData.difficulty}</div>
                       <div className="text-xs text-gray-600">Difficulty</div>
                     </div>
                   </div>
@@ -769,7 +982,7 @@ export function MealPlanPage({ onNavigate, generationStatus }: MealPlanPageProps
                     Ingredients
                   </h3>
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                    {recipeData.groceryList?.map((item: any, index: number) => (
+                    {activeRecipeModal.recipeData.groceryList?.map((item: any, index: number) => (
                       <div key={index} className="flex items-center space-x-3 p-2 bg-gray-50 rounded-lg hover:bg-gray-100 transition-colors">
                         <span className="w-6 h-6 bg-purple-600 text-white rounded-full text-xs font-medium flex items-center justify-center flex-shrink-0">
                           {index + 1}
@@ -787,7 +1000,7 @@ export function MealPlanPage({ onNavigate, generationStatus }: MealPlanPageProps
                     Instructions
                   </h3>
                   <div className="space-y-4">
-                    {recipeData.instructions?.map((step: string, index: number) => (
+                    {activeRecipeModal.recipeData.instructions?.map((step: string, index: number) => (
                       <div key={index} className="flex space-x-4 p-3 bg-gray-50 rounded-lg hover:bg-gray-100 transition-colors">
                         <span className="w-7 h-7 bg-purple-600 text-white rounded-full text-sm font-medium flex items-center justify-center flex-shrink-0">
                           {index + 1}
@@ -799,7 +1012,7 @@ export function MealPlanPage({ onNavigate, generationStatus }: MealPlanPageProps
                 </div>
 
                 {/* Nutrition */}
-                {recipeData.nutrition && (
+                {activeRecipeModal.recipeData.nutrition && (
                   <div className="bg-gradient-to-r from-green-50 to-blue-50 border border-green-200 rounded-lg p-4">
                     <h3 className="text-lg font-semibold text-gray-900 mb-4 flex items-center">
                       <div className="w-1 h-6 bg-green-600 rounded-full mr-3"></div>
@@ -807,19 +1020,19 @@ export function MealPlanPage({ onNavigate, generationStatus }: MealPlanPageProps
                     </h3>
                     <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
                       <div className="bg-white rounded-lg p-3 text-center border border-green-200">
-                        <div className="text-lg font-semibold text-green-600">{recipeData.nutrition.calories}</div>
+                        <div className="text-lg font-semibold text-green-600">{activeRecipeModal.recipeData.nutrition.calories}</div>
                         <div className="text-xs text-gray-600">Calories</div>
                       </div>
                       <div className="bg-white rounded-lg p-3 text-center border border-blue-200">
-                        <div className="text-lg font-semibold text-blue-600">{recipeData.nutrition.protein}g</div>
+                        <div className="text-lg font-semibold text-blue-600">{activeRecipeModal.recipeData.nutrition.protein}g</div>
                         <div className="text-xs text-gray-600">Protein</div>
                       </div>
                       <div className="bg-white rounded-lg p-3 text-center border border-orange-200">
-                        <div className="text-lg font-semibold text-orange-600">{recipeData.nutrition.carbs}g</div>
+                        <div className="text-lg font-semibold text-orange-600">{activeRecipeModal.recipeData.nutrition.carbs}g</div>
                         <div className="text-xs text-gray-600">Carbs</div>
                       </div>
                       <div className="bg-white rounded-lg p-3 text-center border border-yellow-200">
-                        <div className="text-lg font-semibold text-yellow-600">{recipeData.nutrition.fat}g</div>
+                        <div className="text-lg font-semibold text-yellow-600">{activeRecipeModal.recipeData.nutrition.fat}g</div>
                         <div className="text-xs text-gray-600">Fat</div>
                       </div>
                     </div>
@@ -1024,7 +1237,6 @@ export function MealPlanPage({ onNavigate, generationStatus }: MealPlanPageProps
                 variant={selectedDay === day.id ? "default" : "outline"}
                 size="sm"
                 onClick={() => {
-                  console.log('Meal day clicked:', day.id, 'Current selectedDay:', selectedDay);
                   setSelectedDay(day.id);
                 }}
                 className={`min-w-16 sm:min-w-20 flex flex-col p-2 sm:p-3 h-auto transition-all duration-200 flex-shrink-0 ${
@@ -1107,8 +1319,10 @@ export function MealPlanPage({ onNavigate, generationStatus }: MealPlanPageProps
               <MealCard meal={currentMeals.breakfast} type="breakfast" />
             </>
           ) : (
-            <div className="text-center py-3 bg-gray-50 rounded-lg border border-gray-200">
-              <p className="text-gray-600 text-sm">No breakfast data available for {selectedDay}</p>
+            <div className="text-center py-6 bg-gray-50 border-2 border-dashed border-gray-300 rounded-lg">
+              <ForkKnife className="w-8 h-8 text-gray-400 mx-auto mb-2" />
+              <p className="text-gray-600 font-medium">No breakfast planned</p>
+              <p className="text-gray-500 text-sm">Meals will appear here once generated</p>
             </div>
           )}
 
@@ -1118,8 +1332,10 @@ export function MealPlanPage({ onNavigate, generationStatus }: MealPlanPageProps
               <MealCard meal={currentMeals.lunch} type="lunch" />
             </>
           ) : (
-            <div className="text-center py-3 bg-gray-50 rounded-lg border border-gray-200">
-              <p className="text-gray-600 text-sm">No lunch data available for {selectedDay}</p>
+            <div className="text-center py-6 bg-gray-50 border-2 border-dashed border-gray-300 rounded-lg">
+              <ForkKnife className="w-8 h-8 text-gray-400 mx-auto mb-2" />
+              <p className="text-gray-600 font-medium">No lunch planned</p>
+              <p className="text-gray-500 text-sm">Meals will appear here once generated</p>
             </div>
           )}
 
@@ -1129,8 +1345,10 @@ export function MealPlanPage({ onNavigate, generationStatus }: MealPlanPageProps
               <MealCard meal={currentMeals.dinner} type="dinner" />
             </>
           ) : (
-            <div className="text-center py-3 bg-gray-50 rounded-lg border border-gray-200">
-              <p className="text-gray-600 text-sm">No dinner data available for {selectedDay}</p>
+            <div className="text-center py-6 bg-gray-50 border-2 border-dashed border-gray-300 rounded-lg">
+              <ForkKnife className="w-8 h-8 text-gray-400 mx-auto mb-2" />
+              <p className="text-gray-600 font-medium">No dinner planned</p>
+              <p className="text-gray-500 text-sm">Meals will appear here once generated</p>
             </div>
           )}
 
@@ -1184,8 +1402,9 @@ export function MealPlanPage({ onNavigate, generationStatus }: MealPlanPageProps
           </div>
 
           {!currentMeals.breakfast && !currentMeals.lunch && !currentMeals.dinner && (
-            <div className="text-center py-12 bg-white border border-gray-200 rounded-xl">
-              <p className="text-gray-600 text-lg font-medium">No meal data available for {selectedDay}</p>
+            <div className="text-center py-12 bg-white border-2 border-dashed border-gray-300 rounded-xl">
+              <ForkKnife className="w-12 h-12 text-gray-400 mx-auto mb-4" />
+              <p className="text-gray-600 text-lg font-medium">No meals planned for {selectedDay}</p>
               <p className="text-sm text-gray-500 mt-2">Meal recommendations will appear here once generated</p>
             </div>
           )}
@@ -1196,7 +1415,11 @@ export function MealPlanPage({ onNavigate, generationStatus }: MealPlanPageProps
         {/* Grocery List Tab Content */}
         {activeTab === 'grocery' && (
           <GroceryListSection
-            groceryList={mealData?.mealPlan?.planData?.groceryList || { proteins: [], vegetables: [], grains: [], totalEstimatedCost: 0, weeklyBudgetUsed: '0%' }}
+            groceryList={
+              mealData?.mealPlan?.groceryList ||
+              mealData?.mealPlan?.planData?.groceryList ||
+              { proteins: [], vegetables: [], grains: [], totalEstimatedCost: 0, weeklyBudgetUsed: '0%' }
+            }
             onItemToggle={handleGroceryItemToggle}
             checkedItems={checkedGroceryItems}
           />
@@ -1207,6 +1430,7 @@ export function MealPlanPage({ onNavigate, generationStatus }: MealPlanPageProps
           <RestaurantListSection
             restaurants={(() => {
               const restaurantMeals = mealData?.mealPlan?.planData?.restaurantMeals || [];
+              console.log('[RestaurantSection] Raw restaurant meals:', restaurantMeals.length);
               const restaurantMap = new Map();
 
               // Aggregate all restaurant data and ordering links
@@ -1291,7 +1515,7 @@ export function MealPlanPage({ onNavigate, generationStatus }: MealPlanPageProps
                 };
               });
 
-
+              console.log('[RestaurantSection] Transformed restaurants:', restaurants.length);
               return restaurants;
             })()}
             metadata={{

@@ -24,7 +24,13 @@ import {
   Spinner,
   CheckCircle,
   Circle,
-  ShoppingCart
+  ShoppingCart,
+  UserPlus,
+  Shield,
+  Cloud,
+  Sparkle,
+  House,
+  Minus
 } from "@phosphor-icons/react";
 import { motion } from "framer-motion";
 import { calculateMacroTargets, UserProfile } from '@/lib/utils/nutrition';
@@ -144,6 +150,22 @@ export function DashboardHome({ user, onNavigate, generationStatus, isGuest, onS
     lunch: 'primary' | 'alternative',
     dinner: 'primary' | 'alternative'
   }>({ breakfast: 'primary', lunch: 'primary', dinner: 'primary' });
+  const [bannerDismissed, setBannerDismissed] = useState(false);
+
+  // Debug: Log incoming user data and survey info
+  useEffect(() => {
+    console.log('[DASHBOARD-HOME] 📊 User data received:', {
+      userName: user?.name,
+      userEmail: user?.email,
+      hasActiveSurvey: !!user?.activeSurvey,
+      surveyAge: user?.activeSurvey?.age,
+      surveyWeight: user?.activeSurvey?.weight,
+      surveyHeight: user?.activeSurvey?.height,
+      surveySex: user?.activeSurvey?.sex,
+      surveyGoal: user?.activeSurvey?.goal,
+      surveyActivityLevel: user?.activeSurvey?.activityLevel
+    });
+  }, [user]);
 
   // Preview data for the "Building" section - derived from actual API data
   const [restaurantPreview, setRestaurantPreview] = useState<{ count: number; names: string }>({
@@ -153,6 +175,196 @@ export function DashboardHome({ user, onNavigate, generationStatus, isGuest, onS
   const [groceryPreview, setGroceryPreview] = useState<string>('');
   const [homeMealsCount, setHomeMealsCount] = useState<number>(0);
   const [workoutDaysCount, setWorkoutDaysCount] = useState<number>(0);
+
+  // GuestBanner component
+  const GuestBanner = ({ onCreateAccount, onDismiss }: {
+    onCreateAccount: () => void;
+    onDismiss: () => void;
+  }) => (
+    <div className="bg-gradient-to-r from-red-600 to-red-700 text-white rounded-2xl p-4 sm:p-5 mb-4 shadow-lg relative overflow-hidden">
+      <div className="absolute top-0 right-0 w-32 h-32 bg-white/5 rounded-full -translate-y-1/2 translate-x-1/2" />
+
+      <div className="relative flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+        <div className="flex-1">
+          <div className="flex items-center gap-2 mb-2">
+            <Sparkle size={20} weight="fill" className="text-yellow-300" />
+            <h3 className="font-semibold text-lg">You're browsing as a guest</h3>
+          </div>
+          <p className="text-red-100 text-sm sm:text-base">
+            Create a free account to save your personalized meal plan and workouts forever.
+          </p>
+          <div className="hidden sm:flex items-center gap-4 mt-3 text-xs text-red-200">
+            <span className="flex items-center gap-1"><Cloud size={14} /> Access anywhere</span>
+            <span className="flex items-center gap-1"><Shield size={14} /> Data saved securely</span>
+          </div>
+        </div>
+
+        <div className="flex items-center gap-2">
+          <button
+            onClick={onCreateAccount}
+            className="flex items-center gap-2 bg-white text-red-600 px-4 sm:px-6 py-2.5 rounded-xl font-semibold hover:bg-red-50 transition-colors shadow-md"
+          >
+            <UserPlus size={18} weight="bold" />
+            <span>Create Account</span>
+          </button>
+          <button onClick={onDismiss} className="p-2 hover:bg-white/10 rounded-lg transition-colors">
+            <X size={20} />
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+
+  // Unified loading card components
+  const MealLoadingCard = ({ mealType }: { mealType: string }) => (
+    <div className="flex items-center space-x-3 sm:space-x-4 p-2 sm:p-3 bg-gray-50 border border-gray-200 rounded-lg">
+      <div className="w-12 h-12 sm:w-14 sm:h-14 bg-gray-200 rounded-lg flex items-center justify-center animate-pulse">
+        <Spinner size={20} className="text-gray-400" />
+      </div>
+      <div className="flex-1 min-w-0">
+        <div className="h-4 bg-gray-200 rounded w-3/4 mb-2 animate-pulse" />
+        <div className="h-3 bg-gray-200 rounded w-1/4 animate-pulse" />
+      </div>
+    </div>
+  );
+
+  const MealSkippedCard = ({ mealType }: { mealType: string }) => (
+    <div className="flex items-center space-x-3 sm:space-x-4 p-2 sm:p-3 bg-gray-100 border border-gray-300 rounded-lg">
+      <div className="w-12 h-12 sm:w-14 sm:h-14 bg-gray-300 rounded-lg flex items-center justify-center">
+        <X className="w-5 h-5 text-gray-500" />
+      </div>
+      <div className="flex-1 min-w-0">
+        <p className="text-sm text-gray-500 italic">No {mealType} planned</p>
+        <p className="text-xs text-gray-400">Skipped for today</p>
+      </div>
+    </div>
+  );
+
+  const RestaurantSearchingCard = () => (
+    <div className="flex items-center space-x-3 sm:space-x-4 p-2 sm:p-3 bg-blue-50 border border-blue-200 rounded-lg">
+      <div className="w-12 h-12 sm:w-14 sm:h-14 bg-blue-100 rounded-lg flex items-center justify-center">
+        <MapPin className="w-5 h-5 text-blue-500 animate-bounce" />
+      </div>
+      <div className="flex-1 min-w-0">
+        <p className="text-sm text-blue-700 font-medium">Finding nearby restaurants...</p>
+        <p className="text-xs text-blue-500">Searching for healthy options</p>
+      </div>
+    </div>
+  );
+
+  // Enhanced meal card renderer that handles all states
+  const renderMealCard = (meal: any, mealType: string, option: 'primary' | 'alternative', onScreenNavigate?: (screen: string) => void) => {
+    // Special handling for restaurant loading state
+    if (meal.isRestaurantLoading) {
+      return <RestaurantSearchingCard />;
+    }
+
+    // Empty state styling based on type
+    const getEmptyStyles = () => {
+      if (meal.isEmpty) {
+        switch (meal.emptyType) {
+          case 'restaurant':
+            return {
+              container: 'bg-gray-50 border-2 border-dashed border-gray-300 cursor-pointer hover:bg-gray-100 hover:border-gray-400 transition-colors',
+              icon: 'bg-gray-200',
+              iconElement: <MapPin className="w-5 h-5 text-gray-400" />,
+              textColor: 'text-gray-600'
+            };
+          case 'home':
+            return {
+              container: 'bg-gray-50 border-2 border-dashed border-gray-300 cursor-pointer hover:bg-gray-100 hover:border-gray-400 transition-colors',
+              icon: 'bg-gray-200',
+              iconElement: <ForkKnife className="w-5 h-5 text-gray-400" />,
+              textColor: 'text-gray-600'
+            };
+          case 'alternative':
+            return {
+              container: 'bg-gray-50 border-gray-200',
+              icon: 'bg-gray-100',
+              iconElement: <Minus className="w-5 h-5 text-gray-400" />,
+              textColor: 'text-gray-500'
+            };
+        }
+      }
+      if (meal.hasError) {
+        return {
+          container: 'bg-red-50 border-red-200 cursor-pointer hover:bg-red-100 transition-colors',
+          icon: 'bg-red-100',
+          iconElement: <X className="w-5 h-5 text-red-500" />,
+          textColor: 'text-red-700'
+        };
+      }
+      return null;
+    };
+
+    const emptyStyles = getEmptyStyles();
+
+    return (
+      <div
+        className={`flex items-center space-x-3 sm:space-x-4 p-2 sm:p-3 border rounded-lg transition-shadow ${
+          meal.isSkipped
+            ? 'bg-gray-100 border-gray-300'
+            : emptyStyles
+              ? emptyStyles.container
+              : 'bg-gray-50 border-gray-200 hover:shadow-md'
+        }`}
+        onClick={emptyStyles && onScreenNavigate ? () => onScreenNavigate('meal-plan') : undefined}
+      >
+        <div className="flex-shrink-0">
+          {meal.isLoading && !emptyStyles ? (
+            <div className="w-12 h-12 sm:w-14 sm:h-14 bg-gray-200 rounded-lg flex items-center justify-center">
+              <div className="w-5 h-5 border-2 border-[#c1272d] border-t-transparent rounded-full animate-spin"></div>
+            </div>
+          ) : meal.isSkipped ? (
+            <div className="w-12 h-12 sm:w-14 sm:h-14 bg-gray-300 rounded-lg flex items-center justify-center">
+              <X className="w-5 h-5 text-gray-500" />
+            </div>
+          ) : emptyStyles ? (
+            <div className={`w-12 h-12 sm:w-14 sm:h-14 ${emptyStyles.icon} rounded-lg flex items-center justify-center`}>
+              {emptyStyles.iconElement}
+            </div>
+          ) : (
+            <ImageWithFallback
+              src={meal.image || "https://images.unsplash.com/photo-1546793665-c74683f339c1"}
+              alt={meal.name}
+              className="w-12 h-12 sm:w-14 sm:h-14 object-cover rounded-lg shadow-sm"
+            />
+          )}
+        </div>
+        <div className="flex-1 min-w-0">
+          <p className={`text-sm truncate ${
+            meal.isSkipped ? 'text-gray-500 italic' :
+            emptyStyles ? emptyStyles.textColor : 'text-gray-700'
+          }`}>
+            {meal.name}
+          </p>
+          {meal.subtext && (
+            <p className="text-xs text-gray-500 italic">
+              {meal.subtext}
+            </p>
+          )}
+          <p className="text-xs text-[#8b5cf6] font-medium">
+            {meal.isSkipped ? '' :
+             meal.isLoading ? 'Loading...' :
+             meal.hideCalories ? '' :
+             `${meal.calories} cal`}
+          </p>
+        </div>
+        <div className="flex items-center space-x-2">
+          {meal.isEmpty || meal.hasError ? (
+            <CaretRight className="w-4 h-4 text-gray-400" />
+          ) : !meal.isSkipped && !meal.isLoading && (
+            <input
+              type="checkbox"
+              checked={isMealEaten(mealType, 0, option)}
+              onChange={() => toggleMealEatenFromDashboard(mealType, 0, option)}
+              className="h-4 w-4 text-[#c1272d] focus:ring-[#c1272d] border-gray-300 rounded"
+            />
+          )}
+        </div>
+      </div>
+    );
+  };
 
   // Helper functions for the new design
   const getGreeting = () => {
@@ -169,12 +381,48 @@ export function DashboardHome({ user, onNavigate, generationStatus, isGuest, onS
     return "Location not set";
   };
 
+  // Helper function to render meal status consistently
+  const getMealStatusDisplay = (meal: any) => {
+    if (!meal) {
+      return { text: "No meal planned", subtext: "", showCheckbox: false };
+    }
+    if (meal.isLoading) {
+      return { text: meal.name || "Generating meal...", subtext: "Please wait", showCheckbox: false };
+    }
+    if (meal.isSkipped) {
+      return { text: "Meal skipped", subtext: "", showCheckbox: false };
+    }
+    if (meal.calories === 0 && !meal.isLoading) {
+      return { text: meal.name, subtext: "Calories calculating...", showCheckbox: false };
+    }
+    return {
+      text: meal.name,
+      subtext: `${meal.calories} cal`,
+      showCheckbox: true
+    };
+  };
+
   // Calculate macro targets instantly from survey data (no API needed)
   // Round all values to nearest 10 for cleaner display
   const macroTargets = React.useMemo(() => {
     const survey = user?.activeSurvey;
+    console.log('[DASHBOARD-HOME] 🧮 Calculating macroTargets, survey data:', {
+      hasActiveSurvey: !!survey,
+      age: survey?.age,
+      weight: survey?.weight,
+      height: survey?.height,
+      sex: survey?.sex,
+      activityLevel: survey?.activityLevel,
+      goal: survey?.goal
+    });
+
     if (!survey?.age || !survey?.weight || !survey?.height) {
-      return { calories: 2000, protein: 150, carbs: 200, fat: 70 };
+      console.error('[DASHBOARD-HOME] ❌ Cannot calculate macros - missing:', {
+        missingAge: !survey?.age,
+        missingWeight: !survey?.weight,
+        missingHeight: !survey?.height
+      });
+      return null; // Return null instead of hardcoded fallback
     }
 
     const userProfile: UserProfile = {
@@ -496,21 +744,50 @@ export function DashboardHome({ user, onNavigate, generationStatus, isGuest, onS
               name: "Finding restaurant options...",
               image: null,
               calories: 0,
-              isLoading: true
+              isLoading: true,
+              isRestaurantLoading: true,
+              hideCalories: true
             };
           } else if (isHome && !generationStatus.homeMealsGenerated) {
             return {
               name: "Creating home meal...",
               image: null,
               calories: 0,
-              isLoading: true
+              isLoading: true,
+              hideCalories: true
             };
           } else {
-            return {
-              name: "No data available",
-              image: null,
-              calories: 0
-            };
+            // Generation is complete but no meal data exists - better UX for different cases
+            if (isRestaurant) {
+              return {
+                name: "No restaurant found nearby",
+                subtext: "Tap to browse options",
+                image: null,
+                calories: 0,
+                hideCalories: true,
+                isEmpty: true,
+                emptyType: 'restaurant'
+              };
+            } else if (isHome) {
+              return {
+                name: "Meal not generated",
+                subtext: "Tap to regenerate",
+                image: null,
+                calories: 0,
+                hideCalories: true,
+                isEmpty: true,
+                emptyType: 'home'
+              };
+            } else {
+              return {
+                name: "Couldn't load meal",
+                subtext: "Tap to retry",
+                image: null,
+                calories: 0,
+                hideCalories: true,
+                hasError: true
+              };
+            }
           }
         }
 
@@ -525,18 +802,61 @@ export function DashboardHome({ user, onNavigate, generationStatus, isGuest, onS
         // If still no actual meal data, check if it's loading
         if (!actualMeal) {
           const isRestaurant = plannedMeals[mealType] === 'restaurant';
+          const isHome = plannedMeals[mealType] === 'home';
+
           if (isRestaurant && !generationStatus.restaurantMealsGenerated) {
             return {
               name: optionType === 'alternative' ? "Finding alternative restaurant..." : "Finding restaurant options...",
               image: null,
               calories: 0,
-              isLoading: true
+              isLoading: true,
+              hideCalories: true
             };
           }
+
+          // Better empty states for alternatives
+          if (optionType === 'alternative') {
+            return {
+              name: "Alternative not available",
+              subtext: "Main option only",
+              image: null,
+              calories: 0,
+              hideCalories: true,
+              isEmpty: true,
+              emptyType: 'alternative'
+            };
+          }
+
+          // Better empty states for missing data
+          if (isRestaurant) {
+            return {
+              name: "Restaurant meal missing",
+              subtext: "Tap to browse options",
+              image: null,
+              calories: 0,
+              hideCalories: true,
+              isEmpty: true,
+              emptyType: 'restaurant'
+            };
+          } else if (isHome) {
+            return {
+              name: "Home meal missing",
+              subtext: "Tap to regenerate",
+              image: null,
+              calories: 0,
+              hideCalories: true,
+              isEmpty: true,
+              emptyType: 'home'
+            };
+          }
+
           return {
-            name: optionType === 'alternative' ? "Alternative not available" : "No meal data",
+            name: "Meal data missing",
+            subtext: "Tap to reload",
             image: null,
-            calories: 0
+            calories: 0,
+            hideCalories: true,
+            hasError: true
           };
         }
 
@@ -605,15 +925,11 @@ export function DashboardHome({ user, onNavigate, generationStatus, isGuest, onS
   const getTodaysWorkout = () => {
     if (workoutData && workoutData.workoutPlan && workoutData.workoutPlan.planData && workoutData.workoutPlan.planData.weeklyPlan) {
       const todayDayName = getTodayDayName();
-      console.log('Dashboard - Looking for workout for:', todayDayName);
-
       const workoutDay = workoutData.workoutPlan.planData.weeklyPlan.find((day: any) => {
-        console.log('Dashboard - Checking workout day:', day.day, 'focus:', day.focus);
         return day.day === todayDayName;
       });
 
       if (workoutDay) {
-        console.log('Dashboard - Found workout for today:', workoutDay);
         return {
           focus: workoutDay.restDay ? "Rest Day" : workoutDay.focus,
           duration: parseInt(workoutDay.estimatedTime) || 0,
@@ -648,7 +964,6 @@ export function DashboardHome({ user, onNavigate, generationStatus, isGuest, onS
   const isMealEaten = (mealType: string, optionIndex: number = 0, optionType: 'primary' | 'alternative' = 'primary') => {
     const selectedDay = getTodayDayName(); // Always use TODAY for dashboard
     const mealKey = `${selectedDay}-${mealType}-${optionType}-${optionIndex}`;
-    console.log('Dashboard isMealEaten - selectedDay:', selectedDay, 'mealKey:', mealKey, 'eatenMeals:', eatenMeals);
     return eatenMeals[mealKey] || false;
   };
 
@@ -816,19 +1131,25 @@ export function DashboardHome({ user, onNavigate, generationStatus, isGuest, onS
   const todaysMeals = getTodaysMeals();
   const todaysWorkout = getTodaysWorkout();
 
-  // Get nutrition targets from meal plan data or user data (no fallbacks - user must have survey data)
-  const nutritionTargets = mealData?.mealPlan?.nutritionTargets || user?.macroTargets || {
-    dailyCalories: user?.calorieTarget || 0,
-    dailyProtein: 0,
-    dailyCarbs: 0,
-    dailyFat: 0
-  };
+  // Use macroTargets for consistency - ensures both sections show same rounded values
+  const nutritionTargets = macroTargets ? {
+    dailyCalories: macroTargets.calories,
+    dailyProtein: macroTargets.protein,
+    dailyCarbs: macroTargets.carbs,
+    dailyFat: macroTargets.fat
+  } : null;
 
   // Use real eaten calories from checkbox tracking
   const caloriesEaten = getTotalCaloriesEaten();
   const proteinEaten = getTotalProteinEaten();
   const carbsEaten = getTotalCarbsEaten();
   const fatEaten = getTotalFatEaten();
+
+  // Debug: Log when eaten meals change to verify checkbox → progress bar connection
+  useEffect(() => {
+    console.log('[Dashboard] eatenMeals changed:', eatenMeals);
+    console.log('[Dashboard] Recalculated calories:', getTotalCaloriesEaten());
+  }, [eatenMeals]);
 
   // Calculate today's workout completion from localStorage data
   const calculateTodayWorkoutCompletion = () => {
@@ -850,33 +1171,6 @@ export function DashboardHome({ user, onNavigate, generationStatus, isGuest, onS
 
   return (
     <div className="min-h-screen bg-[#fafafa]">
-      {/* Guest User Banner */}
-      {isGuest && (
-        <div className="bg-gradient-to-r from-blue-50 to-indigo-50 border-b border-blue-200 px-4 py-3">
-          <div className="max-w-7xl mx-auto flex items-center justify-between">
-            <div className="flex items-center space-x-3">
-              <div className="w-8 h-8 bg-blue-100 rounded-full flex items-center justify-center">
-                <User className="w-4 h-4 text-blue-600" />
-              </div>
-              <div>
-                <p className="text-sm font-medium text-blue-900">
-                  You're browsing as a guest
-                </p>
-                <p className="text-xs text-blue-700">
-                  Create an account to save your progress and access all features
-                </p>
-              </div>
-            </div>
-            <Button
-              onClick={onShowAccountModal}
-              size="sm"
-              className="bg-blue-600 hover:bg-blue-700 text-white text-xs px-3 py-1.5"
-            >
-              Create Account
-            </Button>
-          </div>
-        </div>
-      )}
 
       {/* Header */}
       <div className="bg-gradient-to-r from-white to-gray-50 border-b border-gray-200 px-4 sm:px-6 lg:px-8 py-6 sm:py-8 shadow-sm">
@@ -916,6 +1210,14 @@ export function DashboardHome({ user, onNavigate, generationStatus, isGuest, onS
           <p className="text-sm sm:text-base text-gray-600">Ready to crush your health goals today? Let's make it happen!</p>
         </div>
 
+        {/* Guest Banner */}
+        {isGuest && !bannerDismissed && (
+          <GuestBanner
+            onCreateAccount={() => window.location.href = '/login?redirect=/dashboard'}
+            onDismiss={() => setBannerDismissed(true)}
+          />
+        )}
+
         {/* ============ INSTANT VALUE SECTIONS ============ */}
 
         {/* Daily Targets - Always visible instantly */}
@@ -926,24 +1228,31 @@ export function DashboardHome({ user, onNavigate, generationStatus, isGuest, onS
             <h3 className="font-semibold text-gray-900">Your Daily Targets</h3>
           </div>
 
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 sm:gap-3">
-            <div className="text-center p-3 bg-gray-50 rounded-xl">
-              <div className="text-lg sm:text-xl font-bold text-gray-900">{macroTargets.calories.toLocaleString()}</div>
-              <div className="text-xs text-gray-500">calories</div>
+          {macroTargets ? (
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 sm:gap-3">
+              <div className="text-center p-3 bg-gray-50 rounded-xl">
+                <div className="text-lg sm:text-xl font-bold text-gray-900">{macroTargets.calories.toLocaleString()}</div>
+                <div className="text-xs text-gray-500">calories</div>
+              </div>
+              <div className="text-center p-3 bg-blue-50 rounded-xl">
+                <div className="text-lg sm:text-xl font-bold text-blue-700">{macroTargets.protein}g</div>
+                <div className="text-xs text-blue-600">protein</div>
+              </div>
+              <div className="text-center p-3 bg-amber-50 rounded-xl">
+                <div className="text-lg sm:text-xl font-bold text-amber-700">{macroTargets.carbs}g</div>
+                <div className="text-xs text-amber-600">carbs</div>
+              </div>
+              <div className="text-center p-3 bg-green-50 rounded-xl">
+                <div className="text-lg sm:text-xl font-bold text-green-700">{macroTargets.fat}g</div>
+                <div className="text-xs text-green-600">fat</div>
+              </div>
             </div>
-            <div className="text-center p-3 bg-blue-50 rounded-xl">
-              <div className="text-lg sm:text-xl font-bold text-blue-700">{macroTargets.protein}g</div>
-              <div className="text-xs text-blue-600">protein</div>
+          ) : (
+            <div className="text-center p-4 bg-red-50 rounded-xl border border-red-200">
+              <div className="text-red-600 font-medium">Profile incomplete</div>
+              <div className="text-red-500 text-sm mt-1">Please complete your survey to view nutrition targets</div>
             </div>
-            <div className="text-center p-3 bg-amber-50 rounded-xl">
-              <div className="text-lg sm:text-xl font-bold text-amber-700">{macroTargets.carbs}g</div>
-              <div className="text-xs text-amber-600">carbs</div>
-            </div>
-            <div className="text-center p-3 bg-green-50 rounded-xl">
-              <div className="text-lg sm:text-xl font-bold text-green-700">{macroTargets.fat}g</div>
-              <div className="text-xs text-green-600">fat</div>
-            </div>
-          </div>
+          )}
         </div>
 
         {/* What We're Building - Shows progress with REAL preview data, hides when all complete */}
@@ -1000,9 +1309,19 @@ export function DashboardHome({ user, onNavigate, generationStatus, isGuest, onS
                 Nutrition
               </span>
             </div>
-            <div className="text-2xl sm:text-3xl font-bold text-[#c1272d] mb-1">{caloriesEaten > 0 ? Math.round((caloriesEaten/nutritionTargets.dailyCalories)*100) : 0}%</div>
-            <div className="text-lg font-bold text-[#8b5cf6] mb-1">Daily goal</div>
-            <div className="text-sm text-gray-600">{caloriesEaten} / {nutritionTargets.dailyCalories} calories</div>
+            {nutritionTargets ? (
+              <>
+                <div className="text-2xl sm:text-3xl font-bold text-[#c1272d] mb-1">{caloriesEaten > 0 ? Math.round((caloriesEaten/nutritionTargets.dailyCalories)*100) : 0}%</div>
+                <div className="text-lg font-bold text-[#8b5cf6] mb-1">Daily goal</div>
+                <div className="text-sm text-gray-600">{caloriesEaten} / {nutritionTargets.dailyCalories} calories</div>
+              </>
+            ) : (
+              <>
+                <div className="text-2xl sm:text-3xl font-bold text-red-600 mb-1">--</div>
+                <div className="text-lg font-bold text-red-600 mb-1">Profile incomplete</div>
+                <div className="text-sm text-red-500">Complete survey to view targets</div>
+              </>
+            )}
           </div>
 
           {/* Box 2: Today's Workouts */}
@@ -1201,13 +1520,29 @@ export function DashboardHome({ user, onNavigate, generationStatus, isGuest, onS
                       return (
                         <div className="flex items-center space-x-3">
                           <div className="flex-shrink-0">
-                            {currentOption.isLoading ? (
+                            {currentOption.isRestaurantLoading ? (
+                              <div className="w-16 h-16 bg-blue-100 rounded-xl flex items-center justify-center">
+                                <MapPin className="w-5 h-5 text-blue-500 animate-bounce" />
+                              </div>
+                            ) : currentOption.isLoading ? (
                               <div className="w-16 h-16 bg-gray-200 rounded-xl flex items-center justify-center">
                                 <div className="w-5 h-5 border-2 border-[#c1272d] border-t-transparent rounded-full animate-spin"></div>
                               </div>
                             ) : currentOption.isSkipped ? (
                               <div className="w-16 h-16 bg-gray-300 rounded-xl flex items-center justify-center">
-                                <span className="text-gray-500 text-xl">🚫</span>
+                                <X className="w-5 h-5 text-gray-500" />
+                              </div>
+                            ) : currentOption.isEmpty ? (
+                              <div className="w-16 h-16 bg-gray-200 rounded-xl flex items-center justify-center">
+                                {currentOption.emptyType === 'restaurant' ? (
+                                  <MapPin className="w-5 h-5 text-gray-400" />
+                                ) : (
+                                  <ForkKnife className="w-5 h-5 text-gray-400" />
+                                )}
+                              </div>
+                            ) : currentOption.hasError ? (
+                              <div className="w-16 h-16 bg-red-100 rounded-xl flex items-center justify-center">
+                                <X className="w-5 h-5 text-red-500" />
                               </div>
                             ) : (
                               <ImageWithFallback
@@ -1220,16 +1555,35 @@ export function DashboardHome({ user, onNavigate, generationStatus, isGuest, onS
 
                           <div className="flex-1 min-w-0">
                             <h5 className={`font-semibold text-gray-900 mb-1 ${
-                              currentOption.isSkipped ? 'text-gray-500 italic' : ''
+                              currentOption.isSkipped ? 'text-gray-500 italic' :
+                              currentOption.isRestaurantLoading ? 'text-blue-600' :
+                              currentOption.isEmpty || currentOption.hasError ? 'text-gray-600' : ''
                             }`}>
                               {currentOption.name}
                             </h5>
+                            {currentOption.subtext && (
+                              <p className="text-xs text-blue-500 font-medium mb-1">
+                                {currentOption.subtext}
+                              </p>
+                            )}
                             <p className="text-sm text-[#8b5cf6] font-medium mb-2">
-                              {currentOption.isSkipped ? 'Skipped' : `${currentOption.calories} cal`}
+                              {currentOption.isSkipped ? 'Skipped' :
+                               currentOption.isRestaurantLoading ? 'Searching nearby...' :
+                               currentOption.isLoading ? 'Loading...' :
+                               currentOption.isEmpty || currentOption.hasError || currentOption.hideCalories ? '' :
+                               `${currentOption.calories} cal`}
                             </p>
 
                             <div className="flex items-center gap-3">
-                              {!currentOption.isSkipped && !currentOption.isLoading && (
+                              {currentOption.isEmpty || currentOption.hasError ? (
+                                <div
+                                  className="flex items-center gap-2 cursor-pointer text-blue-600 hover:text-blue-700"
+                                  onClick={() => onNavigate("meal-plan")}
+                                >
+                                  <span className="text-sm font-medium">{currentOption.subtext || "Tap to fix"}</span>
+                                  <CaretRight className="w-4 h-4" />
+                                </div>
+                              ) : !currentOption.isSkipped && !currentOption.isLoading && !currentOption.isRestaurantLoading && (
                                 <label className="flex items-center gap-2 cursor-pointer">
                                   <input
                                     type="checkbox"
@@ -1278,80 +1632,12 @@ export function DashboardHome({ user, onNavigate, generationStatus, isGuest, onS
                 <div className="space-y-2">
                   <h4 className="font-bold text-gray-900 text-base">Lunch Options</h4>
                   {/* Primary Option */}
-                  <div className={`flex items-center space-x-3 sm:space-x-4 p-2 sm:p-3 border rounded-lg transition-shadow ${
-                    todaysMeals.lunch.primary.isSkipped
-                      ? 'bg-gray-100 border-gray-300'
-                      : 'bg-gray-50 border-gray-200 hover:shadow-md'
-                  }`}>
-                    <div className="flex-shrink-0">
-                      {todaysMeals.lunch.primary.isLoading ? (
-                        <div className="w-12 h-12 sm:w-14 sm:h-14 bg-gray-200 rounded-lg flex items-center justify-center">
-                          <div className="w-5 h-5 border-2 border-[#c1272d] border-t-transparent rounded-full animate-spin"></div>
-                        </div>
-                      ) : todaysMeals.lunch.primary.isSkipped ? (
-                        <div className="w-12 h-12 sm:w-14 sm:h-14 bg-gray-300 rounded-lg flex items-center justify-center">
-                          <X className="w-5 h-5 text-gray-500" />
-                        </div>
-                      ) : (
-                        <ImageWithFallback
-                          src={todaysMeals.lunch.primary.image || "https://images.unsplash.com/photo-1546793665-c74683f339c1"}
-                          alt={todaysMeals.lunch.primary.name}
-                          className="w-12 h-12 sm:w-14 sm:h-14 object-cover rounded-lg shadow-sm"
-                        />
-                      )}
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <p className={`text-sm truncate ${
-                        todaysMeals.lunch.primary.isSkipped ? 'text-gray-500 italic' : 'text-gray-700'
-                      }`}>
-                        {todaysMeals.lunch.primary.name}
-                      </p>
-                      <p className="text-xs text-[#8b5cf6] font-medium">
-                        {todaysMeals.lunch.primary.isSkipped ? '' : `${todaysMeals.lunch.primary.calories} cal`}
-                      </p>
-                    </div>
-                    <div className="flex items-center space-x-2">
-                      {!todaysMeals.lunch.primary.isSkipped && !todaysMeals.lunch.primary.isLoading && (
-                        <input
-                          type="checkbox"
-                          checked={isMealEaten('lunch', 0, 'primary')}
-                          onChange={() => toggleMealEatenFromDashboard('lunch', 0, 'primary')}
-                          className="h-4 w-4 text-[#c1272d] focus:ring-[#c1272d] border-gray-300 rounded"
-                        />
-                      )}
-                    </div>
-                  </div>
+                  {renderMealCard(todaysMeals.lunch.primary, 'lunch', 'primary', onNavigate)}
                   {/* Alternative Option */}
-                  {!todaysMeals.lunch.primary.isSkipped && todaysMeals.lunch.alternative.name !== "Alternative not available" && (
-                    <div className="flex items-center space-x-3 sm:space-x-4 p-2 sm:p-3 bg-gray-50 border border-gray-200 rounded-lg hover:shadow-md transition-shadow">
-                      <div className="flex-shrink-0">
-                        {todaysMeals.lunch.alternative.isLoading ? (
-                          <div className="w-12 h-12 sm:w-14 sm:h-14 bg-gray-200 rounded-lg flex items-center justify-center">
-                            <div className="w-5 h-5 border-2 border-[#c1272d] border-t-transparent rounded-full animate-spin"></div>
-                          </div>
-                        ) : (
-                          <ImageWithFallback
-                            src={todaysMeals.lunch.alternative.image || "https://images.unsplash.com/photo-1546793665-c74683f339c1"}
-                            alt={todaysMeals.lunch.alternative.name}
-                            className="w-12 h-12 sm:w-14 sm:h-14 object-cover rounded-lg shadow-sm"
-                          />
-                        )}
-                      </div>
-                      <div className="flex-1 min-w-0">
-                        <p className="text-sm text-gray-700 truncate">{todaysMeals.lunch.alternative.name}</p>
-                        <p className="text-xs text-[#8b5cf6] font-medium">{todaysMeals.lunch.alternative.calories} cal</p>
-                      </div>
-                      <div className="flex items-center space-x-2">
-                        {!todaysMeals.lunch.alternative.isLoading && (
-                          <input
-                            type="checkbox"
-                            checked={isMealEaten('lunch', 0, 'alternative')}
-                            onChange={() => toggleMealEatenFromDashboard('lunch', 0, 'alternative')}
-                            className="h-4 w-4 text-[#c1272d] focus:ring-[#c1272d] border-gray-300 rounded"
-                          />
-                        )}
-                      </div>
-                    </div>
+                  {!todaysMeals.lunch.primary.isSkipped &&
+                   !todaysMeals.lunch.alternative.isEmpty &&
+                   todaysMeals.lunch.alternative.emptyType !== 'alternative' && (
+                    renderMealCard(todaysMeals.lunch.alternative, 'lunch', 'alternative', onNavigate)
                   )}
                 </div>
               )}
@@ -1361,80 +1647,14 @@ export function DashboardHome({ user, onNavigate, generationStatus, isGuest, onS
                 <div className="space-y-2">
                   <h4 className="font-bold text-gray-900 text-base">Dinner Options</h4>
                   {/* Primary Option */}
-                  <div className={`flex items-center space-x-3 sm:space-x-4 p-2 sm:p-3 border rounded-lg transition-shadow ${
-                    todaysMeals.dinner.primary.isSkipped
-                      ? 'bg-gray-100 border-gray-300'
-                      : 'bg-gray-50 border-gray-200 hover:shadow-md'
-                  }`}>
-                    <div className="flex-shrink-0">
-                      {todaysMeals.dinner.primary.isLoading ? (
-                        <div className="w-12 h-12 sm:w-14 sm:h-14 bg-gray-200 rounded-lg flex items-center justify-center">
-                          <div className="w-5 h-5 border-2 border-[#c1272d] border-t-transparent rounded-full animate-spin"></div>
-                        </div>
-                      ) : todaysMeals.dinner.primary.isSkipped ? (
-                        <div className="w-12 h-12 sm:w-14 sm:h-14 bg-gray-300 rounded-lg flex items-center justify-center">
-                          <X className="w-5 h-5 text-gray-500" />
-                        </div>
-                      ) : (
-                        <ImageWithFallback
-                          src={todaysMeals.dinner.primary.image || "https://images.unsplash.com/photo-1565299624946-b28f40a0ca4b"}
-                          alt={todaysMeals.dinner.primary.name}
-                          className="w-12 h-12 sm:w-14 sm:h-14 object-cover rounded-lg shadow-sm"
-                        />
-                      )}
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <p className={`text-sm truncate ${
-                        todaysMeals.dinner.primary.isSkipped ? 'text-gray-500 italic' : 'text-gray-700'
-                      }`}>
-                        {todaysMeals.dinner.primary.name}
-                      </p>
-                      <p className="text-xs text-[#8b5cf6] font-medium">
-                        {todaysMeals.dinner.primary.isSkipped ? '' : `${todaysMeals.dinner.primary.calories} cal`}
-                      </p>
-                    </div>
-                    <div className="flex items-center space-x-2">
-                      {!todaysMeals.dinner.primary.isSkipped && !todaysMeals.dinner.primary.isLoading && (
-                        <input
-                          type="checkbox"
-                          checked={isMealEaten('dinner', 0, 'primary')}
-                          onChange={() => toggleMealEatenFromDashboard('dinner', 0, 'primary')}
-                          className="h-4 w-4 text-[#c1272d] focus:ring-[#c1272d] border-gray-300 rounded"
-                        />
-                      )}
-                    </div>
-                  </div>
+                  {renderMealCard(todaysMeals.dinner.primary, 'dinner', 'primary', onNavigate)}
+
                   {/* Alternative Option */}
-                  {!todaysMeals.dinner.primary.isSkipped && todaysMeals.dinner.alternative.name !== "Alternative not available" && (
-                    <div className="flex items-center space-x-3 sm:space-x-4 p-2 sm:p-3 bg-gray-50 border border-gray-200 rounded-lg hover:shadow-md transition-shadow">
-                      <div className="flex-shrink-0">
-                        {todaysMeals.dinner.alternative.isLoading ? (
-                          <div className="w-12 h-12 sm:w-14 sm:h-14 bg-gray-200 rounded-lg flex items-center justify-center">
-                            <div className="w-5 h-5 border-2 border-[#c1272d] border-t-transparent rounded-full animate-spin"></div>
-                          </div>
-                        ) : (
-                          <ImageWithFallback
-                            src={todaysMeals.dinner.alternative.image || "https://images.unsplash.com/photo-1565299624946-b28f40a0ca4b"}
-                            alt={todaysMeals.dinner.alternative.name}
-                            className="w-12 h-12 sm:w-14 sm:h-14 object-cover rounded-lg shadow-sm"
-                          />
-                        )}
-                      </div>
-                      <div className="flex-1 min-w-0">
-                        <p className="text-sm text-gray-700 truncate">{todaysMeals.dinner.alternative.name}</p>
-                        <p className="text-xs text-[#8b5cf6] font-medium">{todaysMeals.dinner.alternative.calories} cal</p>
-                      </div>
-                      <div className="flex items-center space-x-2">
-                        {!todaysMeals.dinner.alternative.isLoading && (
-                          <input
-                            type="checkbox"
-                            checked={isMealEaten('dinner', 0, 'alternative')}
-                            onChange={() => toggleMealEatenFromDashboard('dinner', 0, 'alternative')}
-                            className="h-4 w-4 text-[#c1272d] focus:ring-[#c1272d] border-gray-300 rounded"
-                          />
-                        )}
-                      </div>
-                    </div>
+                  {!todaysMeals.dinner.primary.isSkipped &&
+                   todaysMeals.dinner.alternative.name !== "Alternative not available" &&
+                   !todaysMeals.dinner.alternative.isEmpty &&
+                   todaysMeals.dinner.alternative.emptyType !== 'alternative' && (
+                    renderMealCard(todaysMeals.dinner.alternative, 'dinner', 'alternative', onNavigate)
                   )}
                 </div>
               )}
@@ -1452,76 +1672,85 @@ export function DashboardHome({ user, onNavigate, generationStatus, isGuest, onS
                 <p className="text-xs text-[#8b5cf6] font-medium">Track your macro intake</p>
               </div>
             </div>
-            <div className="text-xl font-bold text-[#c1272d] bg-gray-50 px-3 py-1 rounded-full">
-              {Math.round((caloriesEaten/nutritionTargets.dailyCalories)*100)}%
-            </div>
+            {nutritionTargets && (
+              <div className="text-xl font-bold text-[#c1272d] bg-gray-50 px-3 py-1 rounded-full">
+                {Math.round((caloriesEaten/nutritionTargets.dailyCalories)*100)}%
+              </div>
+            )}
           </div>
 
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
-            {/* Calories Progress */}
-            <div className="bg-gray-50 rounded-lg p-3 border border-gray-200">
-              <div className="flex justify-between items-center text-xs mb-2">
-                <span className="text-[#c1272d] font-bold">Calories</span>
-                <span className="text-gray-700 font-bold">
-                  {caloriesEaten}/{nutritionTargets.dailyCalories}
-                </span>
+          {nutritionTargets ? (
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
+              {/* Calories Progress */}
+              <div className="bg-gray-50 rounded-lg p-3 border border-gray-200">
+                <div className="flex justify-between items-center text-xs mb-2">
+                  <span className="text-[#c1272d] font-bold">Calories</span>
+                  <span className="text-gray-700 font-bold">
+                    {caloriesEaten}/{nutritionTargets.dailyCalories}
+                  </span>
+                </div>
+                <div className="w-full bg-gray-200 rounded-full h-2">
+                  <div
+                    className="h-2 rounded-full transition-all duration-500 bg-gradient-to-r from-[#c1272d] to-red-500"
+                    style={{ width: `${Math.min((caloriesEaten / nutritionTargets.dailyCalories) * 100, 100)}%` }}
+                  />
+                </div>
               </div>
-              <div className="w-full bg-gray-200 rounded-full h-2">
-                <div
-                  className="h-2 rounded-full transition-all duration-500 bg-gradient-to-r from-[#c1272d] to-red-500"
-                  style={{ width: `${Math.min((caloriesEaten / nutritionTargets.dailyCalories) * 100, 100)}%` }}
-                />
-              </div>
-            </div>
 
-            {/* Protein Progress */}
-            <div className="bg-gray-50 rounded-lg p-3 border border-gray-200">
-              <div className="flex justify-between items-center text-xs mb-2">
-                <span className="text-[#8b5cf6] font-bold">Protein</span>
-                <span className="text-gray-700 font-bold">
-                  {proteinEaten}g/{Math.round(nutritionTargets.dailyProtein)}g
-                </span>
+              {/* Protein Progress */}
+              <div className="bg-gray-50 rounded-lg p-3 border border-gray-200">
+                <div className="flex justify-between items-center text-xs mb-2">
+                  <span className="text-[#8b5cf6] font-bold">Protein</span>
+                  <span className="text-gray-700 font-bold">
+                    {proteinEaten}g/{Math.round(nutritionTargets.dailyProtein)}g
+                  </span>
+                </div>
+                <div className="w-full bg-gray-200 rounded-full h-2">
+                  <div
+                    className="h-2 rounded-full transition-all duration-500 bg-gradient-to-r from-[#8b5cf6] to-purple-600"
+                    style={{ width: `${Math.min((proteinEaten / nutritionTargets.dailyProtein) * 100, 100)}%` }}
+                  />
+                </div>
               </div>
-              <div className="w-full bg-gray-200 rounded-full h-2">
-                <div
-                  className="h-2 rounded-full transition-all duration-500 bg-gradient-to-r from-[#8b5cf6] to-purple-600"
-                  style={{ width: `${Math.min((proteinEaten / nutritionTargets.dailyProtein) * 100, 100)}%` }}
-                />
-              </div>
-            </div>
 
-            {/* Carbs Progress */}
-            <div className="bg-gray-50 rounded-lg p-3 border border-gray-200">
-              <div className="flex justify-between items-center text-xs mb-2">
-                <span className="text-[#c1272d] font-bold">Carbs</span>
-                <span className="text-gray-700 font-bold">
-                  {carbsEaten}g/{Math.round(nutritionTargets.dailyCarbs)}g
-                </span>
+              {/* Carbs Progress */}
+              <div className="bg-gray-50 rounded-lg p-3 border border-gray-200">
+                <div className="flex justify-between items-center text-xs mb-2">
+                  <span className="text-[#c1272d] font-bold">Carbs</span>
+                  <span className="text-gray-700 font-bold">
+                    {carbsEaten}g/{Math.round(nutritionTargets.dailyCarbs)}g
+                  </span>
+                </div>
+                <div className="w-full bg-gray-200 rounded-full h-2">
+                  <div
+                    className="h-2 rounded-full transition-all duration-500 bg-gradient-to-r from-[#c1272d] to-[#8b5cf6]"
+                    style={{ width: `${Math.min((carbsEaten / nutritionTargets.dailyCarbs) * 100, 100)}%` }}
+                  />
+                </div>
               </div>
-              <div className="w-full bg-gray-200 rounded-full h-2">
-                <div
-                  className="h-2 rounded-full transition-all duration-500 bg-gradient-to-r from-[#c1272d] to-[#8b5cf6]"
-                  style={{ width: `${Math.min((carbsEaten / nutritionTargets.dailyCarbs) * 100, 100)}%` }}
-                />
-              </div>
-            </div>
 
-            {/* Fat Progress */}
-            <div className="bg-gray-50 rounded-lg p-3 border border-gray-200">
-              <div className="flex justify-between items-center text-xs mb-2">
-                <span className="text-[#8b5cf6] font-bold">Fat</span>
-                <span className="text-gray-700 font-bold">
-                  {fatEaten}g/{Math.round(nutritionTargets.dailyFat)}g
-                </span>
-              </div>
-              <div className="w-full bg-gray-200 rounded-full h-2">
-                <div
-                  className="h-2 rounded-full transition-all duration-500 bg-gradient-to-r from-[#8b5cf6] to-purple-600"
-                  style={{ width: `${Math.min((fatEaten / nutritionTargets.dailyFat) * 100, 100)}%` }}
-                />
+              {/* Fat Progress */}
+              <div className="bg-gray-50 rounded-lg p-3 border border-gray-200">
+                <div className="flex justify-between items-center text-xs mb-2">
+                  <span className="text-[#8b5cf6] font-bold">Fat</span>
+                  <span className="text-gray-700 font-bold">
+                    {fatEaten}g/{Math.round(nutritionTargets.dailyFat)}g
+                  </span>
+                </div>
+                <div className="w-full bg-gray-200 rounded-full h-2">
+                  <div
+                    className="h-2 rounded-full transition-all duration-500 bg-gradient-to-r from-[#8b5cf6] to-purple-600"
+                    style={{ width: `${Math.min((fatEaten / nutritionTargets.dailyFat) * 100, 100)}%` }}
+                  />
+                </div>
               </div>
             </div>
-          </div>
+          ) : (
+            <div className="text-center p-6 bg-red-50 rounded-xl border border-red-200">
+              <div className="text-red-600 font-semibold text-lg mb-2">Profile incomplete</div>
+              <div className="text-red-500 text-sm">Please complete your survey to view nutrition tracking</div>
+            </div>
+          )}
         </div>
 
       </div>

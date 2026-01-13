@@ -1,9 +1,10 @@
 import { NextResponse } from 'next/server';
 import { createUser, createSession, setAuthCookie, migrateGuestToUser, AuthError } from '@/lib/auth';
+import { cookies } from 'next/headers';
 
 export async function POST(request: Request) {
   try {
-    const { email, password, firstName, lastName, preserveGuestData } = await request.json();
+    const { email, password, firstName, lastName } = await request.json();
 
     // Validate input
     if (!email || !password || !firstName || !lastName) {
@@ -34,11 +35,26 @@ export async function POST(request: Request) {
     // Set auth cookie
     await setAuthCookie(sessionId);
 
-    // Migrate any guest data if requested
-    if (preserveGuestData) {
+    // ========== Always migrate guest data if it exists ==========
+    const cookieStore = await cookies();
+    const guestSessionId = cookieStore.get('guest_session')?.value;
+    const surveyId = cookieStore.get('survey_id')?.value;
+
+    if (guestSessionId || surveyId) {
+      console.log(`[Auth] Auto-migrating guest data for new user: ${user.email}`);
       await migrateGuestToUser(sessionId, user.id);
-      console.log(`[Auth] Guest data migrated for user: ${user.email}`);
+
+      cookieStore.delete('guest_session');
+      cookieStore.delete('survey_id');
     }
+
+    cookieStore.set('user_id', user.id, {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === 'production',
+      sameSite: 'lax',
+      maxAge: 30 * 24 * 60 * 60
+    });
+    // ============================================================
 
     console.log(`[Auth] User registered successfully: ${user.email}`);
 

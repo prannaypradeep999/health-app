@@ -794,8 +794,9 @@ export function WorkoutPlanPage({ onNavigate, generationStatus }: WorkoutPlanPag
                   ))}
                 </div>
               ) : (
-                <div className="text-center py-12 bg-white border border-gray-200 rounded-xl">
-                  <p className="text-gray-600 text-lg font-medium">No workout data available for {selectedDay}</p>
+                <div className="text-center py-12 bg-white border-2 border-dashed border-gray-300 rounded-xl">
+                  <Barbell className="w-12 h-12 text-gray-400 mx-auto mb-4" />
+                  <p className="text-gray-600 text-lg font-medium">No workout planned for {selectedDay}</p>
                   <p className="text-sm text-gray-500 mt-2">Exercise recommendations will appear here once generated</p>
                 </div>
               )}

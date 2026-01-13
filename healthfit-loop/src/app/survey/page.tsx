@@ -15,6 +15,197 @@ import { motion, AnimatePresence } from 'framer-motion';
 import Logo from '@/components/logo';
 import ProfileConfirmation from '@/components/dashboard/ProfileConfirmation';
 import LoadingJourney from '@/components/dashboard/LoadingJourney';
+import { calculateMacroTargets, UserProfile } from '@/lib/utils/nutrition';
+
+interface QuickProfileSummaryProps {
+  surveyData: any;
+  onContinue: () => void;
+}
+
+function QuickProfileSummary({ surveyData, onContinue }: QuickProfileSummaryProps) {
+  // All data comes from surveyData - NO API CALLS, INSTANT RENDER
+
+  // Calculate macro targets instantly (same function used everywhere)
+  const macroTargets = React.useMemo(() => {
+    if (!surveyData?.age || !surveyData?.weight || !surveyData?.height) {
+      return null; // Return null instead of hardcoded fallback
+    }
+
+    const userProfile: UserProfile = {
+      age: surveyData.age,
+      sex: surveyData.sex || 'male',
+      height: surveyData.height,
+      weight: surveyData.weight,
+      activityLevel: surveyData.activityLevel || 'MODERATELY_ACTIVE',
+      goal: surveyData.goal || 'GENERAL_WELLNESS'
+    };
+
+    const calculated = calculateMacroTargets(userProfile);
+
+    // Round to nearest 10 for cleaner display
+    return {
+      calories: Math.round(calculated.calories / 10) * 10,
+      protein: Math.round(calculated.protein / 10) * 10,
+      carbs: Math.round(calculated.carbs / 10) * 10,
+      fat: Math.round(calculated.fat / 10) * 10
+    };
+  }, [surveyData]);
+
+  const goalLabels: Record<string, string> = {
+    'lose_weight': 'Lose Weight',
+    'build_muscle': 'Build Muscle',
+    'get_healthier': 'Get Healthier',
+    'maintain': 'Maintain Progress',
+    'WEIGHT_LOSS': 'Lose Weight',
+    'MUSCLE_GAIN': 'Build Muscle',
+    'GENERAL_WELLNESS': 'Get Healthier'
+  };
+
+  const challengeLabels: Record<string, string> = {
+    'snacking': 'Managing snacking habits',
+    'eating_out': 'Eating out frequently',
+    'portions': 'Controlling portions',
+    'late_night': 'Late night eating',
+    'dont_know': 'Finding the right approach'
+  };
+
+  const focusLabels: Record<string, string> = {
+    'energy': 'Boosting energy levels',
+    'digestion': 'Improving digestion',
+    'mental_clarity': 'Mental clarity & focus',
+    'bloodwork': 'Better bloodwork markers',
+    'general': 'Overall wellness',
+    'consistency': 'Building consistency',
+    'recomp': 'Body recomposition',
+    'habits': 'Creating lasting habits',
+    'intuitive': 'Intuitive eating/training'
+  };
+
+  const goal = surveyData.primaryGoal || surveyData.goal;
+  const challenge = surveyData.goalChallenge;
+  const focus = surveyData.healthFocus || surveyData.maintainFocus || surveyData.fitnessLevel;
+
+  return (
+    <div className="min-h-screen bg-gradient-to-br from-gray-50 to-gray-100 flex flex-col items-center justify-center px-4 py-8">
+      <div className="w-full max-w-md sm:max-w-lg bg-white rounded-2xl p-6 sm:p-8 shadow-sm border border-gray-100">
+
+        {/* Success Header */}
+        <div className="text-center mb-6">
+          <div className="w-16 h-16 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-4">
+            <CheckCircle size={32} weight="fill" className="text-green-600" />
+          </div>
+          <h1 className="text-2xl sm:text-3xl font-bold text-gray-900 mb-2">
+            You're all set, {surveyData.firstName || 'there'}!
+          </h1>
+          <p className="text-gray-600">Here's your personalized plan overview:</p>
+        </div>
+
+        {/* Daily Targets - INSTANT calculated from survey data */}
+        <div className="bg-gradient-to-r from-red-50 to-orange-50 rounded-xl p-4 mb-4 border border-red-100">
+          <div className="flex items-center gap-2 mb-3">
+            <Flame size={18} weight="fill" className="text-red-600" />
+            <span className="text-sm font-semibold text-red-800">Your Daily Targets</span>
+          </div>
+          {macroTargets ? (
+            <div className="grid grid-cols-4 gap-2">
+              <div className="text-center">
+                <div className="text-lg font-bold text-gray-900">{macroTargets.calories.toLocaleString()}</div>
+                <div className="text-xs text-gray-500">calories</div>
+              </div>
+              <div className="text-center">
+                <div className="text-lg font-bold text-blue-700">{macroTargets.protein}g</div>
+                <div className="text-xs text-blue-600">protein</div>
+              </div>
+              <div className="text-center">
+                <div className="text-lg font-bold text-amber-700">{macroTargets.carbs}g</div>
+                <div className="text-xs text-amber-600">carbs</div>
+              </div>
+              <div className="text-center">
+                <div className="text-lg font-bold text-green-700">{macroTargets.fat}g</div>
+                <div className="text-xs text-green-600">fat</div>
+              </div>
+            </div>
+          ) : (
+            <div className="text-center p-3 bg-red-50 rounded-lg border border-red-200">
+              <div className="text-red-600 font-medium text-sm">Profile incomplete</div>
+              <div className="text-red-500 text-xs mt-1">Complete all required fields</div>
+            </div>
+          )}
+        </div>
+
+        {/* Summary Cards - All from survey data, INSTANT */}
+        <div className="space-y-3 mb-6">
+
+          {/* Goal */}
+          <div className="flex items-center gap-4 bg-gray-50 rounded-xl p-4">
+            <div className="w-10 h-10 bg-red-100 rounded-full flex items-center justify-center flex-shrink-0">
+              <Target size={20} className="text-red-600" />
+            </div>
+            <div>
+              <p className="text-xs text-gray-500 font-medium">Your Goal</p>
+              <p className="text-gray-900 font-semibold">{goalLabels[goal] || 'Achieve Your Goals'}</p>
+            </div>
+          </div>
+
+          {/* Challenge/Focus */}
+          {(challenge || focus) && (
+            <div className="flex items-center gap-4 bg-gray-50 rounded-xl p-4">
+              <div className="w-10 h-10 bg-amber-100 rounded-full flex items-center justify-center flex-shrink-0">
+                <Barbell size={20} className="text-amber-600" />
+              </div>
+              <div>
+                <p className="text-xs text-gray-500 font-medium">Your Focus</p>
+                <p className="text-gray-900 font-semibold">
+                  {challengeLabels[challenge] || focusLabels[focus] || 'Personalized approach'}
+                </p>
+              </div>
+            </div>
+          )}
+
+          {/* Diet Preferences */}
+          {surveyData.dietPrefs?.length > 0 && (
+            <div className="flex items-center gap-4 bg-gray-50 rounded-xl p-4">
+              <div className="w-10 h-10 bg-green-100 rounded-full flex items-center justify-center flex-shrink-0">
+                <ForkKnife size={20} className="text-green-600" />
+              </div>
+              <div>
+                <p className="text-xs text-gray-500 font-medium">Diet Preferences</p>
+                <p className="text-gray-900 font-semibold">{surveyData.dietPrefs.join(', ')}</p>
+              </div>
+            </div>
+          )}
+
+          {/* Location */}
+          {surveyData.city && (
+            <div className="flex items-center gap-4 bg-gray-50 rounded-xl p-4">
+              <div className="w-10 h-10 bg-blue-100 rounded-full flex items-center justify-center flex-shrink-0">
+                <MapPin size={20} className="text-blue-600" />
+              </div>
+              <div>
+                <p className="text-xs text-gray-500 font-medium">Finding Restaurants In</p>
+                <p className="text-gray-900 font-semibold">{surveyData.city}, {surveyData.state}</p>
+              </div>
+            </div>
+          )}
+
+        </div>
+
+        {/* Continue Button */}
+        <Button
+          onClick={onContinue}
+          className="w-full h-12 bg-red-600 hover:bg-red-700 text-white font-semibold rounded-xl"
+        >
+          Continue to Build My Plan
+        </Button>
+
+        <p className="text-xs text-center text-gray-400 mt-4">
+          We'll now create your personalized meals and workouts
+        </p>
+
+      </div>
+    </div>
+  );
+}
 
 // Survey data interface from existing survey
 interface SurveyData {
@@ -2031,12 +2222,84 @@ function SurveyContent() {
   const searchParams = useSearchParams();
   const router = useRouter();
   const [showSteps, setShowSteps] = useState(false);
+  const [showQuickSummary, setShowQuickSummary] = useState(false);
   const [showProfileConfirmation, setShowProfileConfirmation] = useState(false);
   const [showLoadingJourney, setShowLoadingJourney] = useState(false);
   const [completedSurveyData, setCompletedSurveyData] = useState<SurveyData | null>(null);
   const [surveyData, setSurveyData] = useState<SurveyData | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [message, setMessage] = useState<{ ok?: boolean; error?: string } | null>(null);
+
+  const [existingPlanCheck, setExistingPlanCheck] = useState<{
+    checking: boolean;
+    hasExistingPlan: boolean;
+    isLoggedIn: boolean;
+    userName?: string;
+  }>({ checking: true, hasExistingPlan: false, isLoggedIn: false });
+
+  const [showExistingPlanModal, setShowExistingPlanModal] = useState(false);
+
+  // ExistingPlanModal component
+  const ExistingPlanModal = ({ userName, onViewDashboard, onStartFresh }: {
+    userName?: string;
+    onViewDashboard: () => void;
+    onStartFresh: () => void;
+  }) => (
+    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+      <div className="bg-white rounded-2xl p-6 sm:p-8 max-w-md w-full shadow-xl">
+        <div className="text-center mb-6">
+          <h2 className="text-2xl font-bold text-gray-900 mb-2">
+            Welcome back{userName ? `, ${userName}` : ''}!
+          </h2>
+          <p className="text-gray-600">
+            You already have a personalized plan. What would you like to do?
+          </p>
+        </div>
+        <div className="space-y-3">
+          <button onClick={onViewDashboard} className="w-full bg-red-600 hover:bg-red-700 text-white px-6 py-4 rounded-xl font-semibold">
+            View My Dashboard
+          </button>
+          <button onClick={onStartFresh} className="w-full bg-gray-100 hover:bg-gray-200 text-gray-700 px-6 py-4 rounded-xl font-semibold">
+            Start Fresh Survey
+          </button>
+        </div>
+        <p className="text-xs text-center text-gray-400 mt-4">
+          Starting fresh will replace your current plans.
+        </p>
+      </div>
+    </div>
+  );
+
+  // Check for existing plans on component mount
+  useEffect(() => {
+    const checkForExistingPlan = async () => {
+      try {
+        const [surveyRes, mealsRes] = await Promise.all([
+          fetch('/api/survey'),
+          fetch('/api/ai/meals/current')
+        ]);
+        const surveyData = surveyRes.ok ? await surveyRes.json() : null;
+        const mealsData = mealsRes.ok ? await mealsRes.json() : null;
+
+        const hasExistingPlan = !!(surveyData?.survey && mealsData?.mealPlan);
+        const isLoggedIn = !surveyData?.survey?.isGuest && !!surveyData?.survey?.userId;
+
+        setExistingPlanCheck({
+          checking: false,
+          hasExistingPlan,
+          isLoggedIn,
+          userName: surveyData?.survey?.firstName
+        });
+
+        if (isLoggedIn && hasExistingPlan) {
+          setShowExistingPlanModal(true);
+        }
+      } catch {
+        setExistingPlanCheck({ checking: false, hasExistingPlan: false, isLoggedIn: false });
+      }
+    };
+    checkForExistingPlan();
+  }, []);
 
   // Clear stale auth cookies if redirected here due to invalid user
   useEffect(() => {
@@ -2048,12 +2311,55 @@ function SurveyContent() {
     }
   }, [searchParams]);
 
+  // Clear old session when starting new survey
+  useEffect(() => {
+    const checkAndResetSession = async () => {
+      const urlParams = new URLSearchParams(window.location.search);
+      const isNewSurvey = urlParams.get('new') === 'true' || urlParams.get('reset') === 'true';
+
+      // If explicitly starting new survey, or if we're at step 1 with existing data
+      if (isNewSurvey) {
+        console.log('[Survey] Starting fresh survey, clearing old session...');
+        try {
+          const response = await fetch('/api/survey/reset', { method: 'POST' });
+          if (response.ok) {
+            console.log('[Survey] ✅ Successfully cleared old session data');
+          } else {
+            console.warn('[Survey] ⚠️ Failed to reset session:', response.status);
+          }
+          // Clean up URL
+          window.history.replaceState({}, '', '/survey');
+        } catch (error) {
+          console.error('[Survey] ❌ Failed to reset session:', error);
+        }
+      }
+    };
+
+    checkAndResetSession();
+  }, []); // Only run once on component mount
+
   const handleStart = () => {
     setShowSteps(true);
   };
 
   const handleBack = () => {
     setShowSteps(false);
+  };
+
+  const handleStartOver = async () => {
+    console.log('[Survey] Manual start over triggered...');
+    try {
+      const response = await fetch('/api/survey/reset', { method: 'POST' });
+      if (response.ok) {
+        console.log('[Survey] ✅ Session reset successful');
+        // Redirect with new=true to trigger session clearing
+        window.location.href = '/survey?new=true';
+      } else {
+        console.warn('[Survey] ⚠️ Failed to reset session:', response.status);
+      }
+    } catch (error) {
+      console.error('[Survey] ❌ Failed to reset session:', error);
+    }
   };
 
   const handleSurveyComplete = async (data: SurveyData) => {
@@ -2109,12 +2415,13 @@ function SurveyContent() {
 
       const result = await res.json();
 
-      // Store survey data with the returned survey ID and show LoadingJourney
+      // Store survey data with the returned survey ID and show quick summary
+      // Generation is already triggered by the API call above
       const completedData = { ...data, id: result.surveyId };
       setCompletedSurveyData(completedData);
       setSurveyData(completedData);
       setShowSteps(false);
-      setShowLoadingJourney(true);
+      setShowQuickSummary(true);  // Shows INSTANTLY - no API calls needed
 
     } catch (error: unknown) {
       const errorMessage = error instanceof Error ? error.message : 'Failed to submit survey';
@@ -2122,6 +2429,11 @@ function SurveyContent() {
     } finally {
       setSubmitting(false);
     }
+  };
+
+  const handleSummaryComplete = () => {
+    setShowQuickSummary(false);
+    setShowLoadingJourney(true);  // Then show loading journey
   };
 
   const handleProfileConfirmationComplete = async () => {
@@ -2138,9 +2450,9 @@ function SurveyContent() {
 
   // LoadingJourney handlers
   const handleLoadingComplete = () => {
-    // Generation complete, go to profile confirmation
+    // Generation complete, go directly to dashboard instead of ProfileConfirmation
     setShowLoadingJourney(false);
-    setShowProfileConfirmation(true);
+    router.push('/dashboard?justCompleted=true');
   };
 
   const handleSkipToDashboard = () => {
@@ -2238,7 +2550,40 @@ function SurveyContent() {
     );
   }
 
-  // Show LoadingJourney after survey completion
+  // Show loading state while checking for existing plans
+  if (existingPlanCheck.checking) {
+    return (
+      <div className="min-h-screen flex items-center justify-center">
+        <div className="animate-spin h-8 w-8 border-b-2 border-red-600 rounded-full" />
+      </div>
+    );
+  }
+
+  // Show existing plan modal for logged-in users with plans
+  if (showExistingPlanModal) {
+    return (
+      <ExistingPlanModal
+        userName={existingPlanCheck.userName}
+        onViewDashboard={() => router.push('/dashboard')}
+        onStartFresh={async () => {
+          setShowExistingPlanModal(false);
+          await fetch('/api/survey/reset', { method: 'POST' });
+        }}
+      />
+    );
+  }
+
+  // Show Quick Summary INSTANTLY after survey (no loading, no API calls)
+  if (showQuickSummary && completedSurveyData) {
+    return (
+      <QuickProfileSummary
+        surveyData={completedSurveyData}
+        onContinue={handleSummaryComplete}
+      />
+    );
+  }
+
+  // Show LoadingJourney after user clicks Continue
   if (showLoadingJourney && completedSurveyData) {
     return (
       <LoadingJourney

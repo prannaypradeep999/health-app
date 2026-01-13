@@ -49,6 +49,16 @@
   box-sizing: border-box;
 }
 
+/* Meal feedback animation */
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(-4px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.animate-fadeIn {
+  animation: fadeIn 0.2s ease-out;
+}
+
 /* Shimmer animation for skeleton loading */
 @keyframes shimmer {
   0% { background-position: 200% 0; }

@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { authenticateUser, createSession, setAuthCookie, AuthError } from '@/lib/auth';
+import { authenticateUser, createSession, setAuthCookie, migrateGuestToUser, AuthError } from '@/lib/auth';
 import { cookies } from 'next/headers';
 
 export async function POST(request: Request) {
@@ -32,7 +32,17 @@ export async function POST(request: Request) {
       maxAge: 30 * 24 * 60 * 60 // 30 days
     });
 
-    // Clear any guest cookies
+    // ========== Migrate guest data BEFORE clearing cookies ==========
+    const guestSessionId = cookieStore.get('guest_session')?.value;
+    const surveyId = cookieStore.get('survey_id')?.value;
+
+    if (guestSessionId || surveyId) {
+      console.log(`[Auth] Migrating guest data for user: ${user.email}`);
+      await migrateGuestToUser(sessionId, user.id);
+    }
+    // =================================================================
+
+    // Clear guest cookies AFTER migration
     cookieStore.delete('guest_session');
     cookieStore.delete('survey_id');
 

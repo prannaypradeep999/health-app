@@ -137,23 +137,79 @@ SCIENTIFIC PRINCIPLES YOU FOLLOW:
 - Intensity zones based on goal-specific adaptations
 
 USER PROFILE:
+- Name: ${surveyData.firstName || 'User'}
 - Age: ${surveyData.age}, Sex: ${surveyData.sex}
+- Height: ${surveyData.height} inches, Weight: ${surveyData.weight} lbs
 - Primary Goal: ${surveyData.primaryGoal || surveyData.goal}
 - Health Focus: ${surveyData.healthFocus || 'general'}
 - Maintain Focus: ${surveyData.maintainFocus || 'Not specified'}
-- Current Fitness Level: ${surveyData.fitnessLevel || 'intermediate'}
+- Current Fitness Level: ${surveyData.fitnessLevel || workoutPrefs.fitnessExperience || 'intermediate'}
 - Activity Level: ${surveyData.activityLevel}
-- Sports Interests: ${surveyData.sportsInterests || 'none specified'}
-- Preferred Activities: ${(surveyData.preferredActivities || []).join(', ') || 'varied'}
-- Fitness Timeline: ${surveyData.fitnessTimeline || 'no specific timeline'}
-- Additional Notes: ${surveyData.additionalGoalsNotes || 'none'}
-- Monthly Fitness Budget: $${surveyData.monthlyFitnessBudget || 50}
-- Workout Experience: ${workoutPrefs.fitnessExperience || 'intermediate'}
+- Monthly Fitness Budget: ${surveyData.monthlyFitnessBudget || 50}
+
+WORKOUT PREFERENCES (CRITICAL - MUST FOLLOW):
+- Session Duration: ${workoutPrefs.preferredDuration || 45} minutes MAX
+- Available Days: ${workoutPrefs.availableDays?.join(', ') || 'flexible'} (${workoutPrefs.availableDays?.length || 5} days per week)
 - Gym Access: ${workoutPrefs.gymAccess || 'no_gym'}
 - Preferred Workout Types: ${workoutPrefs.workoutTypes?.join(', ') || 'varied'}
-- Available Days: ${workoutPrefs.availableDays?.length || 5} days per week
-- Session Duration: ${workoutPrefs.preferredDuration || 45} minutes
-- Injury Considerations: ${workoutPrefs.injuryConsiderations?.join(', ') || 'none'}
+
+⚠️ EQUIPMENT CONSTRAINTS (STRICTLY ENFORCE):
+${(() => {
+  const gymAccess = workoutPrefs.gymAccess || 'no_gym';
+  if (gymAccess === 'no_gym') {
+    return `- USER HAS NO GYM ACCESS - Use ONLY bodyweight exercises, resistance bands, or exercises requiring no equipment
+- DO NOT include: barbell exercises, cable machines, leg press, lat pulldown, or any gym-specific equipment
+- ALLOWED: Push-ups, squats, lunges, planks, burpees, mountain climbers, dips (using chair), pull-ups (if they have a bar)`;
+  } else if (gymAccess === 'calisthenics') {
+    return `- USER PREFERS CALISTHENICS - Focus on bodyweight progressions
+- Prioritize: Pull-ups, dips, muscle-ups progressions, handstands, L-sits, pistol squats
+- Minimize equipment usage - body mastery is the goal`;
+  } else if (gymAccess === 'free_weights') {
+    return `- USER HAS FREE WEIGHTS ONLY (dumbbells, barbells, kettlebells)
+- DO NOT include cable machines, leg press, or gym-specific machines
+- ALLOWED: All dumbbell/barbell/kettlebell exercises, bodyweight exercises`;
+  } else if (gymAccess === 'full_gym') {
+    return `- USER HAS FULL GYM ACCESS - Can use all equipment
+- Include variety: free weights, machines, cables, cardio equipment`;
+  }
+  return '- Standard home/gym hybrid exercises';
+})()}
+
+⚠️ INJURY CONSIDERATIONS (MUST AVOID):
+${workoutPrefs.injuryConsiderations?.length > 0
+  ? workoutPrefs.injuryConsiderations.map(injury => `- AVOID exercises that stress: ${injury}`).join('\n')
+  : '- No injuries reported - full exercise selection available'}
+
+🎯 PREFERRED ACTIVITIES (MUST INCLUDE 1-2x PER WEEK):
+${surveyData.preferredActivities?.length > 0
+  ? `The user ENJOYS these activities and wants them in their routine:
+${surveyData.preferredActivities.map(activity => `- ${activity}`).join('\n')}
+YOU MUST incorporate at least 1-2 sessions per week featuring these preferred activities.
+For example, if they like "Sports (Basketball, Tennis, Soccer)", include sport-specific drills or a dedicated sports day.
+If they like "Mind-Body (Yoga, Pilates)", include a yoga/stretching session.`
+  : '- No specific activity preferences - create a balanced program'}
+
+🏆 SPORTS INTERESTS (SPORT-SPECIFIC TRAINING):
+${surveyData.sportsInterests
+  ? `User is interested in: ${surveyData.sportsInterests}
+Include sport-specific training elements:
+- Basketball → lateral agility drills, jump training, core stability
+- Tennis → rotational power, lateral movement, shoulder stability
+- Soccer → endurance, leg power, agility
+- Running → progressive cardio, leg strength, mobility
+- Swimming → shoulder mobility, core, cardio endurance
+- Golf → rotational flexibility, core strength, balance`
+  : '- No specific sports - general fitness focus'}
+
+📝 USER'S ADDITIONAL NOTES (IMPORTANT - READ CAREFULLY):
+${surveyData.additionalGoalsNotes
+  ? `"${surveyData.additionalGoalsNotes}"
+
+Parse this for: specific injuries, time constraints, equipment limitations, or special requests.
+Adjust the workout plan accordingly.`
+  : '- No additional notes provided'}
+
+FITNESS TIMELINE EXPECTATION: ${surveyData.fitnessTimeline || 'no specific timeline'}
 
 EXPERT METHODOLOGY SELECTION:
 Based on research and established protocols, select the BEST training split for this user:
@@ -274,7 +330,46 @@ USER PREFERS INTUITIVE TRAINING: Flexible, body-aware approach.
 ${guidance}
 
 ` : '';
-})()}RETURN EXACTLY THIS JSON STRUCTURE:
+})()}PREFERRED ACTIVITIES INTEGRATION:
+${(() => {
+  const activities = surveyData.preferredActivities || [];
+  if (activities.length === 0) return '';
+
+  let activityPlan = `
+⚠️ MANDATORY: Include the user's preferred activities in the weekly plan:
+`;
+
+  activities.forEach(activity => {
+    if (activity.includes('Cardio')) {
+      activityPlan += `- CARDIO: Schedule 2-3 dedicated cardio sessions (running, cycling, or swimming based on preference)\n`;
+    }
+    if (activity.includes('Strength')) {
+      activityPlan += `- STRENGTH: This is already the core focus - ensure progressive overload\n`;
+    }
+    if (activity.includes('Sports')) {
+      activityPlan += `- SPORTS: Include 1 day with sport-specific drills or skills practice\n`;
+    }
+    if (activity.includes('Mind-Body') || activity.includes('Yoga') || activity.includes('Pilates')) {
+      activityPlan += `- MIND-BODY: Include 1 dedicated yoga/mobility/stretching session (can be active recovery day)\n`;
+    }
+    if (activity.includes('Outdoor')) {
+      activityPlan += `- OUTDOOR: Suggest outdoor alternatives for cardio days (hiking, trail running, outdoor circuits)\n`;
+    }
+    if (activity.includes('Group') || activity.includes('Dance') || activity.includes('CrossFit')) {
+      activityPlan += `- GROUP FITNESS: Note that user enjoys group settings - suggest class-style workouts or partner exercises\n`;
+    }
+    if (activity.includes('Low Impact') || activity.includes('Walking')) {
+      activityPlan += `- LOW IMPACT: Include walking or low-impact cardio options, especially on recovery days\n`;
+    }
+    if (activity.includes('Martial Arts') || activity.includes('Combat')) {
+      activityPlan += `- MARTIAL ARTS: Include combat-style conditioning (heavy bag work simulation, agility, core power)\n`;
+    }
+  });
+
+  return activityPlan;
+})()}
+
+RETURN EXACTLY THIS JSON STRUCTURE:
 
 {
   "weeklyPlan": [
