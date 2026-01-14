@@ -18,14 +18,28 @@ export interface WorkoutDay {
   estimatedCalories: number;
   targetMuscles: string[];
   description: string;
+  warmup?: Array<{
+    name: string;
+    duration: string;
+    instructions: string;
+  }>;
   exercises: Array<{
     name: string;
     sets: number;
     reps: string;
     restTime: string;
+    tempo?: string; // e.g., "3-1-2" (eccentric-pause-concentric)
     description: string;
     instructions: string;
     formTips: string[];
+    commonMistakes?: string[];
+    breathingCue?: string; // e.g., "Exhale on push, inhale on lower"
+    weightGuidance: {
+      method: string; // "RPE", "bodyweight", "percentage", "feel"
+      suggestion: string; // e.g., "Start with 10-15 lb dumbbells, increase when you can complete all reps with good form"
+      rpeTarget?: number; // 6-10 scale
+      warmupSets?: string; // e.g., "Do 1-2 warmup sets at 50% weight"
+    };
     modifications: {
       beginner: string;
       intermediate: string;
@@ -37,6 +51,18 @@ export interface WorkoutDay {
     imageSearchQuery?: string;
     imageCached?: boolean;
   }>;
+  cooldown?: Array<{
+    name: string;
+    duration: string;
+    instructions: string;
+  }>;
+  // For rest days - personalized active recovery
+  activeRecovery?: {
+    suggestedActivity: string; // Based on user's preferredActivities
+    duration: string;
+    description: string;
+    alternatives: string[];
+  };
 }
 
 export interface WorkoutPlan {
@@ -380,59 +406,145 @@ RETURN EXACTLY THIS JSON STRUCTURE:
       "estimatedTime": "45 minutes",
       "estimatedCalories": 280,
       "targetMuscles": ["chest", "shoulders", "triceps"],
-      "description": "Welcome to your Push day! Today we're targeting your chest, shoulders, and triceps using proven push movement patterns. This workout follows the Push/Pull/Legs methodology used by top bodybuilders and strength coaches. Focus on perfect form over heavy weight - choose weights that allow you to complete all reps with 2-3 reps in reserve. Control the weight on both the lowering and lifting phases, and engage your core throughout each movement. Perfect for your ${surveyData.primaryGoal || surveyData.goal} goal because pushing movements build upper body strength and size while burning significant calories. Listen to your body and adjust weights as needed!",
+      "description": "Today's push workout targets your chest, shoulders, and triceps. Focus on controlled movements and proper breathing. Choose weights that challenge you while maintaining perfect form throughout all sets.",
+      "warmup": [
+        {
+          "name": "Arm Circles",
+          "duration": "30 seconds each direction",
+          "instructions": "Stand tall, extend arms to sides, make small circles gradually increasing to larger circles"
+        },
+        {
+          "name": "Wall Push-ups",
+          "duration": "10 reps",
+          "instructions": "Light warmup push-ups against a wall to activate chest and shoulders"
+        },
+        {
+          "name": "Shoulder Rolls",
+          "duration": "30 seconds",
+          "instructions": "Roll shoulders forward then backward to loosen the joints"
+        }
+      ],
       "exercises": [
         {
-          "name": "Push-ups (or Bench Press if available)",
+          "name": "Push-ups (or Bench Press)",
           "sets": 3,
           "reps": "8-12",
           "restTime": "90 seconds",
-          "description": "The king of upper body pushing exercises - builds chest, shoulders, and triceps simultaneously",
-          "instructions": "Start in plank position, hands slightly wider than shoulders. Lower chest to floor with control, then push back up explosively. Keep core tight throughout.",
-          "formTips": ["Keep body in straight line", "Lower chest to floor", "Drive through palms", "Breathe out on push up"],
+          "tempo": "2-1-2",
+          "description": "The foundation of upper body pushing strength. Builds chest, shoulders, and triceps while engaging your core.",
+          "instructions": "Start in plank position with hands slightly wider than shoulders. Keep your body in a straight line from head to heels. Lower your chest toward the floor by bending your elbows at a 45-degree angle. Push back up explosively while keeping your core tight.",
+          "formTips": [
+            "Keep your body in a perfectly straight line - no sagging hips or raised butt",
+            "Lower until your chest nearly touches the floor for full range of motion",
+            "Keep elbows at 45 degrees, not flared out to 90 degrees",
+            "Engage your core throughout - imagine bracing for a punch"
+          ],
+          "commonMistakes": [
+            "Letting hips sag or pike up",
+            "Not going low enough (partial reps)",
+            "Flaring elbows out to 90 degrees (stresses shoulders)",
+            "Holding breath instead of breathing rhythmically"
+          ],
+          "breathingCue": "Inhale as you lower down, exhale forcefully as you push up",
+          "weightGuidance": {
+            "method": "bodyweight",
+            "suggestion": "For bodyweight push-ups, focus on form first. If you can do 15+ with perfect form, progress to feet-elevated or add a weight plate on your back. If standard push-ups are too hard, start with knee or incline push-ups.",
+            "rpeTarget": 7,
+            "warmupSets": "Do 5-10 easy push-ups to warmup before your working sets"
+          },
           "modifications": {
-            "beginner": "Knee push-ups or wall push-ups, focus on form over reps",
-            "intermediate": "Standard push-ups, aim for full range of motion",
-            "advanced": "Diamond push-ups, decline push-ups, or add weight/resistance"
+            "beginner": "Knee push-ups or incline push-ups (hands on bench/step). Focus on full range of motion before progressing.",
+            "intermediate": "Standard push-ups with perfect form. Aim for slow, controlled reps.",
+            "advanced": "Decline push-ups (feet elevated), diamond push-ups, or weighted push-ups with plate on back"
           },
           "muscleTargets": ["chest", "shoulders", "triceps", "core"]
         }
+      ],
+      "cooldown": [
+        {
+          "name": "Chest Doorway Stretch",
+          "duration": "30 seconds each side",
+          "instructions": "Place forearm on doorframe, lean forward gently until you feel a stretch in your chest"
+        },
+        {
+          "name": "Tricep Stretch",
+          "duration": "30 seconds each arm",
+          "instructions": "Raise arm overhead, bend elbow, use other hand to gently press elbow back"
+        },
+        {
+          "name": "Child's Pose",
+          "duration": "60 seconds",
+          "instructions": "Kneel, sit back on heels, reach arms forward on floor, relax and breathe deeply"
+        }
       ]
+    },
+    {
+      "day": "tuesday",
+      "restDay": true,
+      "focus": "Active Recovery",
+      "estimatedTime": "20-30 minutes",
+      "estimatedCalories": 100,
+      "targetMuscles": [],
+      "description": "Recovery is when your muscles grow stronger. Today focus on gentle movement to promote blood flow and reduce soreness.",
+      "exercises": [],
+      "activeRecovery": {
+        "suggestedActivity": "Based on user's preferredActivities - e.g., Yoga flow or nature walk",
+        "duration": "20-30 minutes",
+        "description": "Since you enjoy [Mind-Body activities/Outdoor activities], today is perfect for a gentle yoga session or a relaxed walk outside. Keep the intensity low - this should feel refreshing, not exhausting.",
+        "alternatives": [
+          "20-minute gentle yoga or stretching routine",
+          "30-minute easy walk (conversational pace)",
+          "15-minute foam rolling session",
+          "Swimming easy laps",
+          "Light cycling or leisurely bike ride"
+        ]
+      }
     }
   ],
   "overview": {
     "splitType": "Push/Pull/Legs (PPL)",
-    "description": "This evidence-based Push/Pull/Legs split is designed specifically for your ${surveyData.primaryGoal || surveyData.goal} goal. It's the gold standard used by elite bodybuilders and strength athletes because it maximizes muscle protein synthesis while allowing optimal recovery between sessions.",
-    "whyThisSplit": "PPL split allows you to train each muscle group with high volume while providing 48-72 hours recovery (optimal for muscle protein synthesis). Research by Schoenfeld et al. shows this frequency maximizes hypertrophy and strength gains. Perfect for your ${workoutPrefs.fitnessExperience || 'intermediate'} experience level.",
-    "expectedResults": ["Increased muscle mass and strength", "Improved body composition", "Better movement patterns", "Enhanced metabolic rate"]
+    "description": "This science-based program is designed for your specific goals and experience level.",
+    "whyThisSplit": "Explanation of why this split works for the user's goals",
+    "expectedResults": ["Result 1", "Result 2", "Result 3"]
   },
   "progressionTips": [
-    "Week 1-2: Master form and establish movement patterns - focus on quality over quantity",
-    "Week 3-4: Increase reps by 1-2 per set when you can complete all sets with perfect form",
-    "Week 5-6: Add resistance (weight, bands) or progress to harder exercise variations",
-    "Week 7: Deload week - reduce volume by 40% to allow supercompensation",
-    "Always prioritize form over ego - perfect reps build perfect results"
+    "Week 1-2: Focus on learning proper form. Use lighter weights and master the movement patterns.",
+    "Week 3-4: Gradually increase weight when you can complete all sets with 2+ reps in reserve.",
+    "Week 5-6: Push closer to failure (1 rep in reserve) on your last set of each exercise.",
+    "Every 4-6 weeks: Take a deload week - reduce weight by 40% to allow full recovery."
   ],
   "safetyReminders": [
-    "Dynamic warm-up is mandatory - prepares nervous system and reduces injury risk by 50%",
-    "Stop immediately if you feel sharp pain (different from muscle fatigue)",
-    "Maintain proper hydration - dehydration reduces performance by 10-15%",
-    "Cool-down and stretching aid recovery and reduce next-day soreness",
-    "Listen to your body - extra rest days are better than training through injury",
-    "Progressive overload should be gradual - 2.5-10% increases per week maximum"
+    "Always warm up before lifting - 5-10 minutes of light cardio and dynamic stretches",
+    "If you feel sharp pain (not muscle burn), stop immediately",
+    "Stay hydrated - drink water between sets",
+    "Don't skip rest days - muscles grow during recovery, not during workouts"
   ],
-  "equipmentNeeded": ["Based on user preferences and exercise selection"]
+  "equipmentNeeded": ["Based on user's gymAccess selection"]
 }
 
 CRITICAL REQUIREMENTS:
-1. Create ALL 7 days (monday through sunday) - 5 training days + 2 rest days
-2. Rest days: restDay: true, empty exercises array
-3. Each training day: 4-5 exercises (complete workout structure)
-4. Keep descriptions motivating and include form guidance and weight selection tips
-5. Include beginner/intermediate/advanced modifications
-6. Focus on established exercises and proper form
-7. Each workout description must mention: proper form emphasis, weight selection guidance (2-3 reps in reserve), and movement control
-8. CALORIE ESTIMATION: Provide realistic calorie burn estimates (typically 200-400 calories for 30-60min workouts) based on workout intensity and duration
+1. Create ALL 7 days (monday through sunday) based on user's availableDays
+2. For REST DAYS:
+   - Set restDay: true
+   - Set exercises: [] (empty array)
+   - MUST include activeRecovery object with personalized suggestions based on user's preferredActivities:
+     * If user likes "Mind-Body (Yoga, Pilates)" → suggest yoga or stretching
+     * If user likes "Outdoor Activities" → suggest hiking or nature walks
+     * If user likes "Low Impact (Walking)" → suggest easy walks
+     * If user likes "Swimming" → suggest easy pool session
+     * Always provide 3-5 alternatives so user has options
+3. For TRAINING DAYS:
+   - Include warmup array (3-4 exercises specific to that day's focus)
+   - Each exercise MUST have weightGuidance object with practical advice
+   - Each exercise MUST have breathingCue
+   - Each exercise SHOULD have commonMistakes (2-4 items)
+   - Include cooldown array (3-4 stretches for muscles worked)
+4. Exercise weightGuidance should be PRACTICAL and SPECIFIC:
+   - For beginners: "Start with X-Y lbs and focus on form"
+   - For bodyweight: "If too easy, try [harder variation]. If too hard, try [easier variation]"
+   - For gym exercises: "Start with a weight you can lift for 12 reps, then increase when you can do 15"
+   - Include RPE target (6-8 for most exercises, 8-9 for advanced)
+5. Tempo format is "eccentric-pause-concentric" (e.g., "3-1-2" = 3 sec down, 1 sec pause, 2 sec up)
 
 Generate the complete 7-day plan now with expert-level detail and motivating descriptions:
 

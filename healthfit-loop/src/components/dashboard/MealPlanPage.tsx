@@ -20,6 +20,7 @@ import {
   Plus,
   Calendar,
   ShoppingCart,
+  X,
 } from "@phosphor-icons/react";
 import MealLogModal from "./modals/MealLogModal";
 import { GroceryListSection } from './GroceryListSection';
@@ -89,6 +90,51 @@ export function MealPlanPage({ onNavigate, generationStatus }: MealPlanPageProps
 
   const days = getDaysStartingFromToday();
 
+  // Get logged meals for a specific meal type and day
+  const getLoggedMealsForType = (mealType: string, day: string) => {
+    return loggedMeals.filter(
+      meal => meal.mealType === mealType && meal.day === day
+    );
+  };
+
+  // Render a logged meal card
+  const renderLoggedMealCard = (meal: any) => (
+    <div key={meal.id} className="bg-amber-50 border border-amber-200 rounded-lg p-4 shadow-sm">
+      <div className="flex justify-between items-start">
+        <div className="flex-1">
+          <div className="flex items-center space-x-2 mb-1">
+            <span className="text-xs bg-amber-500 text-white px-2 py-0.5 rounded-full">Logged</span>
+            <h4 className="font-semibold text-gray-900">{meal.mealName}</h4>
+          </div>
+          {meal.description && (
+            <p className="text-sm text-gray-600 mb-2">{meal.description}</p>
+          )}
+          <div className="flex items-center space-x-4 text-xs text-gray-500">
+            <span className="font-medium text-amber-700">{meal.calories} cal</span>
+            <span>{meal.protein}g protein</span>
+            <span>{meal.carbs}g carbs</span>
+            <span>{meal.fat}g fat</span>
+            <span>{meal.time}</span>
+          </div>
+          {meal.notes && (
+            <p className="text-xs text-gray-500 mt-1 italic">{meal.notes}</p>
+          )}
+        </div>
+        <div className="flex items-center space-x-2">
+          {meal.completed && (
+            <span className="text-xs text-green-600 font-medium">✓ Eaten</span>
+          )}
+          <button
+            onClick={() => deleteMeal(meal.id)}
+            className="p-1 hover:bg-amber-100 rounded-full transition-colors"
+          >
+            <X className="w-4 h-4 text-gray-400 hover:text-red-500" />
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+
   // Get selected option for a specific meal
   const getSelectedOption = (day: string, mealType: string): 'primary' | 'alternative' => {
     return selectedMealOptions[`${day}-${mealType}`] || 'primary';
@@ -117,6 +163,15 @@ export function MealPlanPage({ onNavigate, generationStatus }: MealPlanPageProps
       console.log('[MealPlan] Loaded eaten meals:', Object.keys(parsed).length);
       setEatenMeals(parsed);
     }
+
+    // Load persisted logged meals from localStorage
+    const savedLoggedMeals = localStorage.getItem('loggedMeals');
+    if (savedLoggedMeals) {
+      const parsed = JSON.parse(savedLoggedMeals);
+      console.log('[MealPlan] Loaded logged meals:', parsed.length);
+      setLoggedMeals(parsed);
+    }
+
     setIsInitialized(true);
 
     // Listen for localStorage changes from other tabs/windows
@@ -136,12 +191,22 @@ export function MealPlanPage({ onNavigate, generationStatus }: MealPlanPageProps
       }
     };
 
+    // Listen for logged meals updates from other components
+    const handleLoggedMealsUpdate = (e: CustomEvent) => {
+      console.log('[MealPlan] Logged meals update received');
+      if (e.detail) {
+        setLoggedMeals(e.detail);
+      }
+    };
+
     window.addEventListener('storage', handleStorageChange);
     window.addEventListener('eatenMealsUpdate', handleEatenMealsUpdate as EventListener);
+    window.addEventListener('loggedMealsUpdate', handleLoggedMealsUpdate as EventListener);
 
     return () => {
       window.removeEventListener('storage', handleStorageChange);
       window.removeEventListener('eatenMealsUpdate', handleEatenMealsUpdate as EventListener);
+      window.removeEventListener('loggedMealsUpdate', handleLoggedMealsUpdate as EventListener);
     };
   }, [generationStatus.mealsGenerated]);
 
@@ -250,30 +315,46 @@ export function MealPlanPage({ onNavigate, generationStatus }: MealPlanPageProps
   const getTotalCalories = () => {
     let total = 0;
 
-    // Get the selected meals for the current day
-    const dayData = mealData?.mealPlan?.planData?.weeklyPlan?.find((day: any) => {
+    // Try both data structures (weeklyPlan and days)
+    let dayData = mealData?.mealPlan?.planData?.weeklyPlan?.find((day: any) => {
       const selectedDayInfo = days.find(d => d.id === selectedDay);
       return day.day === selectedDayInfo?.dayNumber;
     });
 
+    // Also check days structure
+    if (!dayData) {
+      dayData = mealData?.mealPlan?.planData?.days?.find((day: any) => day.day === selectedDay);
+    }
+
     if (dayData) {
       // Check all possible eaten meal options for each meal type
       ['breakfast', 'lunch', 'dinner'].forEach(mealType => {
-        const meal = dayData[mealType];
+        const meal = dayData[mealType] || dayData.meals?.[mealType];
 
         // Check primary option
         if (meal?.primary?.calories && isMealEaten(mealType, 0, 'primary')) {
           total += meal.primary.calories;
         }
+        if (meal?.primary?.estimatedCalories && isMealEaten(mealType, 0, 'primary')) {
+          total += meal.primary.estimatedCalories;
+        }
 
-        // Check alternative options
-        meal?.alternatives?.forEach((alt: any, index: number) => {
-          if (alt?.calories && isMealEaten(mealType, index, 'alternative')) {
-            total += alt.calories;
-          }
-        });
+        // Check alternative option
+        if (meal?.alternative?.calories && isMealEaten(mealType, 0, 'alternative')) {
+          total += meal.alternative.calories;
+        }
+        if (meal?.alternative?.estimatedCalories && isMealEaten(mealType, 0, 'alternative')) {
+          total += meal.alternative.estimatedCalories;
+        }
       });
     }
+
+    // Add logged meals for the selected day
+    loggedMeals
+      .filter(meal => meal.day === selectedDay && meal.completed)
+      .forEach(meal => {
+        total += meal.calories || 0;
+      });
 
     return total;
   };
@@ -282,28 +363,38 @@ export function MealPlanPage({ onNavigate, generationStatus }: MealPlanPageProps
   const getTotalProtein = () => {
     let total = 0;
 
-    const dayData = mealData?.mealPlan?.planData?.weeklyPlan?.find((day: any) => {
+    // Try both data structures
+    let dayData = mealData?.mealPlan?.planData?.weeklyPlan?.find((day: any) => {
       const selectedDayInfo = days.find(d => d.id === selectedDay);
       return day.day === selectedDayInfo?.dayNumber;
     });
 
+    if (!dayData) {
+      dayData = mealData?.mealPlan?.planData?.days?.find((day: any) => day.day === selectedDay);
+    }
+
     if (dayData) {
       ['breakfast', 'lunch', 'dinner'].forEach(mealType => {
-        const meal = dayData[mealType];
+        const meal = dayData[mealType] || dayData.meals?.[mealType];
 
         // Check primary option
         if (meal?.primary?.protein && isMealEaten(mealType, 0, 'primary')) {
           total += meal.primary.protein;
         }
 
-        // Check alternative options
-        meal?.alternatives?.forEach((alt: any, index: number) => {
-          if (alt?.protein && isMealEaten(mealType, index, 'alternative')) {
-            total += alt.protein;
-          }
-        });
+        // Check alternative option
+        if (meal?.alternative?.protein && isMealEaten(mealType, 0, 'alternative')) {
+          total += meal.alternative.protein;
+        }
       });
     }
+
+    // Add logged meals for the selected day
+    loggedMeals
+      .filter(meal => meal.day === selectedDay && meal.completed)
+      .forEach(meal => {
+        total += meal.protein || 0;
+      });
 
     return Math.round(total);
   };
@@ -413,15 +504,28 @@ export function MealPlanPage({ onNavigate, generationStatus }: MealPlanPageProps
     const newMeal = {
       ...mealData,
       id: Date.now().toString(),
-      time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+      time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+      loggedAt: new Date().toISOString()
     };
 
-    setLoggedMeals(prev => [newMeal, ...prev]);
+    setLoggedMeals(prev => {
+      const updated = [newMeal, ...prev];
+      // Persist to localStorage
+      localStorage.setItem('loggedMeals', JSON.stringify(updated));
+      // Dispatch event for other components
+      window.dispatchEvent(new CustomEvent('loggedMealsUpdate', { detail: updated }));
+      return updated;
+    });
     setShowLogModal(false);
   };
 
   const deleteMeal = (mealId: string) => {
-    setLoggedMeals(prev => prev.filter(m => m.id !== mealId));
+    setLoggedMeals(prev => {
+      const updated = prev.filter(m => m.id !== mealId);
+      localStorage.setItem('loggedMeals', JSON.stringify(updated));
+      window.dispatchEvent(new CustomEvent('loggedMealsUpdate', { detail: updated }));
+      return updated;
+    });
   };
 
   // Handle meal feedback (Love it / Meh)
@@ -493,6 +597,21 @@ export function MealPlanPage({ onNavigate, generationStatus }: MealPlanPageProps
     const currentMeal = selectedOption === 'primary' ? meal.primary : meal.alternative;
     const hasAlternative = meal.alternative && meal.alternative.name && meal.alternative.name !== "Alternative not available";
 
+    // Check if this meal has any ordering links (same logic as RestaurantListSection)
+    const hasOrderingLinks = (meal: any): boolean => {
+      if (!meal) return false;
+      const links = meal.orderingLinks || {};
+      return !!(
+        (links.doordash && links.doordash.trim() !== '') ||
+        (links.ubereats && links.ubereats.trim() !== '') ||
+        (links.grubhub && links.grubhub.trim() !== '') ||
+        (links.direct && links.direct.trim() !== '') ||
+        meal.orderingUrl ||
+        meal.website ||
+        meal.menu_url
+      );
+    };
+
     const handleRecipeClick = async (selectedMeal: any) => {
       console.log('🍳 [Recipe] Click started:', selectedMeal?.name || selectedMeal?.dish);
 
@@ -502,15 +621,25 @@ export function MealPlanPage({ onNavigate, generationStatus }: MealPlanPageProps
 
       if (isRestaurant) {
         console.log('🍳 [Recipe] Restaurant meal - opening external link');
-        const orderingUrl = selectedMeal.orderingUrl || selectedMeal.website || selectedMeal.menu_url;
-        if (orderingUrl) {
+
+        // Check orderingLinks object (same structure used in RestaurantListSection)
+        const links = selectedMeal.orderingLinks || {};
+        const orderingUrl =
+          links.doordash ||
+          links.ubereats ||
+          links.grubhub ||
+          links.direct ||
+          // Fallback to legacy fields
+          selectedMeal.orderingUrl ||
+          selectedMeal.website ||
+          selectedMeal.menu_url;
+
+        if (orderingUrl && orderingUrl.trim() !== '') {
+          console.log('🍳 [Recipe] Opening ordering link:', orderingUrl);
+          // Universal Links will automatically open the app if installed on mobile
           window.open(orderingUrl, '_blank');
-        } else {
-          // Create a more comprehensive search query with location
-          const searchTerm = `${selectedMeal.restaurant || selectedMeal.name} order online menu delivery`;
-          const searchQuery = encodeURIComponent(searchTerm);
-          window.open(`https://www.google.com/search?q=${searchQuery}`, '_blank');
         }
+        // If no URL found, button shouldn't be shown anyway (see Change 2)
         return;
       }
 
@@ -634,7 +763,10 @@ export function MealPlanPage({ onNavigate, generationStatus }: MealPlanPageProps
                 {/* Nutrition information */}
                 {mealOption.calories && (
                   <div className="text-xs text-green-600 font-medium mt-1 space-y-1">
-                    <p>{mealOption.calories} calories</p>
+                    <p>
+                      {isRestaurant ? '~' : ''}{mealOption.calories} calories
+                      {isRestaurant && <span className="text-gray-500 font-normal"> (estimate)</span>}
+                    </p>
                     {(mealOption.protein || mealOption.carbs || mealOption.fat) && (
                       <p className="text-gray-600">
                         {mealOption.protein && `${Math.round(mealOption.protein)}g protein`}
@@ -771,21 +903,34 @@ export function MealPlanPage({ onNavigate, generationStatus }: MealPlanPageProps
                 ))}
               </div>
 
-              <Button
-                size="sm"
-                variant="outline"
-                onClick={() => handleRecipeClick(mealOption)}
-                disabled={loadingRecipeMeal === type}
-                className="text-xs px-3 py-1 h-7 border-purple-300 text-purple-700 hover:bg-purple-50"
-              >
-                {loadingRecipeMeal === type ? (
-                  <div className="w-3 h-3 border-2 border-current border-t-transparent rounded-full animate-spin" />
-                ) : isRestaurant ? (
-                  "Order"
-                ) : (
-                  "Recipe"
-                )}
-              </Button>
+              {/* Recipe button for home meals, Order only if restaurant has links */}
+              {isRestaurant ? (
+                hasOrderingLinks(mealOption) && (
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={() => handleRecipeClick(mealOption)}
+                    disabled={loadingRecipeMeal === type}
+                    className="text-xs px-3 py-1 h-7 border-purple-300 text-purple-700 hover:bg-purple-50"
+                  >
+                    Order
+                  </Button>
+                )
+              ) : (
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={() => handleRecipeClick(mealOption)}
+                  disabled={loadingRecipeMeal === type}
+                  className="text-xs px-3 py-1 h-7 border-purple-300 text-purple-700 hover:bg-purple-50"
+                >
+                  {loadingRecipeMeal === type ? (
+                    <div className="w-3 h-3 border-2 border-current border-t-transparent rounded-full animate-spin" />
+                  ) : (
+                    "Recipe"
+                  )}
+                </Button>
+              )}
             </div>
           </div>
         </div>
@@ -837,8 +982,20 @@ export function MealPlanPage({ onNavigate, generationStatus }: MealPlanPageProps
 
                       {/* Nutrition Info */}
                       <div className="flex flex-wrap items-center gap-2 sm:gap-4 text-sm text-gray-600 mb-3">
-                        <div className="bg-green-50 px-2 py-1 rounded-lg border border-green-200">
-                          <span className="text-green-700 font-medium">{currentMeal.estimatedCalories || currentMeal.calories || 0} cal</span>
+                        <div className={`px-2 py-1 rounded-lg border ${
+                          currentMeal.source === 'restaurant'
+                            ? 'bg-amber-50 border-amber-200'
+                            : 'bg-green-50 border-green-200'
+                        }`}>
+                          <span className={`font-medium ${
+                            currentMeal.source === 'restaurant' ? 'text-amber-700' : 'text-green-700'
+                          }`}>
+                            {currentMeal.source === 'restaurant' ? '~' : ''}
+                            {currentMeal.estimatedCalories || currentMeal.calories || 0} cal
+                            {currentMeal.source === 'restaurant' && (
+                              <span className="text-amber-600 text-xs font-normal ml-1">(est.)</span>
+                            )}
+                          </span>
                         </div>
                         <div className="bg-blue-50 px-2 py-1 rounded-lg border border-blue-200">
                           <span className="text-blue-700 font-medium">{currentMeal.protein || 0}g protein</span>
@@ -852,21 +1009,35 @@ export function MealPlanPage({ onNavigate, generationStatus }: MealPlanPageProps
 
                       {/* Action Buttons */}
                       <div className="flex flex-wrap items-center gap-2 sm:gap-3">
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          onClick={() => handleRecipeClick(currentMeal)}
-                          disabled={loadingRecipeMeal === type}
-                          className="bg-purple-50 border-purple-300 text-purple-700 hover:bg-purple-100 transition-colors"
-                        >
-                          {loadingRecipeMeal === type ? (
-                            <div className="w-4 h-4 border-2 border-current border-t-transparent rounded-full animate-spin mr-2" />
-                          ) : null}
-                          {currentMeal.source === 'restaurant' ?
-                            <><ArrowSquareOut className="w-4 h-4 mr-1" weight="regular" />Order Now</> :
-                            <><Star className="w-4 h-4 mr-1" weight="regular" />Recipe</>
-                          }
-                        </Button>
+                        {/* Recipe button for home meals, Order Now only if restaurant has links */}
+                        {currentMeal.source === 'restaurant' ? (
+                          hasOrderingLinks(currentMeal) && (
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              onClick={() => handleRecipeClick(currentMeal)}
+                              disabled={loadingRecipeMeal === type}
+                              className="bg-purple-50 border-purple-300 text-purple-700 hover:bg-purple-100 transition-colors"
+                            >
+                              <ArrowSquareOut className="w-4 h-4 mr-1" weight="regular" />
+                              Order Now
+                            </Button>
+                          )
+                        ) : (
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => handleRecipeClick(currentMeal)}
+                            disabled={loadingRecipeMeal === type}
+                            className="bg-purple-50 border-purple-300 text-purple-700 hover:bg-purple-100 transition-colors"
+                          >
+                            {loadingRecipeMeal === type && (
+                              <div className="w-4 h-4 border-2 border-current border-t-transparent rounded-full animate-spin mr-2" />
+                            )}
+                            <Star className="w-4 h-4 mr-1" weight="regular" />
+                            Recipe
+                          </Button>
+                        )}
 
                         {/* Mark as Eaten Button */}
                         <Button
@@ -884,19 +1055,6 @@ export function MealPlanPage({ onNavigate, generationStatus }: MealPlanPageProps
                       </div>
                     </div>
 
-                    {/* Selection Indicator */}
-                    <div className="flex items-center gap-2 ml-0 sm:ml-4 mt-2 sm:mt-0">
-                      <div className={`px-3 py-1 rounded-full text-xs font-medium ${
-                        selectedOption === 'primary'
-                          ? 'bg-purple-100 text-purple-700 border border-purple-300'
-                          : 'bg-gray-100 text-gray-600 border border-gray-300'
-                      }`}>
-                        {selectedOption === 'primary' ?
-                          <><Star className="w-3 h-3 mr-1" weight="bold" />Selected</> :
-                          'Option'
-                        }
-                      </div>
-                    </div>
                   </div>
                 </div>
               </div>
@@ -1011,8 +1169,8 @@ export function MealPlanPage({ onNavigate, generationStatus }: MealPlanPageProps
                   </div>
                 </div>
 
-                {/* Nutrition */}
-                {activeRecipeModal.recipeData.nutrition && (
+                {/* Nutrition - ALWAYS show meal's stored macros for consistency */}
+                {currentMeal && (
                   <div className="bg-gradient-to-r from-green-50 to-blue-50 border border-green-200 rounded-lg p-4">
                     <h3 className="text-lg font-semibold text-gray-900 mb-4 flex items-center">
                       <div className="w-1 h-6 bg-green-600 rounded-full mr-3"></div>
@@ -1020,22 +1178,51 @@ export function MealPlanPage({ onNavigate, generationStatus }: MealPlanPageProps
                     </h3>
                     <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
                       <div className="bg-white rounded-lg p-3 text-center border border-green-200">
-                        <div className="text-lg font-semibold text-green-600">{activeRecipeModal.recipeData.nutrition.calories}</div>
+                        <div className="text-lg font-semibold text-green-600">
+                          {currentMeal.estimatedCalories || currentMeal.calories || 0}
+                        </div>
                         <div className="text-xs text-gray-600">Calories</div>
                       </div>
                       <div className="bg-white rounded-lg p-3 text-center border border-blue-200">
-                        <div className="text-lg font-semibold text-blue-600">{activeRecipeModal.recipeData.nutrition.protein}g</div>
+                        <div className="text-lg font-semibold text-blue-600">
+                          {currentMeal.protein || 0}g
+                        </div>
                         <div className="text-xs text-gray-600">Protein</div>
                       </div>
                       <div className="bg-white rounded-lg p-3 text-center border border-orange-200">
-                        <div className="text-lg font-semibold text-orange-600">{activeRecipeModal.recipeData.nutrition.carbs}g</div>
+                        <div className="text-lg font-semibold text-orange-600">
+                          {currentMeal.carbs || 0}g
+                        </div>
                         <div className="text-xs text-gray-600">Carbs</div>
                       </div>
                       <div className="bg-white rounded-lg p-3 text-center border border-yellow-200">
-                        <div className="text-lg font-semibold text-yellow-600">{activeRecipeModal.recipeData.nutrition.fat}g</div>
+                        <div className="text-lg font-semibold text-yellow-600">
+                          {currentMeal.fat || 0}g
+                        </div>
                         <div className="text-xs text-gray-600">Fat</div>
                       </div>
                     </div>
+                    {/* Show fiber/sodium from recipe if available */}
+                    {activeRecipeModal?.recipeData?.nutrition && (
+                      <div className="grid grid-cols-2 gap-3 mt-3">
+                        {activeRecipeModal.recipeData.nutrition.fiber > 0 && (
+                          <div className="bg-white rounded-lg p-2 text-center border border-gray-200">
+                            <div className="text-sm font-semibold text-gray-600">
+                              {activeRecipeModal.recipeData.nutrition.fiber}g
+                            </div>
+                            <div className="text-xs text-gray-500">Fiber</div>
+                          </div>
+                        )}
+                        {activeRecipeModal.recipeData.nutrition.sodium > 0 && (
+                          <div className="bg-white rounded-lg p-2 text-center border border-gray-200">
+                            <div className="text-sm font-semibold text-gray-600">
+                              {activeRecipeModal.recipeData.nutrition.sodium}mg
+                            </div>
+                            <div className="text-xs text-gray-500">Sodium</div>
+                          </div>
+                        )}
+                      </div>
+                    )}
                   </div>
                 )}
               </div>
@@ -1174,14 +1361,6 @@ export function MealPlanPage({ onNavigate, generationStatus }: MealPlanPageProps
               <p className="text-xs sm:text-sm text-neutral-600">Your nutrition plan</p>
             </div>
           </div>
-          <Button
-            variant="outline"
-            size="sm"
-            className="text-primary border-primary hover:bg-primary/5 text-xs sm:text-sm px-2 sm:px-4"
-          >
-            <span className="hidden sm:inline">Generate New</span>
-            <span className="sm:hidden">New</span>
-          </Button>
         </div>
       </div>
 
@@ -1313,79 +1492,69 @@ export function MealPlanPage({ onNavigate, generationStatus }: MealPlanPageProps
         {/* Meals */}
         <div className="space-y-6 pb-20 sm:pb-24">
 
-          {currentMeals.breakfast ? (
-            <>
-              <h3 className="text-lg font-semibold text-purple-600 border-l-4 border-purple-600 pl-3 mb-3">Breakfast</h3>
+          {/* Breakfast */}
+          <div className="space-y-3">
+            <h3 className="text-lg font-semibold text-purple-600 border-l-4 border-purple-600 pl-3">Breakfast</h3>
+
+            {/* Logged breakfast meals - show above planned meals */}
+            {getLoggedMealsForType('breakfast', selectedDay).map(renderLoggedMealCard)}
+
+            {/* Primary and Alternative options */}
+            {currentMeals.breakfast ? (
               <MealCard meal={currentMeals.breakfast} type="breakfast" />
-            </>
-          ) : (
-            <div className="text-center py-6 bg-gray-50 border-2 border-dashed border-gray-300 rounded-lg">
-              <ForkKnife className="w-8 h-8 text-gray-400 mx-auto mb-2" />
-              <p className="text-gray-600 font-medium">No breakfast planned</p>
-              <p className="text-gray-500 text-sm">Meals will appear here once generated</p>
-            </div>
-          )}
+            ) : (
+              <div className="text-center py-6 bg-gray-50 border-2 border-dashed border-gray-300 rounded-lg">
+                <ForkKnife className="w-8 h-8 text-gray-400 mx-auto mb-2" />
+                <p className="text-gray-600 font-medium">No breakfast planned</p>
+                <p className="text-gray-500 text-sm">Meals will appear here once generated</p>
+              </div>
+            )}
+          </div>
 
-          {currentMeals.lunch ? (
-            <>
-              <h3 className="text-lg font-semibold text-purple-600 border-l-4 border-purple-600 pl-3 mb-3">Lunch</h3>
+          {/* Lunch */}
+          <div className="space-y-3">
+            <h3 className="text-lg font-semibold text-purple-600 border-l-4 border-purple-600 pl-3">Lunch</h3>
+
+            {/* Logged lunch meals - show above planned meals */}
+            {getLoggedMealsForType('lunch', selectedDay).map(renderLoggedMealCard)}
+
+            {/* Primary and Alternative options */}
+            {currentMeals.lunch ? (
               <MealCard meal={currentMeals.lunch} type="lunch" />
-            </>
-          ) : (
-            <div className="text-center py-6 bg-gray-50 border-2 border-dashed border-gray-300 rounded-lg">
-              <ForkKnife className="w-8 h-8 text-gray-400 mx-auto mb-2" />
-              <p className="text-gray-600 font-medium">No lunch planned</p>
-              <p className="text-gray-500 text-sm">Meals will appear here once generated</p>
-            </div>
-          )}
+            ) : (
+              <div className="text-center py-6 bg-gray-50 border-2 border-dashed border-gray-300 rounded-lg">
+                <ForkKnife className="w-8 h-8 text-gray-400 mx-auto mb-2" />
+                <p className="text-gray-600 font-medium">No lunch planned</p>
+                <p className="text-gray-500 text-sm">Meals will appear here once generated</p>
+              </div>
+            )}
+          </div>
 
-          {currentMeals.dinner ? (
-            <>
-              <h3 className="text-lg font-semibold text-purple-600 border-l-4 border-purple-600 pl-3 mb-3">Dinner</h3>
+          {/* Dinner */}
+          <div className="space-y-3">
+            <h3 className="text-lg font-semibold text-purple-600 border-l-4 border-purple-600 pl-3">Dinner</h3>
+
+            {/* Logged dinner meals - show above planned meals */}
+            {getLoggedMealsForType('dinner', selectedDay).map(renderLoggedMealCard)}
+
+            {/* Primary and Alternative options */}
+            {currentMeals.dinner ? (
               <MealCard meal={currentMeals.dinner} type="dinner" />
-            </>
-          ) : (
-            <div className="text-center py-6 bg-gray-50 border-2 border-dashed border-gray-300 rounded-lg">
-              <ForkKnife className="w-8 h-8 text-gray-400 mx-auto mb-2" />
-              <p className="text-gray-600 font-medium">No dinner planned</p>
-              <p className="text-gray-500 text-sm">Meals will appear here once generated</p>
-            </div>
-          )}
+            ) : (
+              <div className="text-center py-6 bg-gray-50 border-2 border-dashed border-gray-300 rounded-lg">
+                <ForkKnife className="w-8 h-8 text-gray-400 mx-auto mb-2" />
+                <p className="text-gray-600 font-medium">No dinner planned</p>
+                <p className="text-gray-500 text-sm">Meals will appear here once generated</p>
+              </div>
+            )}
+          </div>
 
-          {/* Logged Meals History */}
-          {loggedMeals.length > 0 && (
+          {/* Logged Meals from Other Days */}
+          {loggedMeals.filter(m => m.day !== selectedDay).length > 0 && (
             <div className="mt-8">
-              <h3 className="text-lg font-semibold text-[#c1272d] border-l-4 border-[#c1272d] pl-3 mb-4">Logged Alternative Meals</h3>
+              <h3 className="text-lg font-semibold text-gray-500 border-l-4 border-gray-300 pl-3 mb-4">Logged Meals from Other Days</h3>
               <div className="space-y-3">
-                {loggedMeals.map((meal) => (
-                  <div key={meal.id} className="bg-white border border-gray-200 rounded-lg p-4 shadow-sm">
-                    <div className="flex justify-between items-start">
-                      <div className="flex-1">
-                        <div className="flex items-center space-x-2 mb-1">
-                          <h4 className="font-semibold text-gray-900">{meal.mealName}</h4>
-                          <span className="text-xs bg-[#c1272d] text-white px-2 py-1 rounded-full">{meal.mealType}</span>
-                        </div>
-                        <p className="text-sm text-gray-600 mb-2">{meal.description}</p>
-                        <div className="flex items-center space-x-4 text-xs text-gray-500">
-                          <span>{meal.calories} cal</span>
-                          <span>{meal.protein}g protein</span>
-                          <span>{meal.carbs}g carbs</span>
-                          <span>{meal.fat}g fat</span>
-                          <span>{meal.time}</span>
-                        </div>
-                        {meal.notes && (
-                          <p className="text-xs text-gray-500 mt-1 italic">{meal.notes}</p>
-                        )}
-                      </div>
-                      <button
-                        onClick={() => deleteMeal(meal.id)}
-                        className="text-gray-400 hover:text-red-500 ml-4"
-                      >
-                        ×
-                      </button>
-                    </div>
-                  </div>
-                ))}
+                {loggedMeals.filter(m => m.day !== selectedDay).map(renderLoggedMealCard)}
               </div>
             </div>
           )}

@@ -201,27 +201,36 @@ export class PerplexityClient {
   /**
    * Find top 3 grocery stores near user's location
    */
-  async getLocalGroceryStores(zipcode: string, city: string): Promise<GroceryStoreSearchResponse> {
-    console.log(`[PERPLEXITY-GROCERY] 🏪 Finding grocery stores near ${zipcode}...`);
+  async getLocalGroceryStores(
+    streetAddress: string,
+    city: string,
+    state: string,
+    zipcode: string
+  ): Promise<GroceryStoreSearchResponse> {
+    console.log(`[PERPLEXITY-GROCERY] 🏪 Finding grocery stores near ${streetAddress}, ${city}...`);
 
     try {
-      const query = `Find the top 3 grocery stores near ${zipcode} ${city}.
+      const fullAddress = `${streetAddress}, ${city}, ${state} ${zipcode}`;
+      const query = `Find the 3 closest grocery stores to this exact address: ${fullAddress}
 
-Requirements:
-- Include a mix: one budget-friendly option, one mid-range, one premium
-- Provide actual store names and approximate addresses
-- If you cannot find stores for this exact location, suggest the most common/popular grocery chains that typically serve the ${city} region or state
+CRITICAL REQUIREMENTS:
+1. PRIORITIZE BY DISTANCE - list stores from CLOSEST to FARTHEST
+2. Include actual distance from the address (e.g., "0.3 mi", "1.2 mi")
+3. Prefer stores within 3 miles when possible
+4. Include a mix of store types if available nearby: budget-friendly, mid-range, premium
 
 For each store provide:
-- Store name (actual chain name)
-- Address or nearest cross streets
-- Distance if known
+- Store name (actual chain name, e.g., "Trader Joe's", "Safeway", "Whole Foods")
+- Full street address
+- Distance from ${streetAddress} (be as accurate as possible)
 - Type: "budget", "mid-range", or "premium"
 
 Return as JSON only, no other text:
 {
   "stores": [
-    {"name": "Store Name", "address": "123 Main St", "distance": "0.5 mi", "type": "budget"}
+    {"name": "Store Name", "address": "123 Main St", "distance": "0.3 mi", "type": "mid-range"},
+    {"name": "Store Name 2", "address": "456 Oak Ave", "distance": "0.8 mi", "type": "budget"},
+    {"name": "Store Name 3", "address": "789 Elm Blvd", "distance": "1.5 mi", "type": "premium"}
   ]
 }`;
 
@@ -262,7 +271,7 @@ Return as JSON only, no other text:
 
       return {
         stores: parsed.stores || [],
-        location: `${city}, ${zipcode}`,
+        location: `${streetAddress}, ${city}, ${state} ${zipcode}`,
         searchSuccess: parsed.stores?.length > 0
       };
 
@@ -270,7 +279,7 @@ Return as JSON only, no other text:
       console.error('[PERPLEXITY-GROCERY] ❌ Store search error:', error);
       return {
         stores: [],
-        location: `${city}, ${zipcode}`,
+        location: `${streetAddress}, ${city}, ${state} ${zipcode}`,
         searchSuccess: false,
         error: error instanceof Error ? error.message : 'Failed to find stores'
       };

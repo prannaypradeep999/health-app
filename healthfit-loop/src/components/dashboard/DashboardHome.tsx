@@ -142,6 +142,7 @@ export function DashboardHome({ user, onNavigate, generationStatus, isGuest, onS
   const [workoutProgress, setWorkoutProgress] = useState<any>(null);
   const [loading, setLoading] = useState(false);
   const [eatenMeals, setEatenMeals] = useState<{[key: string]: boolean}>({});
+  const [loggedMeals, setLoggedMeals] = useState<any[]>([]);
   const [isInitialized, setIsInitialized] = useState(false);
   const [completedExercises, setCompletedExercises] = useState<Record<string, Set<string>>>({});
   const [workoutData, setWorkoutData] = useState<any>(null);
@@ -347,7 +348,7 @@ export function DashboardHome({ user, onNavigate, generationStatus, isGuest, onS
             {meal.isSkipped ? '' :
              meal.isLoading ? 'Loading...' :
              meal.hideCalories ? '' :
-             `${meal.calories} cal`}
+             meal.restaurant ? `~${meal.calories} cal (est.)` : `${meal.calories} cal`}
           </p>
         </div>
         <div className="flex items-center space-x-2">
@@ -486,6 +487,15 @@ export function DashboardHome({ user, onNavigate, generationStatus, isGuest, onS
       console.log('Dashboard useEffect - Parsed eatenMeals:', parsed);
       setEatenMeals(parsed);
     }
+
+    // Load persisted logged meals from localStorage
+    const savedLoggedMeals = localStorage.getItem('loggedMeals');
+    if (savedLoggedMeals) {
+      const parsed = JSON.parse(savedLoggedMeals);
+      console.log('[Dashboard] Loaded logged meals:', parsed.length);
+      setLoggedMeals(parsed);
+    }
+
     setIsInitialized(true);
 
     // Load persisted completed exercises from localStorage
@@ -538,6 +548,14 @@ export function DashboardHome({ user, onNavigate, generationStatus, isGuest, onS
       }
     };
 
+    // Listen for logged meals updates
+    const handleLoggedMealsUpdate = (e: CustomEvent) => {
+      console.log('[Dashboard] Logged meals update received');
+      if (e.detail) {
+        setLoggedMeals(e.detail);
+      }
+    };
+
     // Listen for custom events from same tab (workout plan page)
     const handleCompletedExercisesUpdate = (e: CustomEvent) => {
       console.log('Dashboard - received completedExercisesUpdate event:', e.detail);
@@ -547,12 +565,14 @@ export function DashboardHome({ user, onNavigate, generationStatus, isGuest, onS
     window.addEventListener('focus', handleFocus);
     window.addEventListener('storage', handleStorageChange);
     window.addEventListener('eatenMealsUpdate', handleEatenMealsUpdate as EventListener);
+    window.addEventListener('loggedMealsUpdate', handleLoggedMealsUpdate as EventListener);
     window.addEventListener('completedExercisesUpdate', handleCompletedExercisesUpdate as EventListener);
 
     return () => {
       window.removeEventListener('focus', handleFocus);
       window.removeEventListener('storage', handleStorageChange);
       window.removeEventListener('eatenMealsUpdate', handleEatenMealsUpdate as EventListener);
+      window.removeEventListener('loggedMealsUpdate', handleLoggedMealsUpdate as EventListener);
       window.removeEventListener('completedExercisesUpdate', handleCompletedExercisesUpdate as EventListener);
     };
   }, []);
@@ -791,10 +811,21 @@ export function DashboardHome({ user, onNavigate, generationStatus, isGuest, onS
           }
         }
 
-        // Handle primary/alternatives structure
+        // Handle primary/alternative structure
         let actualMeal;
-        if (optionType === 'alternative' && meal.alternatives && meal.alternatives.length > 0) {
-          actualMeal = meal.alternatives[0]; // First alternative
+        if (optionType === 'alternative') {
+          // Check for singular 'alternative' (current format from generation)
+          if (meal.alternative) {
+            actualMeal = meal.alternative;
+          }
+          // Fallback to plural 'alternatives' array (legacy format)
+          else if (meal.alternatives && meal.alternatives.length > 0) {
+            actualMeal = meal.alternatives[0];
+          }
+          // No alternative available
+          else {
+            actualMeal = null;
+          }
         } else {
           actualMeal = meal.primary || meal;
         }
@@ -1019,6 +1050,14 @@ export function DashboardHome({ user, onNavigate, generationStatus, isGuest, onS
       total += meals.dinner?.alternative?.calories || 0;
     }
 
+    // Add logged meals for today
+    const todayDayName = getTodayDayName();
+    loggedMeals
+      .filter(meal => meal.day === todayDayName && meal.completed)
+      .forEach(meal => {
+        total += meal.calories || 0;
+      });
+
     console.log('Real calories eaten - total:', total);
     return total;
   };
@@ -1046,6 +1085,14 @@ export function DashboardHome({ user, onNavigate, generationStatus, isGuest, onS
     if (isMealEaten('dinner', 0, 'alternative')) {
       total += getMealMacro(meals.dinner?.alternative, 'protein') || 0;
     }
+
+    // Add logged meals for today
+    const todayDayName = getTodayDayName();
+    loggedMeals
+      .filter(meal => meal.day === todayDayName && meal.completed)
+      .forEach(meal => {
+        total += meal.protein || 0;
+      });
 
     console.log('Real protein eaten - total:', total);
     return Math.round(total);
@@ -1075,6 +1122,14 @@ export function DashboardHome({ user, onNavigate, generationStatus, isGuest, onS
       total += getMealMacro(meals.dinner?.alternative, 'carbs') || 0;
     }
 
+    // Add logged meals for today
+    const todayDayName = getTodayDayName();
+    loggedMeals
+      .filter(meal => meal.day === todayDayName && meal.completed)
+      .forEach(meal => {
+        total += meal.carbs || 0;
+      });
+
     return Math.round(total);
   };
 
@@ -1101,6 +1156,14 @@ export function DashboardHome({ user, onNavigate, generationStatus, isGuest, onS
     if (isMealEaten('dinner', 0, 'alternative')) {
       total += getMealMacro(meals.dinner?.alternative, 'fat') || 0;
     }
+
+    // Add logged meals for today
+    const todayDayName = getTodayDayName();
+    loggedMeals
+      .filter(meal => meal.day === todayDayName && meal.completed)
+      .forEach(meal => {
+        total += meal.fat || 0;
+      });
 
     return Math.round(total);
   };
@@ -1213,7 +1276,12 @@ export function DashboardHome({ user, onNavigate, generationStatus, isGuest, onS
         {/* Guest Banner */}
         {isGuest && !bannerDismissed && (
           <GuestBanner
-            onCreateAccount={() => window.location.href = '/login?redirect=/dashboard'}
+            onCreateAccount={() => {
+              // Pass the survey email to pre-fill during account creation
+              const surveyEmail = user?.activeSurvey?.email || user?.email || '';
+              const encodedEmail = encodeURIComponent(surveyEmail);
+              window.location.href = `/login?redirect=/dashboard&email=${encodedEmail}&mode=signup`;
+            }}
             onDismiss={() => setBannerDismissed(true)}
           />
         )}

@@ -39,8 +39,10 @@ export async function POST(req: NextRequest) {
     }
 
     const surveyData = survey;
-    const zipcode = surveyData.zipCode || '';
+    const streetAddress = surveyData.streetAddress || '';
     const city = surveyData.city || '';
+    const state = surveyData.state || '';
+    const zipcode = surveyData.zipCode || '';
     const userGoal = surveyData.goal || 'GENERAL_WELLNESS';
 
     if (!zipcode || !city) {
@@ -48,7 +50,7 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'Missing location data in survey' }, { status: 400 });
     }
 
-    console.log(`[GROCERY-PRICES] 📍 Location: ${city}, ${zipcode}`);
+    console.log(`[GROCERY-PRICES] 📍 Location: ${streetAddress}, ${city}, ${state} ${zipcode}`);
     console.log(`[GROCERY-PRICES] 🎯 User goal: ${userGoal}`);
 
     // Get the current meal plan with grocery items
@@ -75,7 +77,12 @@ export async function POST(req: NextRequest) {
 
     // Step 1: Find local grocery stores via Perplexity
     console.log('[GROCERY-PRICES] Step 1/3: Finding local stores...');
-    const storeResponse = await perplexityClient.getLocalGroceryStores(zipcode, city);
+    const storeResponse = await perplexityClient.getLocalGroceryStores(
+      streetAddress,
+      city,
+      state,
+      zipcode
+    );
 
     if (!storeResponse.searchSuccess || storeResponse.stores.length === 0) {
       console.error('[GROCERY-PRICES] ❌ Could not find stores');

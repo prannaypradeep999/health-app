@@ -296,7 +296,10 @@ export function WorkoutPlanPage({ onNavigate, generationStatus }: WorkoutPlanPag
           calories: workoutDay.restDay ? 0 : workoutDay.estimatedCalories,
           exercises: workoutDay.exercises || [],
           restDay: workoutDay.restDay,
-          description: workoutDay.description
+          description: workoutDay.description,
+          warmup: workoutDay.warmup || [],
+          cooldown: workoutDay.cooldown || [],
+          activeRecovery: workoutDay.activeRecovery || null
         };
       }
     }
@@ -309,7 +312,10 @@ export function WorkoutPlanPage({ onNavigate, generationStatus }: WorkoutPlanPag
       calories: 0,
       exercises: [],
       restDay: false,
-      description: "Please generate your workout plan to see exercises here."
+      description: "Please generate your workout plan to see exercises here.",
+      warmup: [],
+      cooldown: [],
+      activeRecovery: null
     };
   };
 
@@ -322,83 +328,187 @@ export function WorkoutPlanPage({ onNavigate, generationStatus }: WorkoutPlanPag
     : 0;
 
   const ExerciseCard = ({ exercise }: { exercise: any }) => {
-    const exerciseId = exercise.name; // Use name as ID since no id field
+    const exerciseId = exercise.name;
     const isCompleted = currentDayCompleted.has(exerciseId);
+    const [showDetails, setShowDetails] = useState(false);
 
     return (
-      <div className={`flex items-start space-x-4 p-4 bg-white border rounded-lg hover:shadow-sm transition-shadow ${
+      <div className={`p-4 bg-white border rounded-lg hover:shadow-sm transition-shadow ${
         isCompleted ? 'border-green-200 bg-green-50' : 'border-gray-200'
       }`}>
-        {/* Exercise Image - Left aligned */}
-        <div className="flex-shrink-0">
-          <div className="w-16 h-16 bg-gradient-to-br from-gray-100 to-gray-50 rounded-lg flex items-center justify-center overflow-hidden">
-            {exercise.imageUrl ? (
-              <ImageWithFallback
-                src={exercise.imageUrl}
-                alt={exercise.name}
-                className="w-16 h-16 object-cover rounded-lg"
-                fallback={<Barbell className="w-6 h-6 text-gray-500" weight="regular" />}
-              />
-            ) : (
-              <Barbell className="w-6 h-6 text-gray-500" weight="regular" />
+        {/* Main Row */}
+        <div className="flex items-start space-x-4">
+          {/* Exercise Image */}
+          <div className="flex-shrink-0">
+            <div className="w-16 h-16 bg-gradient-to-br from-gray-100 to-gray-50 rounded-lg flex items-center justify-center overflow-hidden">
+              {exercise.imageUrl ? (
+                <ImageWithFallback
+                  src={exercise.imageUrl}
+                  alt={exercise.name}
+                  className="w-16 h-16 object-cover rounded-lg"
+                  fallback={<Barbell className="w-6 h-6 text-gray-500" weight="regular" />}
+                />
+              ) : (
+                <Barbell className="w-6 h-6 text-gray-500" weight="regular" />
+              )}
+            </div>
+          </div>
+
+          {/* Content */}
+          <div className="flex-1 min-w-0">
+            <div className="flex items-start justify-between mb-2">
+              <div className="flex-1">
+                <h3 className="font-semibold text-black text-sm leading-tight">
+                  {exercise.name}
+                </h3>
+                <div className="flex flex-wrap gap-1 mt-1">
+                  {(exercise.muscleTargets || []).slice(0, 3).map((muscle: string) => (
+                    <Badge key={muscle} variant="secondary" className="text-xs bg-purple-50 text-purple-700 border-purple-200">
+                      {muscle}
+                    </Badge>
+                  ))}
+                </div>
+              </div>
+              <Button
+                size="sm"
+                variant={isCompleted ? "default" : "outline"}
+                onClick={() => toggleExerciseComplete(exerciseId)}
+                className={`text-xs px-3 py-1 h-7 ml-2 flex-shrink-0 ${
+                  isCompleted
+                    ? "bg-green-600 hover:bg-green-700 text-white"
+                    : "border-purple-300 text-purple-700 hover:bg-purple-50"
+                }`}
+              >
+                {isCompleted ? (
+                  <CheckCircle className="w-3 h-3" />
+                ) : (
+                  <Play className="w-3 h-3" />
+                )}
+              </Button>
+            </div>
+
+            {/* Exercise Stats Row */}
+            <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs mb-2">
+              <div className="flex items-center">
+                <span className="font-bold text-purple-600">{exercise.sets} sets</span>
+              </div>
+              <div className="flex items-center">
+                <span className="font-bold text-purple-600">{exercise.reps} reps</span>
+              </div>
+              <div className="flex items-center">
+                <TimerIcon className="w-3 h-3 mr-1 text-purple-600" weight="regular" />
+                <span className="font-bold text-purple-600">{exercise.restTime}</span>
+              </div>
+              {exercise.tempo && (
+                <div className="flex items-center">
+                  <span className="text-gray-500">Tempo: </span>
+                  <span className="font-bold text-purple-600 ml-1">{exercise.tempo}</span>
+                </div>
+              )}
+            </div>
+
+            {/* Weight Guidance - Prominent */}
+            {exercise.weightGuidance && (
+              <div className="bg-blue-50 border border-blue-200 rounded-lg p-2 mb-2">
+                <div className="flex items-start space-x-2">
+                  <Target className="w-4 h-4 text-blue-600 mt-0.5 flex-shrink-0" />
+                  <div className="text-xs">
+                    <span className="font-semibold text-blue-800">Weight: </span>
+                    <span className="text-blue-700">{exercise.weightGuidance.suggestion}</span>
+                    {exercise.weightGuidance.rpeTarget && (
+                      <span className="text-blue-600 ml-2">(RPE {exercise.weightGuidance.rpeTarget}/10)</span>
+                    )}
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* Breathing Cue */}
+            {exercise.breathingCue && (
+              <p className="text-xs text-gray-600 mb-2 italic">
+                💨 {exercise.breathingCue}
+              </p>
+            )}
+
+            {/* Description */}
+            {exercise.description && (
+              <p className="text-xs text-gray-600 mb-2 leading-relaxed">{exercise.description}</p>
+            )}
+
+            {/* Expandable Details */}
+            <button
+              onClick={() => setShowDetails(!showDetails)}
+              className="text-xs text-purple-600 hover:text-purple-800 font-medium flex items-center"
+            >
+              {showDetails ? 'Hide details' : 'Show form tips & modifications'}
+              <svg className={`w-3 h-3 ml-1 transition-transform ${showDetails ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+              </svg>
+            </button>
+
+            {showDetails && (
+              <div className="mt-3 space-y-3 border-t border-gray-200 pt-3">
+                {/* Instructions */}
+                {exercise.instructions && (
+                  <div>
+                    <h4 className="text-xs font-semibold text-gray-700 mb-1">How to perform:</h4>
+                    <p className="text-xs text-gray-600 leading-relaxed">{exercise.instructions}</p>
+                  </div>
+                )}
+
+                {/* Form Tips */}
+                {exercise.formTips && exercise.formTips.length > 0 && (
+                  <div>
+                    <h4 className="text-xs font-semibold text-green-700 mb-1">✓ Form Tips:</h4>
+                    <ul className="text-xs text-gray-600 space-y-1">
+                      {exercise.formTips.map((tip: string, i: number) => (
+                        <li key={i} className="flex items-start">
+                          <span className="text-green-500 mr-1">•</span>
+                          {tip}
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
+
+                {/* Common Mistakes */}
+                {exercise.commonMistakes && exercise.commonMistakes.length > 0 && (
+                  <div>
+                    <h4 className="text-xs font-semibold text-red-700 mb-1">✗ Avoid these mistakes:</h4>
+                    <ul className="text-xs text-gray-600 space-y-1">
+                      {exercise.commonMistakes.map((mistake: string, i: number) => (
+                        <li key={i} className="flex items-start">
+                          <span className="text-red-500 mr-1">•</span>
+                          {mistake}
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
+
+                {/* Modifications */}
+                {exercise.modifications && (
+                  <div>
+                    <h4 className="text-xs font-semibold text-gray-700 mb-1">Modifications:</h4>
+                    <div className="space-y-1 text-xs">
+                      <p><span className="font-medium text-green-600">Beginner:</span> {exercise.modifications.beginner}</p>
+                      <p><span className="font-medium text-blue-600">Intermediate:</span> {exercise.modifications.intermediate}</p>
+                      <p><span className="font-medium text-purple-600">Advanced:</span> {exercise.modifications.advanced}</p>
+                    </div>
+                  </div>
+                )}
+
+                {/* Warmup Sets */}
+                {exercise.weightGuidance?.warmupSets && (
+                  <div className="bg-yellow-50 border border-yellow-200 rounded p-2">
+                    <p className="text-xs text-yellow-800">
+                      <span className="font-semibold">Warmup:</span> {exercise.weightGuidance.warmupSets}
+                    </p>
+                  </div>
+                )}
+              </div>
             )}
           </div>
-        </div>
-
-        {/* Content - Right side */}
-        <div className="flex-1 min-w-0">
-          <div className="flex items-start justify-between mb-2">
-            <div className="flex-1">
-              <h3 className="font-semibold text-black text-sm leading-tight">
-                {exercise.name}
-              </h3>
-              <div className="flex flex-wrap gap-1 mt-1">
-                {(exercise.muscleTargets || []).slice(0, 2).map((muscle: string) => (
-                  <Badge key={muscle} variant="secondary" className="text-xs bg-purple-50 text-purple-700 border-purple-200">
-                    {muscle}
-                  </Badge>
-                ))}
-              </div>
-            </div>
-            <Button
-              size="sm"
-              variant={isCompleted ? "default" : "outline"}
-              onClick={() => toggleExerciseComplete(exerciseId)}
-              className={`text-xs px-3 py-1 h-7 ml-2 flex-shrink-0 ${
-                isCompleted
-                  ? "bg-green-600 hover:bg-green-700 text-white"
-                  : "border-purple-300 text-purple-700 hover:bg-purple-50"
-              }`}
-            >
-              {isCompleted ? (
-                <CheckCircle className="w-3 h-3" />
-              ) : (
-                <Play className="w-3 h-3" />
-              )}
-            </Button>
-          </div>
-
-          {/* Exercise Details */}
-          <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs mb-2 sm:grid sm:grid-cols-3 sm:gap-2">
-            <div className="flex items-center">
-              <span className="font-bold text-purple-600">{exercise.sets} sets</span>
-            </div>
-            <div className="flex items-center">
-              <span className="font-bold text-purple-600">{exercise.reps} reps</span>
-            </div>
-            <div className="flex items-center">
-              <TimerIcon className="w-3 h-3 mr-1 text-purple-600" weight="regular" />
-              <span className="font-bold text-purple-600">{exercise.restTime} rest</span>
-            </div>
-          </div>
-
-          {exercise.description && (
-            <p className="text-xs text-gray-600 mb-2 leading-relaxed">{exercise.description}</p>
-          )}
-
-          {exercise.instructions && (
-            <p className="text-xs text-gray-500 leading-relaxed">{exercise.instructions}</p>
-          )}
         </div>
       </div>
     );
@@ -486,26 +596,58 @@ export function WorkoutPlanPage({ onNavigate, generationStatus }: WorkoutPlanPag
     </div>
   );
 
-  const RestDay = ({ description }: { description: string }) => (
+  const RestDay = ({ description, activeRecovery }: { description: string; activeRecovery?: any }) => (
     <Card className="mb-6 border-0 shadow-subtle bg-gradient-to-br from-green-50 to-blue-50">
-      <CardContent className="p-8 text-center">
-        <div className="w-16 h-16 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-4">
-          <UserCircle className="w-8 h-8 text-green-600" weight="regular" />
+      <CardContent className="p-6 sm:p-8">
+        <div className="text-center mb-6">
+          <div className="w-16 h-16 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-4">
+            <UserCircle className="w-8 h-8 text-green-600" weight="regular" />
+          </div>
+          <h3 className="text-xl font-medium text-neutral-900 mb-2">Rest & Recovery Day</h3>
+          <p className="text-neutral-600">{description}</p>
         </div>
-        <h3 className="text-xl font-medium text-neutral-900 mb-3">Rest & Recovery Day</h3>
-        <p className="text-neutral-600 mb-6">{description}</p>
+
+        {/* Personalized Active Recovery */}
+        {activeRecovery && (
+          <div className="bg-white rounded-lg p-4 mb-6 border border-green-200">
+            <h4 className="font-semibold text-green-800 mb-2 flex items-center">
+              <span className="mr-2">🎯</span> Suggested for You
+            </h4>
+            <div className="mb-3">
+              <p className="text-lg font-medium text-gray-900">{activeRecovery.suggestedActivity}</p>
+              <p className="text-sm text-gray-600">{activeRecovery.duration}</p>
+            </div>
+            <p className="text-sm text-gray-600 mb-4">{activeRecovery.description}</p>
+
+            {activeRecovery.alternatives && activeRecovery.alternatives.length > 0 && (
+              <div>
+                <p className="text-xs font-semibold text-gray-500 mb-2">Other options:</p>
+                <ul className="text-sm text-gray-600 space-y-1">
+                  {activeRecovery.alternatives.map((alt: string, i: number) => (
+                    <li key={i} className="flex items-center">
+                      <span className="text-green-500 mr-2">•</span>
+                      {alt}
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* Recovery Tips */}
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-sm">
           <div className="p-4 bg-white rounded-lg shadow-sm">
-            <div className="font-medium text-green-600 mb-1">Hydration</div>
+            <div className="font-medium text-green-600 mb-1">💧 Hydration</div>
             <div className="text-neutral-600">Drink plenty of water throughout the day</div>
           </div>
           <div className="p-4 bg-white rounded-lg shadow-sm">
-            <div className="font-medium text-blue-600 mb-1">Recovery</div>
-            <div className="text-neutral-600">Light stretching or yoga</div>
+            <div className="font-medium text-blue-600 mb-1">😴 Sleep</div>
+            <div className="text-neutral-600">Aim for 7-9 hours of quality sleep</div>
           </div>
           <div className="p-4 bg-white rounded-lg shadow-sm">
-            <div className="font-medium text-purple-600 mb-1">Nutrition</div>
-            <div className="text-neutral-600">Focus on protein and nutrients</div>
+            <div className="font-medium text-purple-600 mb-1">🥗 Nutrition</div>
+            <div className="text-neutral-600">Focus on protein and nutrients for recovery</div>
           </div>
         </div>
       </CardContent>
@@ -781,17 +923,64 @@ export function WorkoutPlanPage({ onNavigate, generationStatus }: WorkoutPlanPag
         {/* Exercises or Rest Day */}
         <div className="space-y-6 pb-20 sm:pb-24">
           {currentWorkout.restDay ? (
-            <RestDay description={currentWorkout.description} />
+            <RestDay
+              description={currentWorkout.description}
+              activeRecovery={currentWorkout.activeRecovery}
+            />
           ) : (
             <>
               {currentWorkout.exercises.length > 0 ? (
-                <div className="space-y-3">
-                  <h3 className="text-lg font-semibold text-purple-600 border-l-4 border-purple-600 pl-3 mb-3">
-                    Today's Exercises
-                  </h3>
-                  {currentWorkout.exercises.map((exercise: any) => (
-                    <ExerciseCard key={exercise.id || exercise.name} exercise={exercise} />
-                  ))}
+                <div className="space-y-6">
+                  {/* Warmup Section */}
+                  {currentWorkout.warmup && currentWorkout.warmup.length > 0 && (
+                    <div className="space-y-3">
+                      <h3 className="text-lg font-semibold text-orange-600 border-l-4 border-orange-600 pl-3">
+                        Warmup (5 min)
+                      </h3>
+                      <div className="bg-orange-50 border border-orange-200 rounded-lg p-4 space-y-2">
+                        {currentWorkout.warmup.map((warmupEx: any, i: number) => (
+                          <div key={i} className="flex items-center justify-between text-sm">
+                            <div>
+                              <span className="font-medium text-orange-800">{warmupEx.name}</span>
+                              <span className="text-orange-600 ml-2">- {warmupEx.duration}</span>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Main Exercises */}
+                  <div className="space-y-3">
+                    <h3 className="text-lg font-semibold text-purple-600 border-l-4 border-purple-600 pl-3">
+                      Main Workout
+                    </h3>
+                    {currentWorkout.exercises.map((exercise: any) => (
+                      <ExerciseCard key={exercise.id || exercise.name} exercise={exercise} />
+                    ))}
+                  </div>
+
+                  {/* Cooldown Section */}
+                  {currentWorkout.cooldown && currentWorkout.cooldown.length > 0 && (
+                    <div className="space-y-3">
+                      <h3 className="text-lg font-semibold text-blue-600 border-l-4 border-blue-600 pl-3">
+                        Cooldown Stretches (5 min)
+                      </h3>
+                      <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 space-y-2">
+                        {currentWorkout.cooldown.map((cooldownEx: any, i: number) => (
+                          <div key={i} className="text-sm">
+                            <div className="flex items-center justify-between">
+                              <span className="font-medium text-blue-800">{cooldownEx.name}</span>
+                              <span className="text-blue-600">{cooldownEx.duration}</span>
+                            </div>
+                            {cooldownEx.instructions && (
+                              <p className="text-xs text-blue-600 mt-1">{cooldownEx.instructions}</p>
+                            )}
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
                 </div>
               ) : (
                 <div className="text-center py-12 bg-white border-2 border-dashed border-gray-300 rounded-xl">

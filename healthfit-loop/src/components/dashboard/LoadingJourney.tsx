@@ -497,6 +497,14 @@ export function LoadingJourney({ surveyData, onComplete, onSkipToDashboard }: Lo
                   Send
                 </Button>
               </div>
+              <div className="mt-3 text-center">
+                <a
+                  href={`/login?mode=signup&email=${encodeURIComponent(surveyData?.email || email || '')}`}
+                  className="text-sm text-red-600 hover:text-red-700 font-medium"
+                >
+                  Create account instead →
+                </a>
+              </div>
             </div>
           ) : (
             <motion.div

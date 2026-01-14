@@ -17,20 +17,29 @@ interface AuthMessage {
 function LoginContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
-  const [isLogin, setIsLogin] = useState(true);
   const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState<AuthMessage | null>(null);
 
+  // Get pre-filled email from URL (from survey)
+  const prefillEmail = searchParams.get('email') || '';
+  const initialMode = searchParams.get('mode');
+
   const [formData, setFormData] = useState({
-    email: '',
+    email: prefillEmail,
     password: '',
     firstName: '',
     lastName: '',
     confirmPassword: ''
   });
 
+  // If mode=signup is specified, start in signup mode
+  const [isLogin, setIsLogin] = useState(initialMode !== 'signup');
+
   const redirectTo = searchParams.get('redirect') || '/dashboard';
+
+  // Email is locked if it came from survey (during signup only)
+  const emailIsLocked = !!prefillEmail && !isLogin;
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -78,7 +87,17 @@ function LoginContent() {
           router.push(redirectTo);
         }, 1000);
       } else {
-        setMessage({ type: 'error', text: data.error || 'Authentication failed' });
+        // Provide helpful message for duplicate accounts
+        if (response.status === 409) {
+          setMessage({
+            type: 'error',
+            text: 'An account with this email already exists. Please sign in instead.'
+          });
+          // Auto-switch to login mode after a moment
+          setTimeout(() => setIsLogin(true), 2000);
+        } else {
+          setMessage({ type: 'error', text: data.error || 'Authentication failed' });
+        }
       }
     } catch (error) {
       setMessage({ type: 'error', text: 'Network error. Please try again.' });
@@ -154,10 +173,18 @@ function LoginContent() {
                   type="email"
                   required
                   value={formData.email}
-                  onChange={(e) => updateFormData('email', e.target.value)}
-                  className="mt-1 border-gray-300 focus:border-red-500"
+                  onChange={(e) => !emailIsLocked && updateFormData('email', e.target.value)}
+                  readOnly={emailIsLocked}
+                  className={`mt-1 border-gray-300 focus:border-red-500 ${
+                    emailIsLocked ? 'bg-gray-100 cursor-not-allowed' : ''
+                  }`}
                   placeholder="your.email@example.com"
                 />
+                {emailIsLocked && (
+                  <p className="mt-1 text-xs text-gray-500">
+                    This email was used during your survey and cannot be changed
+                  </p>
+                )}
               </div>
 
               <div>
@@ -237,10 +264,12 @@ function LoginContent() {
                 <button
                   type="button"
                   onClick={() => {
-                    setIsLogin(!isLogin);
+                    const switchingToLogin = !isLogin;
+                    setIsLogin(switchingToLogin);
                     setMessage(null);
                     setFormData({
-                      email: formData.email, // Keep email
+                      // Keep prefill email when switching, or keep current email
+                      email: prefillEmail || formData.email,
                       password: '',
                       firstName: '',
                       lastName: '',

@@ -157,9 +157,9 @@ async function findAndSelectBestRestaurants(surveyData: any): Promise<Restaurant
     
     const allRestaurants: Restaurant[] = [];
     
-    // Convert distance preference to miles
-    const radiusMiles = surveyData.distancePreference === 'close' ? 2 :
-                        surveyData.distancePreference === 'far' ? 10 : 5;
+    // Convert distance preference to miles (reduced by 0.5mi for tighter results)
+    const radiusMiles = surveyData.distancePreference === 'close' ? 1.5 :
+                        surveyData.distancePreference === 'far' ? 9.5 : 4.5;
     
     // Search for each cuisine (limit to 6 for performance)
     for (const cuisine of cuisines.slice(0, 6)) {
