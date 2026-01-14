@@ -172,18 +172,32 @@ model MealFeedback {
 }
 
 model MealConsumptionLog {
-  id        String   @id @default(cuid())
-  userId    String?
-  sessionId String?
-  mealId    String
-  day       String
-  calories  Int
-  wasEaten  Boolean  @default(false)
-  loggedAt  DateTime @default(now())
-  user      User?    @relation(fields: [userId], references: [id])
+  id             String   @id @default(cuid())
+  userId         String?
+  sessionId      String?
+  surveyId       String?
+  mealPlanId     String?
+  weekNumber     Int      @default(1)
+  mealId         String
+  day            String
+  mealType       String?
+  optionType     String?
+  mealName       String?
+  calories       Int
+  protein        Int?
+  carbs          Int?
+  fat            Int?
+  source         String?
+  restaurantName String?
+  wasEaten       Boolean  @default(false)
+  loggedAt       DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+  user           User?    @relation(fields: [userId], references: [id])
 
+  @@unique([surveyId, weekNumber, day, mealType, optionType])
   @@index([userId])
   @@index([sessionId])
+  @@index([surveyId])
   @@index([mealId])
   @@index([day])
 }
@@ -426,6 +440,7 @@ model MealFeedbackLog {
 
   // Feedback data
   feedbackType    String      // 'loved' | 'disliked' | 'neutral'
+  rating          Int?        // 1-5 star rating
 
   // Denormalized for easy querying (don't need joins)
   dishName        String
@@ -449,6 +464,32 @@ model MealFeedbackLog {
   @@index([dishName])
   @@index([feedbackType])
   @@index([weekOf])
+}
+
+model WeightLog {
+  id        String   @id @default(cuid())
+  userId    String?
+  surveyId  String
+  weight    Float
+  unit      String   @default("lbs")
+  notes     String?
+  loggedAt  DateTime @default(now())
+
+  @@index([surveyId])
+  @@index([loggedAt])
+}
+
+model FavoriteRestaurant {
+  id             String   @id @default(cuid())
+  userId         String?
+  surveyId       String
+  restaurantName String
+  cuisine        String?
+  address        String?
+  addedAt        DateTime @default(now())
+
+  @@unique([surveyId, restaurantName])
+  @@index([surveyId])
 }
 
 enum HealthGoal {

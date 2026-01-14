@@ -52,6 +52,11 @@ export function WorkoutPlanPage({ onNavigate, generationStatus }: WorkoutPlanPag
   const planExpired = planStartDate ? isPlanExpired(planStartDate, userTimezone) : false;
   const days = planStartDate ? getPlanDays(planStartDate) : [];
 
+  // Extract workout plan IDs for database persistence
+  const surveyId = workoutData?.workoutPlan?.surveyId;
+  const workoutPlanId = workoutData?.workoutPlan?.id;
+  const weekNumber = workoutData?.workoutPlan?.weekNumber || 1;
+
   // Get available workout days from the actual data
   const getDaysWithWorkoutData = () => {
     if (workoutData && workoutData.workoutPlan && workoutData.workoutPlan.planData && workoutData.workoutPlan.planData.weeklyPlan) {
@@ -149,6 +154,37 @@ export function WorkoutPlanPage({ onNavigate, generationStatus }: WorkoutPlanPag
     }
   }, [planStartDate, days, userTimezone, planExpired, selectedDay]);
 
+  // Load exercise completion from database
+  useEffect(() => {
+    const loadWorkoutCompletion = async () => {
+      if (!workoutPlanId) return;
+
+      try {
+        const response = await fetch(`/api/workouts/log-exercise?workoutPlanId=${workoutPlanId}`);
+        if (response.ok) {
+          const data = await response.json();
+
+          if (data.completedByDay) {
+            // Convert to Set format
+            const completed: Record<string, Set<string>> = {};
+            Object.entries(data.completedByDay).forEach(([day, exercises]) => {
+              completed[day] = new Set(exercises as string[]);
+            });
+
+            setCompletedExercises(prev => ({ ...prev, ...completed }));
+            console.log('[WORKOUT-PLAN] Loaded completion from DB');
+          }
+        }
+      } catch (err) {
+        console.error('[WORKOUT-PLAN] Failed to load completion:', err);
+      }
+    };
+
+    if (workoutPlanId && workoutData) {
+      loadWorkoutCompletion();
+    }
+  }, [workoutPlanId, workoutData]);
+
   // Save completed exercises to localStorage whenever it changes
   useEffect(() => {
     console.log('WorkoutPlanPage - Saving to localStorage:', completedExercises);
@@ -179,22 +215,64 @@ export function WorkoutPlanPage({ onNavigate, generationStatus }: WorkoutPlanPag
     }
   };
 
-  const toggleExerciseComplete = (exerciseId: string) => {
+  const toggleExerciseComplete = async (exerciseId: string) => {
+    const isCurrentlyCompleted = completedExercises[selectedDay]?.has(exerciseId);
+    const newCompletedState = !isCurrentlyCompleted;
+
+    // Update local state immediately
     setCompletedExercises(prev => {
-      const dayCompleted = prev[selectedDay] || new Set();
-      const newDayCompleted = new Set(dayCompleted);
-
-      if (newDayCompleted.has(exerciseId)) {
-        newDayCompleted.delete(exerciseId);
+      const dayExercises = new Set(prev[selectedDay] || []);
+      if (newCompletedState) {
+        dayExercises.add(exerciseId);
       } else {
-        newDayCompleted.add(exerciseId);
+        dayExercises.delete(exerciseId);
       }
+      const newState = { ...prev, [selectedDay]: dayExercises };
 
-      return {
-        ...prev,
-        [selectedDay]: newDayCompleted
-      };
+      // Save to localStorage
+      const serializable: Record<string, string[]> = {};
+      Object.entries(newState).forEach(([day, exercises]) => {
+        serializable[day] = Array.from(exercises);
+      });
+      localStorage.setItem('completedExercises', JSON.stringify(serializable));
+
+      return newState;
     });
+
+    // Get exercise details
+    const todaysWorkoutData = getCurrentWorkout();
+    const exercise = todaysWorkoutData?.exercises?.find((e: any) => e.name === exerciseId);
+
+    // Save to database
+    if (workoutPlanId) {
+      fetch('/api/workouts/log-exercise', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          surveyId,
+          workoutPlanId,
+          weekNumber,
+          day: selectedDay,
+          exerciseName: exerciseId,
+          focus: todaysWorkoutData?.focus || 'General',
+          completed: newCompletedState,
+          estimatedCalories: exercise?.calories || 0,
+          duration: exercise?.duration || null
+        })
+      }).catch(err => console.error('[WORKOUT-LOG] API Error:', err));
+    }
+
+    // Dispatch event for dashboard
+    const serializable: Record<string, string[]> = {};
+    Object.entries(completedExercises).forEach(([day, exercises]) => {
+      serializable[day] = Array.from(exercises);
+    });
+    if (newCompletedState) {
+      serializable[selectedDay] = [...(serializable[selectedDay] || []), exerciseId];
+    } else {
+      serializable[selectedDay] = (serializable[selectedDay] || []).filter(e => e !== exerciseId);
+    }
+    window.dispatchEvent(new CustomEvent('completedExercisesUpdate', { detail: serializable }));
   };
 
   const activities = [

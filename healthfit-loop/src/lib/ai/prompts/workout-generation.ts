@@ -359,36 +359,79 @@ ${guidance}
 })()}PREFERRED ACTIVITIES INTEGRATION:
 ${(() => {
   const activities = surveyData.preferredActivities || [];
-  if (activities.length === 0) return '';
+  const sports = surveyData.sportsInterests || '';
+
+  if (activities.length === 0 && !sports) return '';
 
   let activityPlan = `
-⚠️ MANDATORY: Include the user's preferred activities in the weekly plan:
+MANDATORY - INTEGRATE USER'S PREFERRED ACTIVITIES:
+The user specifically chose these activities because they ENJOY them. You MUST include them:
+
 `;
 
+  // Sports interests
+  if (sports) {
+    activityPlan += `SPORTS: ${sports}
+- Include 1-2 dedicated sports-specific training days OR integrate sport drills into existing days
+- For ${sports.split(',')[0]?.trim() || 'their sport'}:
+  * Include agility drills, sport-specific movements, and conditioning
+  * Make one day's description reference how the workout helps their sport
+  * Example: "Today's lateral work directly translates to better court movement in basketball!"
+
+`;
+  }
+
   activities.forEach(activity => {
-    if (activity.includes('Cardio')) {
-      activityPlan += `- CARDIO: Schedule 2-3 dedicated cardio sessions (running, cycling, or swimming based on preference)\n`;
-    }
-    if (activity.includes('Strength')) {
-      activityPlan += `- STRENGTH: This is already the core focus - ensure progressive overload\n`;
-    }
-    if (activity.includes('Sports')) {
-      activityPlan += `- SPORTS: Include 1 day with sport-specific drills or skills practice\n`;
+    if (activity.includes('Cardio') || activity.includes('Running') || activity.includes('Cycling')) {
+      activityPlan += `CARDIO LOVER: Include 2-3 dedicated cardio sessions:
+  - One steady-state cardio day (30-45 min run, bike, or swim)
+  - One HIIT day (sprints, intervals, or circuit training)
+  - Can combine cardio with strength on some days (finishers)
+  - Make cardio days feel like a reward, not a punishment!
+
+`;
     }
     if (activity.includes('Mind-Body') || activity.includes('Yoga') || activity.includes('Pilates')) {
-      activityPlan += `- MIND-BODY: Include 1 dedicated yoga/mobility/stretching session (can be active recovery day)\n`;
+      activityPlan += `MIND-BODY: Include 1 dedicated yoga/mobility day:
+  - Full 30-45 min yoga flow or stretching session
+  - NOT just "active recovery" - a real structured session
+  - Include specific poses/stretches, not just "do yoga"
+  - Great for rest days - transforms rest into purposeful practice
+
+`;
+    }
+    if (activity.includes('Sports')) {
+      activityPlan += `SPORTS ENTHUSIAST: Include sport-specific training:
+  - 1 day focused on athletic performance (agility, power, speed)
+  - Include drills like ladder work, cone drills, plyometrics
+  - Make it FUN - these should feel like practice, not punishment
+
+`;
     }
     if (activity.includes('Outdoor')) {
-      activityPlan += `- OUTDOOR: Suggest outdoor alternatives for cardio days (hiking, trail running, outdoor circuits)\n`;
+      activityPlan += `OUTDOOR LOVER: Suggest outdoor alternatives:
+  - Note when exercises can be done outside
+  - Include hiking, trail running, or outdoor circuits as options
+  - One day could be "Outdoor Adventure Day" with suggested activities
+
+`;
     }
-    if (activity.includes('Group') || activity.includes('Dance') || activity.includes('CrossFit')) {
-      activityPlan += `- GROUP FITNESS: Note that user enjoys group settings - suggest class-style workouts or partner exercises\n`;
+    if (activity.includes('Swimming')) {
+      activityPlan += `SWIMMER: Include swimming options:
+  - 1-2 days can be swim workouts (laps, drills, water aerobics)
+  - Great for active recovery and cardio
+  - Specify stroke types and distances when suggesting swim workouts
+
+`;
     }
-    if (activity.includes('Low Impact') || activity.includes('Walking')) {
-      activityPlan += `- LOW IMPACT: Include walking or low-impact cardio options, especially on recovery days\n`;
-    }
-    if (activity.includes('Martial Arts') || activity.includes('Combat')) {
-      activityPlan += `- MARTIAL ARTS: Include combat-style conditioning (heavy bag work simulation, agility, core power)\n`;
+    if (activity.includes('Martial Arts') || activity.includes('Combat') || activity.includes('Boxing')) {
+      activityPlan += `COMBAT SPORTS: Include striking/martial arts elements:
+  - Heavy bag work simulations (shadowboxing combinations)
+  - Core power and rotational exercises
+  - Agility and footwork drills
+  - One dedicated "Combat Conditioning" day if possible
+
+`;
     }
   });
 
@@ -458,6 +501,111 @@ RETURN EXACTLY THIS JSON STRUCTURE:
             "advanced": "Decline push-ups (feet elevated), diamond push-ups, or weighted push-ups with plate on back"
           },
           "muscleTargets": ["chest", "shoulders", "triceps", "core"]
+        },
+        {
+          "name": "Incline Dumbbell Press",
+          "sets": 3,
+          "reps": "10-12",
+          "restTime": "90 seconds",
+          "description": "Targets the upper chest for a fuller, more defined look.",
+          "instructions": "Set bench to 30-45 degree incline. Press dumbbells up and together.",
+          "formTips": ["Keep shoulder blades squeezed together", "Don't let elbows flare past 45 degrees"],
+          "breathingCue": "Exhale as you press up",
+          "weightGuidance": {
+            "method": "RPE",
+            "suggestion": "Start with weights you can control for all 12 reps. Increase when you can do 15.",
+            "rpeTarget": 7
+          },
+          "modifications": {
+            "beginner": "Use lighter dumbbells or do incline push-ups on a bench",
+            "intermediate": "Standard incline dumbbell press",
+            "advanced": "Pause at bottom for 2 seconds each rep"
+          },
+          "muscleTargets": ["upper chest", "shoulders", "triceps"]
+        },
+        {
+          "name": "Dumbbell Shoulder Press",
+          "sets": 3,
+          "reps": "10-12",
+          "restTime": "90 seconds",
+          "description": "Builds strong, defined shoulders that improve your overall upper body strength.",
+          "instructions": "Press dumbbells straight up from shoulder height, then lower with control.",
+          "formTips": ["Keep core tight", "Don't arch your back excessively"],
+          "breathingCue": "Exhale as you press up, inhale as you lower",
+          "weightGuidance": {
+            "method": "RPE",
+            "suggestion": "Start lighter than you think - shoulders fatigue quickly. Focus on form.",
+            "rpeTarget": 7
+          },
+          "modifications": {
+            "beginner": "Seated shoulder press for better stability",
+            "intermediate": "Standing dumbbell shoulder press",
+            "advanced": "Single-arm overhead press for core challenge"
+          },
+          "muscleTargets": ["shoulders", "triceps", "core"]
+        },
+        {
+          "name": "Tricep Dips (or Bench Dips)",
+          "sets": 3,
+          "reps": "12-15",
+          "restTime": "60 seconds",
+          "description": "Sculpts the back of your arms for that strong, defined tricep look.",
+          "instructions": "Lower body by bending elbows behind you, then press back up.",
+          "formTips": ["Keep elbows close to body", "Lower until you feel a stretch"],
+          "breathingCue": "Inhale down, exhale up",
+          "weightGuidance": {
+            "method": "bodyweight",
+            "suggestion": "If too easy, elevate feet. If too hard, bend knees more.",
+            "rpeTarget": 6
+          },
+          "modifications": {
+            "beginner": "Assisted dips or bench dips with feet close to bench",
+            "intermediate": "Standard bench dips",
+            "advanced": "Feet elevated or add weight on lap"
+          },
+          "muscleTargets": ["triceps", "shoulders", "chest"]
+        },
+        {
+          "name": "Lateral Raises",
+          "sets": 3,
+          "reps": "12-15",
+          "restTime": "60 seconds",
+          "description": "Creates that wide shoulder look and improves shoulder stability.",
+          "instructions": "Raise dumbbells out to sides until arms are parallel to floor.",
+          "formTips": ["Slight bend in elbows", "Lead with your pinkies"],
+          "breathingCue": "Exhale as you raise, inhale as you lower",
+          "weightGuidance": {
+            "method": "RPE",
+            "suggestion": "Use lighter weights - this exercise is about form and feeling the burn.",
+            "rpeTarget": 6
+          },
+          "modifications": {
+            "beginner": "Very light dumbbells or water bottles",
+            "intermediate": "Standard lateral raises",
+            "advanced": "Pause at the top for 2 seconds"
+          },
+          "muscleTargets": ["side delts", "shoulders"]
+        },
+        {
+          "name": "Plank Hold",
+          "sets": 3,
+          "reps": "30-45 seconds",
+          "restTime": "60 seconds",
+          "description": "Builds rock-solid core strength that supports all your other lifts.",
+          "instructions": "Hold plank position with perfect form - straight line from head to heels.",
+          "formTips": ["Engage core like bracing for a punch", "Don't let hips sag or pike up"],
+          "breathingCue": "Breathe normally - don't hold your breath",
+          "weightGuidance": {
+            "method": "time",
+            "suggestion": "Focus on perfect form over duration. Better to hold 20 seconds perfectly than 60 seconds with poor form.",
+            "rpeTarget": 7
+          },
+          "modifications": {
+            "beginner": "Knee plank or incline plank (hands on bench)",
+            "intermediate": "Standard plank hold",
+            "advanced": "Single-arm plank or plank with arm/leg lifts"
+          },
+          "muscleTargets": ["core", "shoulders", "glutes"]
         }
       ],
       "cooldown": [
@@ -481,22 +629,22 @@ RETURN EXACTLY THIS JSON STRUCTURE:
     {
       "day": "tuesday",
       "restDay": true,
-      "focus": "Active Recovery",
+      "focus": "Active Recovery & Mobility",
       "estimatedTime": "20-30 minutes",
       "estimatedCalories": 100,
       "targetMuscles": [],
-      "description": "Recovery is when your muscles grow stronger. Today focus on gentle movement to promote blood flow and reduce soreness.",
+      "description": "Your muscles grow during rest, not during workouts! Today is about giving your body what it needs to come back stronger. This isn't a 'skip day' - it's a strategic recovery session that's just as important as your heavy training days.",
       "exercises": [],
       "activeRecovery": {
-        "suggestedActivity": "Based on user's preferredActivities - e.g., Yoga flow or nature walk",
-        "duration": "20-30 minutes",
-        "description": "Since you enjoy [Mind-Body activities/Outdoor activities], today is perfect for a gentle yoga session or a relaxed walk outside. Keep the intensity low - this should feel refreshing, not exhausting.",
+        "suggestedActivity": "Yoga Flow Session",
+        "duration": "25 minutes",
+        "description": "A gentle yoga flow focusing on the muscle groups you worked this week. This will improve your flexibility, reduce soreness, and help you recover faster for your next training session.",
         "alternatives": [
-          "20-minute gentle yoga or stretching routine",
-          "30-minute easy walk (conversational pace)",
-          "15-minute foam rolling session",
-          "Swimming easy laps",
-          "Light cycling or leisurely bike ride"
+          "20-minute gentle yoga or stretching routine (YouTube: 'Yoga With Adriene' has great options)",
+          "30-minute easy walk in nature - keep it conversational pace",
+          "15-minute foam rolling session focusing on legs and back",
+          "Light swimming - easy laps, focus on smooth strokes",
+          "Casual bike ride around the neighborhood (not for speed!)"
         ]
       }
     }
@@ -523,6 +671,36 @@ RETURN EXACTLY THIS JSON STRUCTURE:
 }
 
 CRITICAL REQUIREMENTS:
+
+EXERCISE COUNT REQUIREMENTS:
+- Each TRAINING DAY must have 3-7 exercises based on these factors:
+  * Time available: Short workouts (20-30min) = 3-4 exercises, Longer workouts (45min+) = 5-7 exercises
+  * User goals: Muscle building/strength = more exercises (5-7), General fitness = fewer (3-5)
+  * Experience level: Beginners = fewer exercises (3-4), Advanced = more exercises (5-7)
+  * Workout type: Full body = more exercises (5-7), Single body part = fewer (3-5)
+- Structure should be: compound movements first, then isolation, always end with core
+- For cardio/sports days: 4-6 drills or activities depending on session length
+- Example structure for a training day:
+  * Exercise 1: Main compound lift (e.g., Squats)
+  * Exercise 2: Secondary compound (e.g., Romanian Deadlifts)
+  * Exercise 3: Compound accessory (e.g., Lunges)
+  * Exercise 4: Isolation (e.g., Leg Curls)
+  * Exercise 5: Isolation (e.g., Calf Raises)
+  * Exercise 6: Core work (e.g., Planks)
+
+DAY DESCRIPTIONS (CRITICAL - MAKE ENGAGING):
+Each day's "description" field must be:
+- 2-3 sentences that get the user EXCITED about the workout
+- Personal and motivating - use "you" and "your"
+- Reference their specific goals (${surveyData.primaryGoal || surveyData.goal})
+- Include a fun fact or benefit of that day's focus
+
+BAD example: "Today's workout focuses on legs."
+GOOD example: "Today we're building powerful legs that will improve everything from your daily walks to your weekend hikes! Your quads, hamstrings, and glutes are about to get stronger - this is where real functional fitness is built. Let's make those legs work!"
+
+BAD example: "Upper body push day."
+GOOD example: "Time to sculpt your chest, shoulders, and arms! Push movements are the foundation of upper body strength - whether you're pushing a door open or crushing a workout, today's session builds real-world power. You've got this!"
+
 1. Create ALL 7 days (monday through sunday) based on user's availableDays
 2. For REST DAYS:
    - Set restDay: true
@@ -545,6 +723,16 @@ CRITICAL REQUIREMENTS:
    - For gym exercises: "Start with a weight you can lift for 12 reps, then increase when you can do 15"
    - Include RPE target (6-8 for most exercises, 8-9 for advanced)
 5. Tempo format is "eccentric-pause-concentric" (e.g., "3-1-2" = 3 sec down, 1 sec pause, 2 sec up)
+6. EXERCISE VARIETY per training day:
+   - Minimum 3 exercises, maximum 7 exercises per training day (based on time/goals/experience)
+   - Mix of compound (multi-joint) and isolation (single-joint) movements
+   - Include at least one core/stability exercise per training day
+   - For users who like sports/cardio: Include conditioning finishers (2-3 min AMRAP, etc.)
+7. DAY DESCRIPTIONS must be:
+   - Motivating and energetic (not boring/clinical)
+   - Personal (use "you" and "your")
+   - Reference the user's goals when relevant
+   - 2-3 sentences minimum
 
 Generate the complete 7-day plan now with expert-level detail and motivating descriptions:
 

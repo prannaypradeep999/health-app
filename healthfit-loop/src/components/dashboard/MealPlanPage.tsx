@@ -9,6 +9,7 @@ import {
   ArrowLeft,
   Clock,
   Star,
+  Heart,
   ArrowSquareOut,
   House,
   ChartLineUp,
@@ -72,6 +73,11 @@ export function MealPlanPage({ onNavigate, generationStatus }: MealPlanPageProps
   const currentMealPeriod = getCurrentMealPeriod(userTimezone);
   const planExpired = planStartDate ? isPlanExpired(planStartDate, userTimezone) : false;
   const days = planStartDate ? getPlanDays(planStartDate) : [];
+
+  // Extract IDs for database persistence
+  const surveyId = mealData?.mealPlan?.surveyId;
+  const mealPlanId = mealData?.mealPlan?.id;
+  const weekNumber = mealData?.mealPlan?.weekNumber || 1;
 
   // Get logged meals for a specific meal type and day
   const getLoggedMealsForType = (mealType: string, day: string) => {
@@ -247,6 +253,42 @@ export function MealPlanPage({ onNavigate, generationStatus }: MealPlanPageProps
       }
     }
   }, [planStartDate, days, userTimezone, planExpired, selectedDay]);
+
+  // Load meal consumption from database on mount
+  useEffect(() => {
+    const loadMealConsumption = async () => {
+      if (!surveyId) return;
+
+      try {
+        const response = await fetch(`/api/meals/consume?surveyId=${surveyId}&weekNumber=${weekNumber}`);
+        if (response.ok) {
+          const data = await response.json();
+
+          // Build eatenMeals state from database records
+          const dbEatenMeals: Record<string, boolean> = {};
+          data.allMealLogs?.forEach((log: any) => {
+            const key = `${log.day}-${log.mealType}-${log.optionType || 'primary'}-0`;
+            dbEatenMeals[key] = log.wasEaten;
+          });
+
+          // Merge with localStorage (prefer DB state)
+          const localEatenMeals = JSON.parse(localStorage.getItem('eatenMeals') || '{}');
+          const merged = { ...localEatenMeals, ...dbEatenMeals };
+
+          setEatenMeals(merged);
+          localStorage.setItem('eatenMeals', JSON.stringify(merged));
+
+          console.log('[MEAL-PLAN] Loaded meal consumption from DB:', data.stats);
+        }
+      } catch (err) {
+        console.error('[MEAL-PLAN] Failed to load consumption:', err);
+      }
+    };
+
+    if (surveyId && mealData) {
+      loadMealConsumption();
+    }
+  }, [surveyId, mealData, weekNumber]);
 
   // Save eaten meals to localStorage whenever it changes (same as dashboard)
   useEffect(() => {
@@ -460,29 +502,59 @@ export function MealPlanPage({ onNavigate, generationStatus }: MealPlanPageProps
   };
 
   // Toggle meal eaten status for specific meal option
-  const toggleMealEaten = (mealType: string, optionIndex: number = 0, optionType: 'primary' | 'alternative' = 'primary') => {
+  const toggleMealEaten = async (mealType: string, optionIndex: number = 0, optionType: 'primary' | 'alternative' = 'primary') => {
     const mealKey = `${selectedDay}-${mealType}-${optionType}-${optionIndex}`;
-    console.log('[MealPlan] Toggle eaten:', mealKey);
+    const newEatenState = !eatenMeals[mealKey];
 
-    const wasEaten = isMealEaten(mealType, optionIndex, optionType);
-
+    // Update localStorage immediately for fast UI
     setEatenMeals(prev => {
-      const newState = {
-        ...prev,
-        [mealKey]: !prev[mealKey]
-      };
+      const newState = { ...prev, [mealKey]: newEatenState };
+      localStorage.setItem('eatenMeals', JSON.stringify(newState));
       return newState;
     });
 
+    // Get meal details for the API
+    const dayData = mealData?.mealPlan?.planData?.days?.find((d: any) => d.day === selectedDay);
+    const mealData_inner = dayData?.meals?.[mealType];
+    const meal = optionType === 'primary' ? mealData_inner?.primary : mealData_inner?.alternative;
+
+    // Save to database (fire and forget - don't block UI)
+    if (surveyId) {
+      fetch('/api/meals/consume', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          surveyId,
+          mealPlanId,
+          weekNumber,
+          day: selectedDay,
+          mealType,
+          optionType,
+          mealName: meal?.name || meal?.dish || `${mealType} meal`,
+          calories: meal?.estimatedCalories || meal?.calories || 0,
+          protein: meal?.protein || 0,
+          carbs: meal?.carbs || 0,
+          fat: meal?.fat || 0,
+          source: meal?.source || (meal?.restaurant ? 'restaurant' : 'home'),
+          restaurantName: meal?.restaurant || null,
+          wasEaten: newEatenState
+        })
+      }).catch(err => console.error('[MEAL-CONSUME] API Error:', err));
+    }
+
+    // Dispatch event for other components
+    const event = new CustomEvent('eatenMealsUpdate', { detail: { ...eatenMeals, [mealKey]: newEatenState } });
+    window.dispatchEvent(event);
+
     // Show feedback prompt after marking as eaten (not unmarking)
-    if (!wasEaten) {
+    if (newEatenState) {
       // Get the meal option ID for feedback
       const meals = getCurrentMeals();
-      const meal = meals[mealType as keyof typeof meals];
+      const mealOption = meals[mealType as keyof typeof meals];
       let mealOptionId = null;
 
-      if (meal && meal[optionType]) {
-        mealOptionId = meal[optionType].id;
+      if (mealOption && mealOption[optionType]) {
+        mealOptionId = mealOption[optionType].id;
       }
 
       if (mealOptionId) {
@@ -705,8 +777,32 @@ export function MealPlanPage({ onNavigate, generationStatus }: MealPlanPageProps
       }
     };
 
-    const handleRating = (rating: number) => {
+    const handleRating = async (rating: number, mealOption: any) => {
       setUserRating(rating);
+
+      const isRestaurant = mealOption.source === "restaurant";
+      const dishName = isRestaurant ? mealOption.dish : mealOption.name;
+
+      try {
+        await fetch('/api/meals/feedback', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            mealOptionId: `${selectedDay}-${type}-${dishName}`,
+            feedbackType: rating >= 4 ? 'loved' : rating <= 2 ? 'disliked' : 'neutral',
+            dishName,
+            restaurantName: isRestaurant ? mealOption.restaurant : null,
+            isHomemade: !isRestaurant,
+            mealType: type,
+            day: selectedDay,
+            weekNumber: weekNumber || 1,
+            weekOf: new Date().toISOString(),
+            rating: rating
+          })
+        });
+      } catch (err) {
+        console.error('[RATING] Error saving rating:', err);
+      }
     };
 
     // NEW: Handle option toggle
@@ -758,10 +854,17 @@ export function MealPlanPage({ onNavigate, generationStatus }: MealPlanPageProps
                   {mealName || `${type} option`}
                 </h3>
                 {isRestaurant && mealOption.restaurant && (
-                  <p className="text-xs text-gray-600 mt-1">
-                    {mealOption.restaurant}
-                    {mealOption.price && <span className="ml-2 text-purple-600 font-medium">${mealOption.price}</span>}
-                  </p>
+                  <div className="flex items-center gap-2 mt-1">
+                    <p className="text-xs text-gray-600">
+                      {mealOption.restaurant}
+                      {mealOption.price && <span className="ml-2 text-purple-600 font-medium">${mealOption.price}</span>}
+                    </p>
+                    <FavoriteButton
+                      restaurantName={mealOption.restaurant}
+                      cuisine={mealOption.cuisine}
+                      mealOption={mealOption}
+                    />
+                  </div>
                 )}
                 {/* Nutrition information */}
                 {mealOption.calories && (
@@ -781,6 +884,17 @@ export function MealPlanPage({ onNavigate, generationStatus }: MealPlanPageProps
                     )}
                   </div>
                 )}
+
+                {/* Star Rating */}
+                <div className="mt-2">
+                  <StarRating
+                    dishName={mealName || `${type} meal`}
+                    restaurantName={isRestaurant ? mealOption.restaurant : undefined}
+                    mealType={type}
+                    day={selectedDay}
+                    weekNumber={weekNumber}
+                  />
+                </div>
               </div>
               <div className="flex flex-col items-end space-y-2">
                 {/* Eaten Checkbox - show for all meal options */}
@@ -890,7 +1004,7 @@ export function MealPlanPage({ onNavigate, generationStatus }: MealPlanPageProps
                 {[1, 2, 3, 4, 5].map((star) => (
                   <button
                     key={star}
-                    onClick={() => handleRating(star)}
+                    onClick={() => handleRating(star, mealOption)}
                     onMouseEnter={() => setHoveredStar(star)}
                     onMouseLeave={() => setHoveredStar(0)}
                     className="transition-colors duration-150"
@@ -898,7 +1012,7 @@ export function MealPlanPage({ onNavigate, generationStatus }: MealPlanPageProps
                     <Star
                       className={`w-4 h-4 ${
                         star <= (hoveredStar || userRating)
-                          ? 'text-purple-500 fill-current'
+                          ? 'text-yellow-400 fill-current'
                           : 'text-gray-300'
                       }`}
                     />
@@ -937,6 +1051,128 @@ export function MealPlanPage({ onNavigate, generationStatus }: MealPlanPageProps
             </div>
           </div>
         </div>
+      );
+    };
+
+    // Star Rating Component
+    const StarRating = ({
+      dishName,
+      restaurantName,
+      mealType,
+      day,
+      weekNumber: wn
+    }: {
+      dishName: string;
+      restaurantName?: string;
+      mealType: string;
+      day: string;
+      weekNumber?: number;
+    }) => {
+      const [rating, setRating] = useState(0);
+      const [hover, setHover] = useState(0);
+      const [saving, setSaving] = useState(false);
+
+      const handleRate = async (value: number) => {
+        if (saving) return;
+        setSaving(true);
+        setRating(value);
+
+        try {
+          await fetch('/api/meals/feedback', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              mealOptionId: `${day}-${mealType}-${dishName}`,
+              feedbackType: value >= 4 ? 'loved' : value <= 2 ? 'disliked' : 'neutral',
+              dishName,
+              restaurantName: restaurantName || null,
+              isHomemade: !restaurantName,
+              mealType,
+              day,
+              weekNumber: wn || weekNumber || 1,
+              weekOf: new Date().toISOString()
+            })
+          });
+          console.log(`[RATING] ${dishName}: ${value} stars`);
+        } catch (err) {
+          console.error('[RATING] Error:', err);
+        }
+        setSaving(false);
+      };
+
+      return (
+        <div className="flex gap-0.5 items-center">
+          {[1, 2, 3, 4, 5].map((star) => (
+            <button
+              key={star}
+              type="button"
+              disabled={saving}
+              onMouseEnter={() => setHover(star)}
+              onMouseLeave={() => setHover(0)}
+              onClick={() => handleRate(star)}
+              className="p-0.5 transition-transform hover:scale-110 disabled:opacity-50"
+            >
+              <Star
+                size={14}
+                weight={(hover || rating) >= star ? "fill" : "regular"}
+                className={`transition-colors ${
+                  (hover || rating) >= star
+                    ? 'text-yellow-400'
+                    : 'text-gray-300 hover:text-yellow-200'
+                }`}
+              />
+            </button>
+          ))}
+        </div>
+      );
+    };
+
+    // Favorite Restaurant Button Component
+    const FavoriteButton = ({
+      restaurantName,
+      cuisine,
+      mealOption
+    }: {
+      restaurantName: string;
+      cuisine?: string;
+      mealOption: any;
+    }) => {
+      const [isFavorite, setIsFavorite] = useState(false);
+
+      const toggleFavorite = async () => {
+        if (!surveyId) return;
+        const newState = !isFavorite;
+        setIsFavorite(newState);
+
+        try {
+          await fetch('/api/restaurants/favorite', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              surveyId,
+              restaurantName,
+              cuisine,
+              isFavorite: newState
+            })
+          });
+        } catch (err) {
+          console.error('[FAVORITE] Error:', err);
+          setIsFavorite(!newState);
+        }
+      };
+
+      return (
+        <button
+          onClick={toggleFavorite}
+          className="p-1 rounded-full hover:bg-red-50 transition-colors"
+          title={isFavorite ? 'Remove from favorites' : 'Add to favorites'}
+        >
+          <Heart
+            size={16}
+            weight={isFavorite ? "fill" : "regular"}
+            className={isFavorite ? 'text-red-500' : 'text-gray-400 hover:text-red-400'}
+          />
+        </button>
       );
     };
 

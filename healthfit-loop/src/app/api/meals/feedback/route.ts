@@ -7,6 +7,7 @@ export async function POST(req: NextRequest) {
     const {
       mealOptionId,
       feedbackType,  // 'loved' | 'disliked' | 'neutral'
+      rating,        // 1-5 star rating
       dishName,
       restaurantName,
       isHomemade,
@@ -42,6 +43,7 @@ export async function POST(req: NextRequest) {
       where: { mealOptionId },
       update: {
         feedbackType,
+        rating,
         createdAt: new Date()
       },
       create: {
@@ -49,6 +51,7 @@ export async function POST(req: NextRequest) {
         sessionId: userId ? null : sessionId,
         mealOptionId,
         feedbackType,
+        rating,
         dishName,
         restaurantName: restaurantName || null,
         isHomemade: isHomemade || false,
@@ -60,7 +63,7 @@ export async function POST(req: NextRequest) {
     });
 
     // Also update MealOption.userRating for quick access
-    const ratingValue = feedbackType === 'loved' ? 5 : feedbackType === 'disliked' ? 1 : 3;
+    const ratingValue = rating || (feedbackType === 'loved' ? 5 : feedbackType === 'disliked' ? 1 : 3);
     await prisma.mealOption.update({
       where: { id: mealOptionId },
       data: { userRating: ratingValue }

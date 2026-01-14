@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -26,12 +26,22 @@ import {
 
 interface ProgressPageProps {
   onNavigate: (screen: string) => void;
+  user?: any;
 }
 
-export function ProgressPage({ onNavigate }: ProgressPageProps) {
+export function ProgressPage({ onNavigate, user }: ProgressPageProps) {
   const [appleWatchConnected, setAppleWatchConnected] = useState(false);
   const [renphoConnected, setRenphoConnected] = useState(false);
   const [ouraConnected, setOuraConnected] = useState(false);
+
+  // Weight logging state
+  const [weightInput, setWeightInput] = useState('');
+  const [weightLogs, setWeightLogs] = useState<any[]>([]);
+  const [loadingWeight, setLoadingWeight] = useState(false);
+  const [savingWeight, setSavingWeight] = useState(false);
+
+  // Get surveyId from user's active survey
+  const surveyId = user?.activeSurveyId;
 
   // Get real progress data from localStorage or show empty states
   const getProgressData = () => {
@@ -54,6 +64,62 @@ export function ProgressPage({ onNavigate }: ProgressPageProps) {
   };
 
   const progressData = getProgressData();
+
+  // Load weight history
+  useEffect(() => {
+    const loadWeightHistory = async () => {
+      if (!surveyId) return;
+      setLoadingWeight(true);
+      try {
+        const response = await fetch(`/api/tracking/weight?surveyId=${surveyId}&limit=30`);
+        if (response.ok) {
+          const data = await response.json();
+          setWeightLogs(data.weightLogs || []);
+        }
+      } catch (err) {
+        console.error('[PROGRESS] Failed to load weight:', err);
+      }
+      setLoadingWeight(false);
+    };
+
+    loadWeightHistory();
+  }, [surveyId]);
+
+  // Log weight function
+  const logWeight = async () => {
+    if (!weightInput || !surveyId || savingWeight) return;
+
+    setSavingWeight(true);
+    try {
+      const response = await fetch('/api/tracking/weight', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          surveyId,
+          weight: parseFloat(weightInput)
+        })
+      });
+
+      if (response.ok) {
+        const data = await response.json();
+        setWeightLogs(prev => [data.weightLog, ...prev]);
+        setWeightInput('');
+      }
+    } catch (err) {
+      console.error('[PROGRESS] Failed to log weight:', err);
+    }
+    setSavingWeight(false);
+  };
+
+  // Delete weight log
+  const deleteWeightLog = async (id: string) => {
+    try {
+      await fetch(`/api/tracking/weight?id=${id}`, { method: 'DELETE' });
+      setWeightLogs(prev => prev.filter(log => log.id !== id));
+    } catch (err) {
+      console.error('[PROGRESS] Failed to delete:', err);
+    }
+  };
 
   // Empty state for when user hasn't started tracking yet
   if (!progressData.hasData) {
@@ -396,6 +462,92 @@ export function ProgressPage({ onNavigate }: ProgressPageProps) {
               </div>
             ))}
           </div>
+        </div>
+
+        {/* Weight Logging Section */}
+        <div className="bg-white border border-gray-200 rounded-2xl p-6 shadow-md">
+          <div className="flex items-center gap-2 mb-4">
+            <Scales className="w-6 h-6 text-[#c1272d]" weight="duotone" />
+            <h3 className="text-lg font-bold text-gray-900">Weight Tracking</h3>
+          </div>
+
+          {/* Input Form */}
+          <div className="flex gap-3 mb-6">
+            <div className="flex-1 relative">
+              <input
+                type="number"
+                step="0.1"
+                value={weightInput}
+                onChange={(e) => setWeightInput(e.target.value)}
+                placeholder="Enter weight"
+                className="w-full border border-gray-300 rounded-xl px-4 py-3 pr-12 focus:ring-2 focus:ring-red-500 focus:border-transparent"
+                onKeyDown={(e) => e.key === 'Enter' && logWeight()}
+              />
+              <span className="absolute right-4 top-1/2 -translate-y-1/2 text-gray-400 text-sm">lbs</span>
+            </div>
+            <Button
+              onClick={logWeight}
+              disabled={!weightInput || savingWeight}
+              className="bg-[#c1272d] hover:bg-red-700 text-white px-6"
+            >
+              {savingWeight ? (
+                <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+              ) : (
+                'Log'
+              )}
+            </Button>
+          </div>
+
+          {/* Weight History */}
+          {loadingWeight ? (
+            <div className="text-center py-4">
+              <div className="w-6 h-6 border-2 border-gray-400 border-t-transparent rounded-full animate-spin mx-auto" />
+            </div>
+          ) : weightLogs.length > 0 ? (
+            <div className="space-y-2">
+              <h4 className="text-sm font-medium text-gray-600 mb-3">Recent Entries</h4>
+              {weightLogs.slice(0, 7).map((log) => (
+                <div key={log.id} className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
+                  <div>
+                    <span className="font-semibold text-gray-900">{log.weight} lbs</span>
+                    <span className="text-sm text-gray-500 ml-3">
+                      {new Date(log.loggedAt).toLocaleDateString('en-US', {
+                        weekday: 'short',
+                        month: 'short',
+                        day: 'numeric'
+                      })}
+                    </span>
+                  </div>
+                  <button
+                    onClick={() => deleteWeightLog(log.id)}
+                    className="p-1 text-gray-400 hover:text-red-500 transition-colors"
+                  >
+                    ×
+                  </button>
+                </div>
+              ))}
+
+              {/* Weight Change Summary */}
+              {weightLogs.length >= 2 && (
+                <div className="mt-4 p-4 bg-gradient-to-r from-purple-50 to-red-50 rounded-xl">
+                  <div className="flex items-center justify-between">
+                    <span className="text-sm text-gray-600">Change from first entry:</span>
+                    <span className={`font-bold ${
+                      weightLogs[0].weight < weightLogs[weightLogs.length - 1].weight
+                        ? 'text-green-600'
+                        : weightLogs[0].weight > weightLogs[weightLogs.length - 1].weight
+                        ? 'text-red-600'
+                        : 'text-gray-600'
+                    }`}>
+                      {(weightLogs[0].weight - weightLogs[weightLogs.length - 1].weight).toFixed(1)} lbs
+                    </span>
+                  </div>
+                </div>
+              )}
+            </div>
+          ) : (
+            <p className="text-center text-gray-500 py-4">No weight entries yet. Start tracking above!</p>
+          )}
         </div>
       </div>
 

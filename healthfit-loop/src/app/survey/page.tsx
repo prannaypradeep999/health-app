@@ -613,7 +613,6 @@ interface OnboardingStepsProps {
 
 function OnboardingSteps({ onComplete, onBack }: OnboardingStepsProps) {
   const [currentStep, setCurrentStep] = useState(1);
-  const [isGeneratingMeals, setIsGeneratingMeals] = useState(false);
 
   // Template selection state
   const [selectedTemplate, setSelectedTemplate] = useState<string | null>(null);
@@ -916,9 +915,8 @@ function OnboardingSteps({ onComplete, onBack }: OnboardingStepsProps) {
   };
 
   const handleNext = async () => {
-    // Show loading after step 7 (food preferences completed)
+    // Start meal generation after step 7 (food preferences completed)
     if (currentStep === 7) {
-      setIsGeneratingMeals(true);
 
       try {
         // Start meal generation with current form data (including food preferences)
@@ -971,21 +969,17 @@ function OnboardingSteps({ onComplete, onBack }: OnboardingStepsProps) {
         const result = await response.json();
         console.log('[Frontend] Meal generation triggered:', result);
 
-        // Show loading animation for 5 seconds while generation happens in background
-        await new Promise(resolve => setTimeout(resolve, 5000));
 
       } catch (error) {
         console.error('[Progressive] Failed to start meal generation:', error);
       } finally {
-        setIsGeneratingMeals(false);
         setCurrentStep(currentStep + 1);
       }
       return;
     }
 
-    // Show loading after step 8 (workout preferences completed)
+    // Start workout generation after step 8 (workout preferences completed)
     if (currentStep === 8) {
-      setIsGeneratingMeals(true); // Reuse the loading state
 
       try {
         // Start workout generation with current form data
@@ -1038,13 +1032,10 @@ function OnboardingSteps({ onComplete, onBack }: OnboardingStepsProps) {
         const result = await response.json();
         console.log('[Frontend] Workout generation triggered:', result);
 
-        // Show loading animation for 3 seconds while generation happens in background
-        await new Promise(resolve => setTimeout(resolve, 3000));
 
       } catch (error) {
         console.error('[Progressive] Failed to start workout generation:', error);
       } finally {
-        setIsGeneratingMeals(false);
         setCurrentStep(currentStep + 1);
       }
       return;
@@ -2175,44 +2166,26 @@ function OnboardingSteps({ onComplete, onBack }: OnboardingStepsProps) {
         </div>
 
         <Card className="p-4 sm:p-6 lg:p-8 mb-6 border border-gray-200 bg-white">
-          {isGeneratingMeals ? (
-            <div className="text-center py-12">
-              <div className="mb-6">
-                <div className="text-lg font-medium text-gray-900 mb-2">
-                  Thanks for the info, generating your meal plan
-                </div>
-                <p className="text-sm text-gray-600">
-                  We're analyzing your cuisine and food preferences to find perfect options
-                </p>
-              </div>
-              <div className="flex justify-center">
-                <div className="loading-dots"></div>
-              </div>
-            </div>
-          ) : (
-            renderStep()
-          )}
+          {renderStep()}
         </Card>
 
-        {!isGeneratingMeals && (
-          <div className="flex gap-3 sm:gap-4 pt-4 border-t border-gray-100">
-            <Button
-              variant="outline"
-              onClick={handlePrevious}
-              className="flex-1 h-12 sm:h-14 px-4 sm:px-6 border-gray-300 hover:border-gray-400 bg-white text-gray-900 hover:bg-gray-50 text-sm sm:text-base"
-            >
-              <CaretLeft className="w-4 h-4 mr-2" weight="regular" />
-              Back
-            </Button>
-            <Button
-              onClick={handleNext}
-              className="flex-1 h-12 sm:h-14 px-6 sm:px-8 bg-red-600 hover:bg-red-700 text-white transition-all duration-200 text-sm sm:text-base font-medium"
-            >
-              {currentStep === totalSteps ? "Complete" : "Next"}
-              {currentStep !== totalSteps && <CaretRight className="w-4 h-4 ml-2" weight="regular" />}
-            </Button>
-          </div>
-        )}
+        <div className="flex gap-3 sm:gap-4 pt-4 border-t border-gray-100">
+          <Button
+            variant="outline"
+            onClick={handlePrevious}
+            className="flex-1 h-12 sm:h-14 px-4 sm:px-6 border-gray-300 hover:border-gray-400 bg-white text-gray-900 hover:bg-gray-50 text-sm sm:text-base"
+          >
+            <CaretLeft className="w-4 h-4 mr-2" weight="regular" />
+            Back
+          </Button>
+          <Button
+            onClick={handleNext}
+            className="flex-1 h-12 sm:h-14 px-6 sm:px-8 bg-red-600 hover:bg-red-700 text-white transition-all duration-200 text-sm sm:text-base font-medium"
+          >
+            {currentStep === totalSteps ? "Complete" : "Next"}
+            {currentStep !== totalSteps && <CaretRight className="w-4 h-4 ml-2" weight="regular" />}
+          </Button>
+        </div>
       </div>
     </div>
   );
@@ -2482,13 +2455,7 @@ function SurveyContent() {
               <div>
                 <h3 className="text-xl font-medium text-gray-900 mb-2">Survey Complete!</h3>
                 <p className="text-gray-600 leading-relaxed">
-                  Thank you for providing your information. Your personalized health and fitness plan is being generated in the background.
-                </p>
-              </div>
-
-              <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
-                <p className="text-sm text-blue-800">
-                  🚀 Your meal and workout plans are being created using AI and will be ready soon.
+                  Your survey has been completed successfully.
                 </p>
               </div>
             </div>

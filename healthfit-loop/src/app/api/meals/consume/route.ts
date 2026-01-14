@@ -2,91 +2,119 @@ import { NextResponse } from 'next/server';
 import { cookies } from 'next/headers';
 import { prisma } from '@/lib/db';
 
-export const runtime = 'nodejs';
-
 export async function POST(req: Request) {
   try {
-    const { mealId, day, mealType, calories } = await req.json();
+    const {
+      surveyId,
+      mealPlanId,
+      weekNumber = 1,
+      day,
+      mealType,
+      optionType = 'primary',
+      mealName,
+      calories = 0,
+      protein = 0,
+      carbs = 0,
+      fat = 0,
+      source = 'home',
+      restaurantName,
+      wasEaten
+    } = await req.json();
 
     const cookieStore = await cookies();
     const userId = cookieStore.get('user_id')?.value;
-    const sessionId = cookieStore.get('guest_session')?.value;
+    const sessionId = cookieStore.get('guest_session')?.value || cookieStore.get('session_id')?.value;
 
-    if (!userId && !sessionId) {
-      return NextResponse.json({ error: 'Authentication required' }, { status: 401 });
+    if (!surveyId || !day || !mealType) {
+      return NextResponse.json({ error: 'Missing required fields: surveyId, day, mealType' }, { status: 400 });
     }
 
-    // Log the meal consumption
-    const consumptionLog = await prisma.mealConsumptionLog.create({
-      data: {
+    // Upsert - allows toggling eaten/uneaten
+    const consumptionLog = await prisma.mealConsumptionLog.upsert({
+      where: {
+        surveyId_weekNumber_day_mealType_optionType: {
+          surveyId,
+          weekNumber,
+          day,
+          mealType,
+          optionType
+        }
+      },
+      update: {
+        wasEaten,
+        calories,
+        protein,
+        carbs,
+        fat,
+        mealName,
+        source,
+        restaurantName,
+        updatedAt: new Date()
+      },
+      create: {
         userId: userId || null,
         sessionId: sessionId || null,
-        mealId: mealId || `${day}_${mealType}`,
+        surveyId,
+        mealPlanId,
+        weekNumber,
+        mealId: `${day}-${mealType}-${optionType}`,
         day,
-        calories: calories || 0,
-        wasEaten: true,
-        loggedAt: new Date()
+        mealType,
+        optionType,
+        mealName,
+        calories,
+        protein,
+        carbs,
+        fat,
+        source,
+        restaurantName,
+        wasEaten
       }
     });
 
-    return NextResponse.json({
-      success: true,
-      message: 'Meal consumption logged',
-      consumptionLog
-    });
+    console.log(`[MEAL-CONSUME] ${wasEaten ? '✓ Eaten' : '✗ Uneaten'}: ${mealName || `${day} ${mealType}`}`);
+
+    return NextResponse.json({ success: true, consumptionLog });
 
   } catch (error) {
     console.error('[MEAL-CONSUME] Error:', error);
-    return NextResponse.json(
-      { error: 'Failed to log meal consumption' },
-      { status: 500 }
-    );
+    return NextResponse.json({ error: 'Failed to log meal' }, { status: 500 });
   }
 }
 
 export async function GET(req: Request) {
   try {
-    const cookieStore = await cookies();
-    const userId = cookieStore.get('user_id')?.value;
-    const sessionId = cookieStore.get('guest_session')?.value;
+    const { searchParams } = new URL(req.url);
+    const surveyId = searchParams.get('surveyId');
+    const weekNumber = parseInt(searchParams.get('weekNumber') || '1');
 
-    if (!userId && !sessionId) {
-      return NextResponse.json({ error: 'Authentication required' }, { status: 401 });
+    if (!surveyId) {
+      return NextResponse.json({ error: 'surveyId required' }, { status: 400 });
     }
 
-    // Get today's date
-    const today = new Date().toISOString().split('T')[0];
-
-    // Get today's consumed meals
-    const consumedMeals = await prisma.mealConsumptionLog.findMany({
-      where: {
-        OR: [
-          { userId: userId || undefined },
-          { sessionId: sessionId || undefined }
-        ],
-        day: today,
-        wasEaten: true
-      },
-      orderBy: {
-        loggedAt: 'desc'
-      }
+    // Get ALL meal logs for this week (eaten and uneaten for UI state restoration)
+    const allMealLogs = await prisma.mealConsumptionLog.findMany({
+      where: { surveyId, weekNumber },
+      orderBy: { loggedAt: 'desc' }
     });
 
-    // Calculate total calories consumed today
-    const totalCaloriesConsumed = consumedMeals.reduce((sum, log) => sum + log.calories, 0);
+    const eatenMeals = allMealLogs.filter(m => m.wasEaten);
 
     return NextResponse.json({
       success: true,
-      consumedMeals,
-      totalCaloriesConsumed,
-      consumedMealTypes: consumedMeals.map(log => log.mealId)
+      allMealLogs,
+      eatenMeals,
+      stats: {
+        totalCalories: eatenMeals.reduce((sum, m) => sum + (m.calories || 0), 0),
+        totalProtein: eatenMeals.reduce((sum, m) => sum + (m.protein || 0), 0),
+        totalCarbs: eatenMeals.reduce((sum, m) => sum + (m.carbs || 0), 0),
+        totalFat: eatenMeals.reduce((sum, m) => sum + (m.fat || 0), 0),
+        mealsEaten: eatenMeals.length
+      }
     });
 
   } catch (error) {
-    console.error('[MEAL-CONSUME] Error fetching:', error);
-    return NextResponse.json(
-      { error: 'Failed to fetch meal consumption' },
-      { status: 500 }
-    );
+    console.error('[MEAL-CONSUME] GET Error:', error);
+    return NextResponse.json({ error: 'Failed to fetch' }, { status: 500 });
   }
 }
