@@ -91,3 +91,67 @@ export function getCurrentWeekRange(): { start: Date; end: Date; weekNumber: num
     weekNumber: getWeekNumber(now)
   };
 }
+
+export const MEAL_BOUNDARIES = {
+  breakfast: { start: 0, end: 11 },
+  lunch: { start: 11, end: 17 },
+  dinner: { start: 17, end: 24 }
+};
+
+export type MealPeriod = 'breakfast' | 'lunch' | 'dinner';
+
+export function getPlanDayIndex(planStartDate: Date | string, timezone: string = 'America/Los_Angeles'): number {
+  const start = new Date(planStartDate);
+  const now = new Date();
+  const startLocal = new Date(start.toLocaleString('en-US', { timeZone: timezone }));
+  const nowLocal = new Date(now.toLocaleString('en-US', { timeZone: timezone }));
+  startLocal.setHours(0, 0, 0, 0);
+  nowLocal.setHours(0, 0, 0, 0);
+  return Math.floor((nowLocal.getTime() - startLocal.getTime()) / (1000 * 60 * 60 * 24));
+}
+
+export function getCurrentMealPeriod(timezone: string = 'America/Los_Angeles'): MealPeriod {
+  const now = new Date();
+  const localTime = new Date(now.toLocaleString('en-US', { timeZone: timezone }));
+  const hour = localTime.getHours();
+  if (hour < 11) return 'breakfast';
+  if (hour < 17) return 'lunch';
+  return 'dinner';
+}
+
+export function isPlanExpired(planStartDate: Date | string, timezone: string = 'America/Los_Angeles'): boolean {
+  return getPlanDayIndex(planStartDate, timezone) >= 7;
+}
+
+export function getDayStatus(dayIndex: number, currentDayIndex: number): 'past' | 'today' | 'future' {
+  if (dayIndex < currentDayIndex) return 'past';
+  if (dayIndex === currentDayIndex) return 'today';
+  return 'future';
+}
+
+export function getPlanDays(planStartDate: Date | string) {
+  const start = new Date(planStartDate);
+  const dayNames = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'];
+  const dayDisplayNames = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+  const startDayIndex = start.getDay();
+
+  return Array.from({ length: 7 }, (_, i) => {
+    const dayIndex = (startDayIndex + i) % 7;
+    const date = new Date(start);
+    date.setDate(start.getDate() + i);
+    return {
+      id: dayNames[dayIndex],
+      name: dayDisplayNames[dayIndex],
+      dayNumber: i + 1,
+      dayIndex: i,
+      date: date.toISOString().split('T')[0]
+    };
+  });
+}
+
+export function getBrowserTimezone(): string {
+  if (typeof window !== 'undefined') {
+    return Intl.DateTimeFormat().resolvedOptions().timeZone;
+  }
+  return 'America/Los_Angeles';
+}

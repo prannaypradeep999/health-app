@@ -790,8 +790,8 @@ export function DashboardHome({ user, onNavigate, generationStatus, isGuest, onS
               };
             } else if (isHome) {
               return {
-                name: "Meal not generated",
-                subtext: "Tap to regenerate",
+                name: "Meal skipped",
+                subtext: "Consider adding a snack",
                 image: null,
                 calories: 0,
                 hideCalories: true,
@@ -871,8 +871,8 @@ export function DashboardHome({ user, onNavigate, generationStatus, isGuest, onS
             };
           } else if (isHome) {
             return {
-              name: "Home meal missing",
-              subtext: "Tap to regenerate",
+              name: "Meal skipped",
+              subtext: "Consider adding a snack",
               image: null,
               calories: 0,
               hideCalories: true,
@@ -895,7 +895,10 @@ export function DashboardHome({ user, onNavigate, generationStatus, isGuest, onS
           return {
             name: `${actualMeal.dish} from ${actualMeal.restaurant}`,
             image: actualMeal.imageUrl || actualMeal.image,
-            calories: actualMeal.calories || 0,
+            calories: actualMeal.estimatedCalories || actualMeal.calories || 0,
+            protein: actualMeal.protein || 0,
+            carbs: actualMeal.carbs || 0,
+            fat: actualMeal.fat || 0,
             restaurant: actualMeal.restaurant,
             price: actualMeal.price
           };
@@ -903,7 +906,10 @@ export function DashboardHome({ user, onNavigate, generationStatus, isGuest, onS
           return {
             name: actualMeal.name || actualMeal.dish || "Home-cooked meal",
             image: actualMeal.imageUrl || actualMeal.image,
-            calories: actualMeal.calories || 0
+            calories: actualMeal.estimatedCalories || actualMeal.calories || 0,
+            protein: actualMeal.protein || 0,
+            carbs: actualMeal.carbs || 0,
+            fat: actualMeal.fat || 0
           };
         }
       };
@@ -1172,14 +1178,14 @@ export function DashboardHome({ user, onNavigate, generationStatus, isGuest, onS
   const getMealMacro = (meal: any, macroType: string): number => {
     if (!meal) return 0;
 
-    // Try to get macro data from the meal object
+    // Try to get macro data from the meal object (direct from API)
     const macroValue = meal[macroType];
-    if (typeof macroValue === 'number') {
+    if (typeof macroValue === 'number' && macroValue > 0) {
       return macroValue;
     }
 
     // Fallback to estimated values based on calories for basic calculation
-    if (meal.calories && typeof meal.calories === 'number') {
+    if (meal.calories && typeof meal.calories === 'number' && meal.calories > 0) {
       const estimatedMacros = {
         protein: Math.round(meal.calories * 0.25 / 4), // 25% calories from protein
         carbs: Math.round(meal.calories * 0.45 / 4), // 45% calories from carbs
@@ -1189,6 +1195,41 @@ export function DashboardHome({ user, onNavigate, generationStatus, isGuest, onS
     }
 
     return 0;
+  };
+
+  // Helper function to detect skipped meals and calculate snack recommendations
+  const getSkippedMealsAndSnackRecommendation = () => {
+    const meals = getTodaysMeals();
+    const skippedMeals = [];
+
+    if (meals.breakfast.primary.isSkipped || meals.breakfast.primary.isEmpty) {
+      skippedMeals.push('breakfast');
+    }
+    if (meals.lunch.primary.isSkipped || meals.lunch.primary.isEmpty) {
+      skippedMeals.push('lunch');
+    }
+    if (meals.dinner.primary.isSkipped || meals.dinner.primary.isEmpty) {
+      skippedMeals.push('dinner');
+    }
+
+    if (skippedMeals.length === 0) return null;
+
+    // Calculate suggested snack macros based on skipped meals
+    const snackCalories = Math.round(200 + (skippedMeals.length - 1) * 100); // 200-400 cal range
+    const snackProtein = Math.round(snackCalories * 0.25 / 4); // 25% calories from protein
+    const snackCarbs = Math.round(snackCalories * 0.45 / 4); // 45% calories from carbs
+    const snackFat = Math.round(snackCalories * 0.30 / 9); // 30% calories from fat
+
+    return {
+      skippedCount: skippedMeals.length,
+      skippedMeals,
+      recommendedSnack: {
+        calories: snackCalories,
+        protein: snackProtein,
+        carbs: snackCarbs,
+        fat: snackFat
+      }
+    };
   };
 
   const todaysMeals = getTodaysMeals();
@@ -1207,6 +1248,9 @@ export function DashboardHome({ user, onNavigate, generationStatus, isGuest, onS
   const proteinEaten = getTotalProteinEaten();
   const carbsEaten = getTotalCarbsEaten();
   const fatEaten = getTotalFatEaten();
+
+  // Get snack recommendations for skipped meals
+  const snackRecommendation = getSkippedMealsAndSnackRecommendation();
 
   // Debug: Log when eaten meals change to verify checkbox → progress bar connection
   useEffect(() => {
@@ -1729,6 +1773,60 @@ export function DashboardHome({ user, onNavigate, generationStatus, isGuest, onS
             </div>
           </div>
         ) : null}
+
+        {/* Snack Recommendation Banner for Skipped Meals */}
+        {snackRecommendation && (
+          <div className="bg-gradient-to-r from-orange-50 to-amber-50 border border-orange-200 rounded-xl p-4 sm:p-6 mb-6 sm:mb-8">
+            <div className="flex items-start gap-3">
+              <div className="flex-shrink-0">
+                🍎
+              </div>
+              <div className="flex-1">
+                <h3 className="font-semibold text-orange-900 mb-1">
+                  {snackRecommendation.skippedCount === 1
+                    ? 'Consider a Healthy Snack'
+                    : 'You\'ve Skipped Multiple Meals'
+                  }
+                </h3>
+                <p className="text-sm text-orange-800 mb-3">
+                  You've skipped {snackRecommendation.skippedMeals.join(', ')}.
+                  {snackRecommendation.skippedCount === 1
+                    ? ' A healthy snack can help maintain your energy levels.'
+                    : ' Consider adding nutritious snacks to meet your daily targets.'
+                  }
+                </p>
+                <div className="flex flex-wrap gap-2 mb-3">
+                  <div className="bg-white px-3 py-1 rounded-lg border border-orange-200">
+                    <span className="text-xs text-orange-700 font-medium">
+                      ~{snackRecommendation.recommendedSnack.calories} cal
+                    </span>
+                  </div>
+                  <div className="bg-white px-3 py-1 rounded-lg border border-orange-200">
+                    <span className="text-xs text-blue-700 font-medium">
+                      {snackRecommendation.recommendedSnack.protein}g protein
+                    </span>
+                  </div>
+                  <div className="bg-white px-3 py-1 rounded-lg border border-orange-200">
+                    <span className="text-xs text-green-700 font-medium">
+                      {snackRecommendation.recommendedSnack.carbs}g carbs
+                    </span>
+                  </div>
+                  <div className="bg-white px-3 py-1 rounded-lg border border-orange-200">
+                    <span className="text-xs text-purple-700 font-medium">
+                      {snackRecommendation.recommendedSnack.fat}g fat
+                    </span>
+                  </div>
+                </div>
+                <button
+                  onClick={() => setShowLogModal(true)}
+                  className="text-sm font-medium text-orange-700 hover:text-orange-800 underline"
+                >
+                  Log a snack →
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
 
         {/* Daily Macro Progress - Compact */}
         <div className="bg-white border border-gray-200 rounded-xl p-4 sm:p-6 shadow-md mb-6 sm:mb-8">

@@ -88,6 +88,7 @@ export async function GET() {
       workoutPlan: {
         id: workoutPlan.id,
         weekOf: workoutPlan.weekOf.toISOString().split('T')[0],
+        startDate: workoutPlan.generatedAt.toISOString(),
         status: workoutPlan.status,
         planData: workoutPlan.planData,
         generatedAt: workoutPlan.generatedAt

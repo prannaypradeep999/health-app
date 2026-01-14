@@ -23,6 +23,8 @@ import {
   PencilSimple,
   Trash
 } from "@phosphor-icons/react";
+import Logo from '@/components/logo';
+import { getPlanDayIndex, getCurrentMealPeriod, getPlanDays, getDayStatus, isPlanExpired, getBrowserTimezone } from '@/lib/utils/date-utils';
 
 interface WorkoutPlanPageProps {
   onNavigate: (screen: string) => void;
@@ -34,33 +36,7 @@ interface WorkoutPlanPageProps {
 }
 
 export function WorkoutPlanPage({ onNavigate, generationStatus }: WorkoutPlanPageProps) {
-  // Generate dynamic days starting from today
-  const getDaysStartingFromToday = () => {
-    const today = new Date();
-    const dayNames = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'];
-    const dayDisplayNames = ['S', 'M', 'T', 'W', 'T', 'F', 'S']; // Single letters for mobile
-    const todayIndex = today.getDay();
-
-    const orderedDays = [];
-    for (let i = 0; i < 7; i++) { // 7-day workout plan
-      const dayIndex = (todayIndex + i) % 7;
-      orderedDays.push({
-        id: dayNames[dayIndex],
-        name: dayDisplayNames[dayIndex],
-        fullName: ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'][dayIndex], // Keep short names too
-        focus: "Loading..." // Will be updated with real data
-      });
-    }
-    return orderedDays;
-  };
-
-  const getCurrentDay = () => {
-    const today = new Date();
-    const dayNames = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'];
-    return dayNames[today.getDay()];
-  };
-
-  const [selectedDay, setSelectedDay] = useState(getCurrentDay());
+  const [selectedDay, setSelectedDay] = useState('');
   const [completedExercises, setCompletedExercises] = useState<Record<string, Set<string>>>({});
   const [workoutData, setWorkoutData] = useState<any>(null);
   const [loading, setLoading] = useState(true);
@@ -70,12 +46,16 @@ export function WorkoutPlanPage({ onNavigate, generationStatus }: WorkoutPlanPag
   const [workoutDetails, setWorkoutDetails] = useState('');
   const [showSuccessMessage, setShowSuccessMessage] = useState(false);
 
-  // Get available workout days from the actual data or fallback to dynamic days
-  const getDays = () => {
+  const [userTimezone] = useState(() => getBrowserTimezone());
+  const planStartDate = workoutData?.workoutPlan?.startDate || workoutData?.workoutPlan?.generatedAt;
+  const currentDayIndex = planStartDate ? getPlanDayIndex(planStartDate, userTimezone) : 0;
+  const planExpired = planStartDate ? isPlanExpired(planStartDate, userTimezone) : false;
+  const days = planStartDate ? getPlanDays(planStartDate) : [];
+
+  // Get available workout days from the actual data
+  const getDaysWithWorkoutData = () => {
     if (workoutData && workoutData.workoutPlan && workoutData.workoutPlan.planData && workoutData.workoutPlan.planData.weeklyPlan) {
-      // Map workout data to our dynamic day structure
-      const dynamicDays = getDaysStartingFromToday();
-      return dynamicDays.map((dayInfo) => {
+      return days.map((dayInfo) => {
         const workoutDay = workoutData.workoutPlan.planData.weeklyPlan.find((wd: any) => wd.day === dayInfo.id);
         const focusText = workoutDay ? (workoutDay.restDay ? "Rest" : workoutDay.focus) : "No workout";
         // Shorten focus text for navigation
@@ -84,19 +64,16 @@ export function WorkoutPlanPage({ onNavigate, generationStatus }: WorkoutPlanPag
           focusText;
 
         return {
-          id: dayInfo.id,
-          name: dayInfo.name,
-          fullName: dayInfo.fullName,
+          ...dayInfo,
           focus: shortFocus,
           fullFocus: focusText
         };
       });
     }
-    // Fallback to dynamic days starting from today
-    return getDaysStartingFromToday();
+    return days;
   };
 
-  const days = getDays();
+  const daysWithWorkoutData = getDaysWithWorkoutData();
 
   useEffect(() => {
     if (generationStatus.workoutsGenerated) {
@@ -154,6 +131,23 @@ export function WorkoutPlanPage({ onNavigate, generationStatus }: WorkoutPlanPag
       window.removeEventListener('completedExercisesUpdate', handleCompletedExercisesUpdate as EventListener);
     };
   }, [generationStatus.workoutsGenerated]);
+
+  // Auto-select current day when workout data loads
+  useEffect(() => {
+    if (planStartDate && days.length > 0 && !selectedDay) {
+      const currentDayIndex = getPlanDayIndex(planStartDate, userTimezone);
+
+      // If plan is not expired and current day is valid, select it
+      if (!planExpired && currentDayIndex >= 0 && currentDayIndex < days.length) {
+        setSelectedDay(days[currentDayIndex].id);
+        console.log(`[WorkoutPlan] Auto-selected current day: ${days[currentDayIndex].id} (day ${currentDayIndex + 1})`);
+      } else {
+        // Fallback to first day for expired plans or out-of-range
+        setSelectedDay(days[0].id);
+        console.log(`[WorkoutPlan] Auto-selected first day: ${days[0].id}`);
+      }
+    }
+  }, [planStartDate, days, userTimezone, planExpired, selectedDay]);
 
   // Save completed exercises to localStorage whenever it changes
   useEffect(() => {
@@ -770,14 +764,9 @@ export function WorkoutPlanPage({ onNavigate, generationStatus }: WorkoutPlanPag
               <p className="text-xs sm:text-sm text-neutral-600">Your training schedule</p>
             </div>
           </div>
-          <Button
-            variant="outline"
-            size="sm"
-            className="text-primary border-primary hover:bg-primary/5 text-xs sm:text-sm px-2 sm:px-4"
-          >
-            <span className="hidden sm:inline">Start Workout</span>
-            <span className="sm:hidden">Start</span>
-          </Button>
+          <div className="flex items-center">
+            <Logo variant="icon" width={32} height={32} href="#" />
+          </div>
         </div>
       </div>
 
@@ -785,37 +774,59 @@ export function WorkoutPlanPage({ onNavigate, generationStatus }: WorkoutPlanPag
         {/* Week Navigation */}
         <div className="mb-6">
           <div className="flex justify-center space-x-1 overflow-x-auto pb-2 px-2">
-            {days.map((day) => (
-              <Button
-                key={day.id}
-                variant={selectedDay === day.id ? "default" : "outline"}
-                size="sm"
-                onClick={() => {
-                  console.log('Workout day clicked:', day.id, 'Current selectedDay:', selectedDay);
-                  setSelectedDay(day.id);
-                }}
-                className={`min-w-12 sm:min-w-16 flex flex-col p-2 h-auto transition-all duration-200 flex-shrink-0 ${
-                  selectedDay === day.id
-                    ? "bg-red-600 text-white shadow-lg"
-                    : "border-neutral-200 hover:border-red-300 hover:bg-red-50 bg-white"
-                }`}
-              >
-                <span className="font-medium text-xs sm:text-sm">
-                  <span className="sm:hidden">{day.name}</span>
-                  <span className="hidden sm:inline">{day.fullName}</span>
-                </span>
-                <span className="text-xs opacity-70 truncate max-w-full">{day.focus}</span>
-              </Button>
-            ))}
+            {daysWithWorkoutData.map((day) => {
+              const dayStatus = getDayStatus(day.dayIndex, currentDayIndex);
+              const isSelected = selectedDay === day.id;
+
+              return (
+                <Button
+                  key={day.id}
+                  variant={isSelected ? "default" : "outline"}
+                  size="sm"
+                  onClick={() => {
+                    console.log('Workout day clicked:', day.id, 'Current selectedDay:', selectedDay);
+                    setSelectedDay(day.id);
+                  }}
+                  className={`min-w-12 sm:min-w-16 flex flex-col p-2 h-auto transition-all duration-200 flex-shrink-0 relative ${
+                    isSelected
+                      ? "bg-red-600 text-white shadow-lg"
+                      : dayStatus === 'today'
+                      ? "border-blue-400 bg-blue-50 hover:bg-blue-100 text-blue-700"
+                      : dayStatus === 'past'
+                      ? "border-gray-300 bg-gray-50 text-gray-500 hover:bg-gray-100"
+                      : "border-neutral-200 hover:border-red-300 hover:bg-red-50 bg-white"
+                  }`}
+                >
+                  <span className="font-medium text-xs sm:text-sm">
+                    <span className="sm:hidden">{day.name}</span>
+                    <span className="hidden sm:inline">{day.fullName}</span>
+                  </span>
+                  <span className="text-xs opacity-70 truncate max-w-full">{day.focus}</span>
+
+                  {/* Today indicator */}
+                  {dayStatus === 'today' && !isSelected && (
+                    <div className="absolute top-1 right-1 w-2 h-2 bg-blue-500 rounded-full"></div>
+                  )}
+
+                  {/* Checkmark for past days */}
+                  {dayStatus === 'past' && !isSelected && (
+                    <CheckCircle className="absolute top-1 right-1 w-3 h-3 text-green-500" weight="fill" />
+                  )}
+                </Button>
+              );
+            })}
           </div>
         </div>
 
         {/* Daily Overview - Compact */}
         <div className="mb-4 p-3 bg-white border border-gray-200 rounded-lg">
           <div className="flex items-center justify-between mb-2">
-            <span className="text-base font-semibold capitalize text-black">
-              {days.find(d => d.id === selectedDay)?.fullFocus || selectedDay}
-            </span>
+            <div className="flex flex-col">
+              <span className="text-base font-semibold text-black">
+                {selectedDay && selectedDay.charAt(0).toUpperCase() + selectedDay.slice(1)}
+              </span>
+              <span className="text-sm text-gray-600">{daysWithWorkoutData.find(d => d.id === selectedDay)?.fullFocus || 'Workout'}</span>
+            </div>
             <div className="flex items-center space-x-3 text-sm text-gray-600">
               <span>{currentWorkout.exercises.length} exercises</span>
               <span className="text-purple-600 font-medium">{currentWorkout.duration}min</span>

@@ -157,9 +157,11 @@ async function findAndSelectBestRestaurants(surveyData: any): Promise<Restaurant
     
     const allRestaurants: Restaurant[] = [];
     
-    // Convert distance preference to miles (reduced by 0.5mi for tighter results)
-    const radiusMiles = surveyData.distancePreference === 'close' ? 1.5 :
-                        surveyData.distancePreference === 'far' ? 9.5 : 4.5;
+    // Convert distance preference to miles (strict enforcement)
+    const radiusMiles = surveyData.distancePreference === 'close' ? 1.0 :
+                        surveyData.distancePreference === 'far' ? 8.0 : 3.0;
+
+    console.log(`[RESTAURANT-SEARCH] 📏 Distance preference: ${surveyData.distancePreference} → ${radiusMiles} miles radius (STRICT)`);
     
     // Search for each cuisine (limit to 6 for performance)
     for (const cuisine of cuisines.slice(0, 6)) {
@@ -168,7 +170,7 @@ async function findAndSelectBestRestaurants(surveyData: any): Promise<Restaurant
           location,
           cuisine,
           dietaryRestrictions,
-          8,
+          12,
           radiusMiles
         );
         console.log(`[RESTAURANT-SEARCH] Found ${restaurants.length} ${cuisine} restaurants`);
@@ -185,13 +187,13 @@ async function findAndSelectBestRestaurants(surveyData: any): Promise<Restaurant
     
     console.log(`[RESTAURANT-SEARCH] 📊 Found ${uniqueRestaurants.length} unique restaurants total`);
     
-    // If we have 6 or fewer restaurants, just return them all
-    if (uniqueRestaurants.length <= 6) {
+    // If we have 8 or fewer restaurants, just return them all
+    if (uniqueRestaurants.length <= 8) {
       console.log(`[RESTAURANT-SEARCH] ✅ Returning all ${uniqueRestaurants.length} restaurants (no AI selection needed)`);
       return uniqueRestaurants;
     }
-    
-    // Use AI to select the best 6-8 restaurants
+
+    // Use AI to select the best 8-10 restaurants (more to account for filtering)
     const selectionPrompt = createRestaurantSelectionPrompt(uniqueRestaurants, surveyData);
 
     // Calculate estimated tokens (rough estimate: 1 token ≈ 4 characters)

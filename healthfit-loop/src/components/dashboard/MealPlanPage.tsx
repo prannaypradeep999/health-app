@@ -21,10 +21,13 @@ import {
   Calendar,
   ShoppingCart,
   X,
+  CheckCircle,
 } from "@phosphor-icons/react";
 import MealLogModal from "./modals/MealLogModal";
 import { GroceryListSection } from './GroceryListSection';
 import { RestaurantListSection } from './RestaurantListSection';
+import Logo from '@/components/logo';
+import { getPlanDayIndex, getCurrentMealPeriod, getPlanDays, getDayStatus, isPlanExpired, getBrowserTimezone, type MealPeriod } from '@/lib/utils/date-utils';
 
 interface MealPlanPageProps {
   onNavigate: (screen: string) => void;
@@ -36,32 +39,7 @@ interface MealPlanPageProps {
 }
 
 export function MealPlanPage({ onNavigate, generationStatus }: MealPlanPageProps) {
-  // Generate dynamic days starting from today (7-day plan)
-  const getDaysStartingFromToday = () => {
-    const today = new Date();
-    const dayNames = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'];
-    const dayDisplayNames = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
-    const todayIndex = today.getDay();
-
-    const orderedDays = [];
-    for (let i = 0; i < 7; i++) { // 7-day plan
-      const dayIndex = (todayIndex + i) % 7;
-      orderedDays.push({
-        id: dayNames[dayIndex],
-        name: dayDisplayNames[dayIndex],
-        dayNumber: i + 1 // This is the key for matching data
-      });
-    }
-    return orderedDays;
-  };
-
-  const getCurrentDay = () => {
-    const today = new Date();
-    const dayNames = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'];
-    return dayNames[today.getDay()];
-  };
-
-  const [selectedDay, setSelectedDay] = useState(getCurrentDay());
+  const [selectedDay, setSelectedDay] = useState('');
   const [mealData, setMealData] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [nutritionTargets, setNutritionTargets] = useState<any>(null);
@@ -88,7 +66,12 @@ export function MealPlanPage({ onNavigate, generationStatus }: MealPlanPageProps
   }>({});
   const [showFeedbackFor, setShowFeedbackFor] = useState<string | null>(null);
 
-  const days = getDaysStartingFromToday();
+  const [userTimezone] = useState(() => getBrowserTimezone());
+  const planStartDate = mealData?.mealPlan?.startDate || mealData?.mealPlan?.generatedAt;
+  const currentDayIndex = planStartDate ? getPlanDayIndex(planStartDate, userTimezone) : 0;
+  const currentMealPeriod = getCurrentMealPeriod(userTimezone);
+  const planExpired = planStartDate ? isPlanExpired(planStartDate, userTimezone) : false;
+  const days = planStartDate ? getPlanDays(planStartDate) : [];
 
   // Get logged meals for a specific meal type and day
   const getLoggedMealsForType = (mealType: string, day: string) => {
@@ -247,6 +230,23 @@ export function MealPlanPage({ onNavigate, generationStatus }: MealPlanPageProps
 
     loadExistingFeedback();
   }, [mealData?.mealPlan?.planData?.days]);
+
+  // Auto-select current day when meal data loads
+  useEffect(() => {
+    if (planStartDate && days.length > 0 && !selectedDay) {
+      const currentDayIndex = getPlanDayIndex(planStartDate, userTimezone);
+
+      // If plan is not expired and current day is valid, select it
+      if (!planExpired && currentDayIndex >= 0 && currentDayIndex < days.length) {
+        setSelectedDay(days[currentDayIndex].id);
+        console.log(`[MealPlan] Auto-selected current day: ${days[currentDayIndex].id} (day ${currentDayIndex + 1})`);
+      } else {
+        // Fallback to first day for expired plans or out-of-range
+        setSelectedDay(days[0].id);
+        console.log(`[MealPlan] Auto-selected first day: ${days[0].id}`);
+      }
+    }
+  }, [planStartDate, days, userTimezone, planExpired, selectedDay]);
 
   // Save eaten meals to localStorage whenever it changes (same as dashboard)
   useEffect(() => {
@@ -595,7 +595,10 @@ export function MealPlanPage({ onNavigate, generationStatus }: MealPlanPageProps
 
     // Get the currently selected meal option
     const currentMeal = selectedOption === 'primary' ? meal.primary : meal.alternative;
-    const hasAlternative = meal.alternative && meal.alternative.name && meal.alternative.name !== "Alternative not available";
+    const hasAlternative = meal.alternative &&
+      (meal.alternative.name || meal.alternative.dish) &&
+      (meal.alternative.name !== "Alternative not available") &&
+      (meal.alternative.dish !== "Alternative not available");
 
     // Check if this meal has any ordering links (same logic as RestaurantListSection)
     const hasOrderingLinks = (meal: any): boolean => {
@@ -1361,6 +1364,9 @@ export function MealPlanPage({ onNavigate, generationStatus }: MealPlanPageProps
               <p className="text-xs sm:text-sm text-neutral-600">Your nutrition plan</p>
             </div>
           </div>
+          <div className="flex items-center">
+            <Logo variant="icon" width={32} height={32} href="#" />
+          </div>
         </div>
       </div>
 
@@ -1410,24 +1416,43 @@ export function MealPlanPage({ onNavigate, generationStatus }: MealPlanPageProps
             {/* Week Navigation */}
             <div className="mb-6">
           <div className="flex justify-center space-x-2 overflow-x-auto pb-2 px-2">
-            {days.map((day) => (
-              <Button
-                key={day.id}
-                variant={selectedDay === day.id ? "default" : "outline"}
-                size="sm"
-                onClick={() => {
-                  setSelectedDay(day.id);
-                }}
-                className={`min-w-16 sm:min-w-20 flex flex-col p-2 sm:p-3 h-auto transition-all duration-200 flex-shrink-0 ${
-                  selectedDay === day.id
-                    ? "bg-red-600 text-white shadow-lg"
-                    : "border-neutral-200 hover:border-red-300 hover:bg-red-50 bg-white"
-                }`}
-              >
-                <span className="font-medium text-xs sm:text-sm">{day.name}</span>
-                <span className="text-xs opacity-70">Day {day.dayNumber}</span>
-              </Button>
-            ))}
+            {days.map((day) => {
+              const dayStatus = getDayStatus(day.dayIndex, currentDayIndex);
+              const isSelected = selectedDay === day.id;
+
+              return (
+                <Button
+                  key={day.id}
+                  variant={isSelected ? "default" : "outline"}
+                  size="sm"
+                  onClick={() => {
+                    setSelectedDay(day.id);
+                  }}
+                  className={`min-w-16 sm:min-w-20 flex flex-col p-2 sm:p-3 h-auto transition-all duration-200 flex-shrink-0 relative ${
+                    isSelected
+                      ? "bg-red-600 text-white shadow-lg"
+                      : dayStatus === 'today'
+                      ? "border-blue-400 bg-blue-50 hover:bg-blue-100 text-blue-700"
+                      : dayStatus === 'past'
+                      ? "border-gray-300 bg-gray-50 text-gray-500 hover:bg-gray-100"
+                      : "border-neutral-200 hover:border-red-300 hover:bg-red-50 bg-white"
+                  }`}
+                >
+                  <span className="font-medium text-xs sm:text-sm">{day.name}</span>
+                  <span className="text-xs opacity-70">Day {day.dayNumber}</span>
+
+                  {/* Today indicator */}
+                  {dayStatus === 'today' && !isSelected && (
+                    <div className="absolute top-1 right-1 w-2 h-2 bg-blue-500 rounded-full"></div>
+                  )}
+
+                  {/* Checkmark for past days */}
+                  {dayStatus === 'past' && !isSelected && (
+                    <CheckCircle className="absolute top-1 right-1 w-3 h-3 text-green-500" weight="fill" />
+                  )}
+                </Button>
+              );
+            })}
           </div>
         </div>
 
@@ -1494,7 +1519,20 @@ export function MealPlanPage({ onNavigate, generationStatus }: MealPlanPageProps
 
           {/* Breakfast */}
           <div className="space-y-3">
-            <h3 className="text-lg font-semibold text-purple-600 border-l-4 border-purple-600 pl-3">Breakfast</h3>
+            <h3 className={`text-lg font-semibold border-l-4 pl-3 flex items-center gap-2 ${
+              getDayStatus(days.find(d => d.id === selectedDay)?.dayIndex || 0, currentDayIndex) === 'today' &&
+              currentMealPeriod === 'breakfast'
+                ? 'text-blue-600 border-blue-600'
+                : 'text-purple-600 border-purple-600'
+            }`}>
+              Breakfast
+              {getDayStatus(days.find(d => d.id === selectedDay)?.dayIndex || 0, currentDayIndex) === 'today' &&
+               currentMealPeriod === 'breakfast' && (
+                <span className="text-xs bg-blue-100 text-blue-700 px-2 py-1 rounded-full font-medium">
+                  Current meal
+                </span>
+              )}
+            </h3>
 
             {/* Logged breakfast meals - show above planned meals */}
             {getLoggedMealsForType('breakfast', selectedDay).map(renderLoggedMealCard)}
@@ -1513,7 +1551,20 @@ export function MealPlanPage({ onNavigate, generationStatus }: MealPlanPageProps
 
           {/* Lunch */}
           <div className="space-y-3">
-            <h3 className="text-lg font-semibold text-purple-600 border-l-4 border-purple-600 pl-3">Lunch</h3>
+            <h3 className={`text-lg font-semibold border-l-4 pl-3 flex items-center gap-2 ${
+              getDayStatus(days.find(d => d.id === selectedDay)?.dayIndex || 0, currentDayIndex) === 'today' &&
+              currentMealPeriod === 'lunch'
+                ? 'text-blue-600 border-blue-600'
+                : 'text-purple-600 border-purple-600'
+            }`}>
+              Lunch
+              {getDayStatus(days.find(d => d.id === selectedDay)?.dayIndex || 0, currentDayIndex) === 'today' &&
+               currentMealPeriod === 'lunch' && (
+                <span className="text-xs bg-blue-100 text-blue-700 px-2 py-1 rounded-full font-medium">
+                  Current meal
+                </span>
+              )}
+            </h3>
 
             {/* Logged lunch meals - show above planned meals */}
             {getLoggedMealsForType('lunch', selectedDay).map(renderLoggedMealCard)}
@@ -1532,7 +1583,20 @@ export function MealPlanPage({ onNavigate, generationStatus }: MealPlanPageProps
 
           {/* Dinner */}
           <div className="space-y-3">
-            <h3 className="text-lg font-semibold text-purple-600 border-l-4 border-purple-600 pl-3">Dinner</h3>
+            <h3 className={`text-lg font-semibold border-l-4 pl-3 flex items-center gap-2 ${
+              getDayStatus(days.find(d => d.id === selectedDay)?.dayIndex || 0, currentDayIndex) === 'today' &&
+              currentMealPeriod === 'dinner'
+                ? 'text-blue-600 border-blue-600'
+                : 'text-purple-600 border-purple-600'
+            }`}>
+              Dinner
+              {getDayStatus(days.find(d => d.id === selectedDay)?.dayIndex || 0, currentDayIndex) === 'today' &&
+               currentMealPeriod === 'dinner' && (
+                <span className="text-xs bg-blue-100 text-blue-700 px-2 py-1 rounded-full font-medium">
+                  Current meal
+                </span>
+              )}
+            </h3>
 
             {/* Logged dinner meals - show above planned meals */}
             {getLoggedMealsForType('dinner', selectedDay).map(renderLoggedMealCard)}

@@ -219,7 +219,7 @@ export async function GET() {
                 orderingLinks: restaurantMeal.primary?.orderingLinks || restaurantMeal.orderingLinks,
                 imageUrl: restaurantMeal.primary?.imageUrl || restaurantMeal.imageUrl
               },
-              alternatives: restaurantMeal.alternatives || []
+              alternative: restaurantMeal.alternative || (restaurantMeal.alternatives && restaurantMeal.alternatives.length > 0 ? restaurantMeal.alternatives[0] : null)
             };
 
             days[dayIndex].meals[mealType] = formattedMeal;
@@ -281,6 +281,7 @@ export async function GET() {
     const mealData = {
       id: finalMealPlan.id,
       weekOf: finalMealPlan.weekOf.toISOString().split('T')[0],
+      startDate: finalMealPlan.generatedAt.toISOString(),
       regenerationCount: finalMealPlan.regenerationCount,
       planData: {
         days: days, // 7-day calendar structure

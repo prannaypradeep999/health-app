@@ -114,7 +114,7 @@ export class PerplexityClient {
         messages: [
           {
             role: 'system',
-            content: 'You are a helpful assistant that provides accurate restaurant menu information with current prices. You MUST search for and provide actual ordering links from DoorDash, Uber Eats, and GrubHub when they exist. Only include links you actually find - never make up or guess URLs.'
+            content: 'You are a helpful assistant that provides accurate restaurant menu information with current prices. You MUST verify restaurant distances and only process restaurants within the specified distance limit. You MUST search for and provide actual ordering links from DoorDash, Uber Eats, and GrubHub when they exist. Only include links you actually find - never make up or guess URLs. If a restaurant is too far from the user location, skip menu extraction and note the distance issue.'
           },
           {
             role: 'user',
@@ -153,6 +153,29 @@ export class PerplexityClient {
       console.log(`[PERPLEXITY] ✅ Raw response received in ${Date.now() - startTime}ms`);
       console.log(`[PERPLEXITY] 📄 Content length: ${content.length} characters`);
       console.log(`[PERPLEXITY] 🔗 Citations found: ${citations.length}`);
+
+      // Check for distance validation issues
+      const distanceIssueKeywords = [
+        'too far', 'farther than', 'outside the', 'exceeds the distance',
+        'beyond the', 'distance limit', 'not within', 'more than'
+      ];
+
+      const hasDistanceIssue = distanceIssueKeywords.some(keyword =>
+        content.toLowerCase().includes(keyword.toLowerCase())
+      );
+
+      if (hasDistanceIssue) {
+        console.warn(`[PERPLEXITY] ⚠️ Distance validation failed for ${restaurantName}`);
+        return {
+          menuItems: [],
+          orderingLinks: {},
+          sources: citations.map((c: any) => c.url || '').filter(Boolean),
+          restaurant: restaurantName,
+          extractionSuccess: false,
+          linksFound: 0,
+          error: 'Restaurant outside distance range'
+        };
+      }
 
       // Process the Perplexity response with GPT-4 for structured extraction
       const structuredData = await this.processWithGPT4(content, citations, restaurant, surveyData);
@@ -431,13 +454,25 @@ Return as JSON only:
     const restaurantCity = restaurant?.city || surveyData?.city || 'Unknown City';
     const restaurantCuisine = restaurant?.cuisine || 'Mixed';
 
+    // Calculate distance context for validation
+    const userLocation = `${surveyData?.streetAddress || ''} ${surveyData?.city || ''}, ${surveyData?.state || ''} ${surveyData?.zipCode || ''}`.trim();
+    const distancePreference = surveyData?.distancePreference || 'moderate';
+    const maxDistance = distancePreference === 'close' ? '1 mile' : distancePreference === 'far' ? '8 miles' : '3 miles';
+
     return `Find the current menu with prices AND online ordering links for "${restaurantName}" restaurant located at ${restaurantAddress}, ${restaurantCity}.
+
+⚠️ DISTANCE VALIDATION REQUIRED:
+- User Location: ${userLocation}
+- Restaurant Address: ${restaurantAddress}, ${restaurantCity}
+- Maximum Distance: ${maxDistance} (user preference: ${distancePreference})
+- IMPORTANT: Verify this restaurant is within ${maxDistance} of ${userLocation}. If the restaurant appears to be farther than ${maxDistance}, skip menu extraction and note the distance issue.
 
 RESTAURANT DETAILS:
 - Name: ${restaurantName}
 - Address: ${restaurantAddress}
 - City: ${restaurantCity}
 - Cuisine Type: ${restaurantCuisine}
+- Distance Requirement: Must be within ${maxDistance} of user location
 
 CRITICAL - ORDERING LINKS SEARCH:
 You MUST specifically search for this restaurant on these delivery platforms:

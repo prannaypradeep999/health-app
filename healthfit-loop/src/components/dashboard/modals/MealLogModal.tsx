@@ -12,7 +12,7 @@ interface MealLogModalProps {
 interface MealLogData {
   day: string;
   date: string;
-  mealType: 'breakfast' | 'lunch' | 'dinner';
+  mealType: 'breakfast' | 'lunch' | 'dinner' | 'snack';
   mealName: string;
   description: string;
   calories: number;
@@ -40,7 +40,8 @@ export default function MealLogModal({ onClose, onSave, selectedDay }: MealLogMo
   const mealTypes = [
     { id: 'breakfast', label: 'Breakfast', icon: '🌅' },
     { id: 'lunch', label: 'Lunch', icon: '☀️' },
-    { id: 'dinner', label: 'Dinner', icon: '🌆' }
+    { id: 'dinner', label: 'Dinner', icon: '🌆' },
+    { id: 'snack', label: 'Snack', icon: '🍎' }
   ];
 
   const handleSave = () => {

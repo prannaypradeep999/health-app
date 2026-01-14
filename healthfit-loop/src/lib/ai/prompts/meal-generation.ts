@@ -791,16 +791,17 @@ ${(surveyData.preferredFoods || []).length > 0
 
 ⚠️ CRITICAL REQUIREMENTS:
 1. Select EXACTLY ${restaurantMealsSchedule.length} meals matching the schedule
-2. ⚠️ CALORIE TARGETS: Each meal MUST be within ±100 calories of the target above
-3. For EACH meal, provide BOTH a primary AND alternative option from DIFFERENT restaurants
-4. ⚠️ ORDERING LINKS ARE REQUIRED: Copy the EXACT orderingLinks from the restaurant data above
-5. Distribute across different restaurants for variety
-6. Consider meal timing (lighter lunches, heartier dinners)
-7. Stay within budget and dietary preferences
-8. Use ONLY restaurants and menu items from the data provided above
-9. NEVER leave orderingLinks empty - copy them directly from the restaurant data
-10. ⚠️ DIETARY RESTRICTIONS ARE ABSOLUTE - never select forbidden menu items
-11. ⚠️ PREFERRED FOODS: When available, prioritize dishes featuring user's preferred ingredients
+2. ⚠️ CUISINE PREFERENCES: STRONGLY prioritize restaurants matching user's preferred cuisines: ${(surveyData.preferredCuisines || []).join(', ')}
+3. ⚠️ CALORIE TARGETS: Each meal MUST be within ±100 calories of the target above
+4. For EACH meal, provide BOTH a primary AND alternative option from DIFFERENT restaurants
+5. ⚠️ ORDERING LINKS ARE REQUIRED: Copy the EXACT orderingLinks from the restaurant data above
+6. Distribute across different restaurants for variety
+7. Consider meal timing (lighter lunches, heartier dinners)
+8. Stay within budget and dietary preferences
+9. Use ONLY restaurants and menu items from the data provided above
+10. NEVER leave orderingLinks empty - copy them directly from the restaurant data
+11. ⚠️ DIETARY RESTRICTIONS ARE ABSOLUTE - never select forbidden menu items
+12. ⚠️ PREFERRED FOODS: When available, prioritize dishes featuring user's preferred ingredients
 
 Return ONLY this JSON structure:
 {
@@ -857,7 +858,7 @@ Return ONLY this JSON structure:
 
 // Restaurant selection prompt (for choosing best restaurants from search results)
 export function createRestaurantSelectionPrompt(restaurants: any[], surveyData: any): string {
-  return `Select the 6-8 best restaurants from this list for a weekly meal plan.
+  return `Select the 8-10 best restaurants from this list for a weekly meal plan.
 
 AVAILABLE RESTAURANTS:
 ${restaurants.map((r, i) => `
@@ -875,15 +876,20 @@ USER PREFERENCES & GOALS:
 - Main Challenge: ${surveyData.goalChallenge || 'None specified'}
 - Health Focus: ${surveyData.healthFocus || 'General wellness'}
 - Maintain Focus: ${surveyData.maintainFocus || 'Not specified'}
-- Preferred Cuisines: ${(surveyData.preferredCuisines || []).join(', ')}
+- ⚠️ PREFERRED CUISINES (CRITICAL): ${(surveyData.preferredCuisines || []).join(', ')}
+- Distance Preference: ${surveyData.distancePreference || 'moderate'} (${surveyData.distancePreference === 'close' ? 'within 2 miles' : surveyData.distancePreference === 'far' ? 'within 10 miles' : 'within 5 miles'})
 - Budget: $${surveyData.monthlyFoodBudget || 200}/month
 
-SELECTION CRITERIA:
-1. Choose 6-8 restaurants maximum
-2. Prioritize variety in cuisine types
-3. Balance high-rated options with budget constraints
-4. Consider location convenience
-5. Ensure good mix for different meal types (lunch/dinner)
+⚠️ CRITICAL SELECTION CRITERIA (ABSOLUTE REQUIREMENTS):
+1. ⚠️ CUISINE MATCH: ONLY select restaurants that match the user's preferred cuisines: ${(surveyData.preferredCuisines || []).join(', ')}
+2. ⚠️ DISTANCE COMPLIANCE: The user chose "${surveyData.distancePreference || 'moderate'}" distance preference - DO NOT select restaurants that are too far
+3. Choose 8-10 restaurants maximum (extra buffer for filtering)
+4. Prioritize exact cuisine matches over "variety"
+5. Balance high-rated options with budget constraints
+6. Location must be convenient within the specified distance range
+7. Ensure good mix for different meal types (lunch/dinner)
+
+⚠️ IMPORTANT: If user selected specific cuisines, do NOT include restaurants outside those cuisines even if highly rated
 
 Return JSON with this EXACT structure - include placeId for matching:
 {
