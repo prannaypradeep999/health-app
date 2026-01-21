@@ -55,6 +55,7 @@ function buildSurveyData(data: any, sessionId: string, mealsOutPerWeek: number) 
     preferredFoods: data.preferredFoods || [],
     uploadedFiles: data.uploadedFiles || [],
     preferredNutrients: data.preferredNutrients || [],
+    strictExclusions: data.strictExclusions || null,
     workoutPreferencesJson: data.workoutPreferences || undefined,
     biomarkerJson: data.biomarkers || undefined,
     source: data.source || 'web',

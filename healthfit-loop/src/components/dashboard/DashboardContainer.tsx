@@ -448,6 +448,7 @@ export function DashboardContainer({ initialScreen = 'dashboard' }: DashboardCon
       case 'progress':
         return (
           <ProgressPage
+            user={userData}
             onNavigate={handleNavigate}
             isGuest={surveyData?.isGuest}
             onShowAccountModal={() => setShowAccountModal(true)}

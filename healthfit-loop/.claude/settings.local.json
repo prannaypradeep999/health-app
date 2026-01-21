@@ -59,7 +59,8 @@
       "Bash(rm:*)",
       "Bash(npx next lint:*)",
       "Bash(yarn lint:*)",
-      "Bash(open http://localhost:3000)"
+      "Bash(open http://localhost:3000)",
+      "Bash(open \"http://localhost:3000/survey\")"
     ],
     "deny": [],
     "ask": []

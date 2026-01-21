@@ -277,13 +277,18 @@ async function findAndSelectBestRestaurants(surveyData: any): Promise<Restaurant
         }
         
         if (fullRestaurant) {
+          console.log(`[RESTAURANT-SEARCH] Rating for ${fullRestaurant.name}: ${fullRestaurant.rating}`);
           selectedRestaurants.push({
             ...fullRestaurant,
+            rating: fullRestaurant.rating, // Explicitly preserve rating from original Google Places data
             selectionReason: selected.reason || selected.selectionReason,
           } as Restaurant & { selectionReason?: string });
         } else if (selected.name && selected.address) {
           console.log(`[RESTAURANT-SEARCH] ⚠️ Using GPT-provided data for: ${selected.name}`);
-          selectedRestaurants.push(selected as Restaurant);
+          selectedRestaurants.push({
+            ...selected,
+            rating: selected.rating || 0 // Set rating from GPT or default to 0
+          } as Restaurant);
         } else {
           console.warn(`[RESTAURANT-SEARCH] ⚠️ Could not match restaurant: ${JSON.stringify(selected).substring(0, 100)}`);
         }
@@ -305,7 +310,7 @@ async function findAndSelectBestRestaurants(surveyData: any): Promise<Restaurant
     
     // Log selected restaurants for debugging
     selectedRestaurants.forEach((r, i) => {
-      console.log(`[RESTAURANT-SEARCH]   ${i + 1}. ${r.name || 'UNDEFINED'} - ${r.address || 'NO ADDRESS'} - ${r.cuisine || 'NO CUISINE'}`);
+      console.log(`[RESTAURANT-SEARCH]   ${i + 1}. ${r.name || 'UNDEFINED'} - Rating: ${r.rating || 'N/A'} - ${r.cuisine || 'NO CUISINE'}`);
     });
     
     return selectedRestaurants;

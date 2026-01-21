@@ -18,7 +18,7 @@ import {
 interface Restaurant {
   name: string;
   cuisine: string;
-  rating: number;
+  rating?: number;
   address: string;
   city?: string;
   phone?: string;
@@ -156,10 +156,12 @@ export function RestaurantListSection({ restaurants, metadata }: RestaurantListS
                         <Badge variant="outline" className="bg-[#c1272d]/10 text-[#c1272d] border-[#c1272d]/20 font-medium">
                           {restaurant.cuisine}
                         </Badge>
-                        <div className="flex items-center gap-1 text-amber-600">
-                          <Star className="w-4 h-4 fill-current" />
-                          <span className="font-semibold">{restaurant.rating}</span>
-                        </div>
+                        {restaurant.rating && restaurant.rating > 0 && (
+                          <div className="flex items-center gap-1 text-amber-600">
+                            <Star className="w-4 h-4 fill-current" />
+                            <span className="font-semibold">{restaurant.rating.toFixed(1)}</span>
+                          </div>
+                        )}
                       </div>
                       <div className="flex items-center gap-3 text-xs text-gray-500">
                         {restaurant.distance && (

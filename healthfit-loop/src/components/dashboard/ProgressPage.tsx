@@ -21,7 +21,12 @@ import {
   Moon,
   Heart,
   Footprints,
-  Lightning
+  Lightning,
+  // ADD THESE (they're used in bottom nav and achievements):
+  Trophy,  // Use Trophy instead of Award (Award doesn't exist in Phosphor)
+  User,
+  CaretUp,
+  CaretDown
 } from "@phosphor-icons/react";
 
 interface ProgressPageProps {
@@ -30,9 +35,6 @@ interface ProgressPageProps {
 }
 
 export function ProgressPage({ onNavigate, user }: ProgressPageProps) {
-  const [appleWatchConnected, setAppleWatchConnected] = useState(false);
-  const [renphoConnected, setRenphoConnected] = useState(false);
-  const [ouraConnected, setOuraConnected] = useState(false);
 
   // Weight logging state
   const [weightInput, setWeightInput] = useState('');
@@ -41,29 +43,169 @@ export function ProgressPage({ onNavigate, user }: ProgressPageProps) {
   const [savingWeight, setSavingWeight] = useState(false);
 
   // Get surveyId from user's active survey
-  const surveyId = user?.activeSurveyId;
+  // activeSurvey contains the full survey object with id
+  const surveyId = user?.activeSurvey?.id;
 
   // Get real progress data from localStorage or show empty states
   const getProgressData = () => {
     try {
-      const mealLogs = JSON.parse(localStorage.getItem('mealConsumptionLogs') || '{}');
-      const workoutLogs = JSON.parse(localStorage.getItem('workoutLogs') || '{}');
+      // Use CORRECT localStorage keys (same as MealPlanPage and WorkoutPlanPage)
+      const eatenMeals = JSON.parse(localStorage.getItem('eatenMeals') || '{}');
+      const completedExercises = JSON.parse(localStorage.getItem('completedExercises') || '{}');
 
-      // Calculate basic stats from real user activity
-      const totalMealsLogged = Object.keys(mealLogs).length;
-      const totalWorkoutsLogged = Object.keys(workoutLogs).length;
+      // Count meals marked as eaten (eatenMeals is { "day-mealType-optionType-index": true })
+      const totalMealsLogged = Object.values(eatenMeals).filter(v => v === true).length;
+
+      // Count exercises completed across all days
+      let totalExercisesCompleted = 0;
+      let workoutDaysCompleted = 0;
+
+      Object.values(completedExercises).forEach((exercises: any) => {
+        let count = 0;
+        if (Array.isArray(exercises)) {
+          count = exercises.length;
+        } else if (exercises && typeof exercises === 'object') {
+          // Handle Set-like objects
+          count = Object.keys(exercises).length;
+        }
+        if (count > 0) {
+          totalExercisesCompleted += count;
+          workoutDaysCompleted += 1;
+        }
+      });
 
       return {
-        hasData: totalMealsLogged > 0 || totalWorkoutsLogged > 0,
+        hasData: totalMealsLogged > 0 || totalExercisesCompleted > 0,
         mealsLogged: totalMealsLogged,
-        workoutsLogged: totalWorkoutsLogged
+        workoutsLogged: workoutDaysCompleted,  // Days with completed exercises
+        exercisesCompleted: totalExercisesCompleted
       };
     } catch (error) {
-      return { hasData: false, mealsLogged: 0, workoutsLogged: 0 };
+      console.error('[PROGRESS] Error reading localStorage:', error);
+      return { hasData: false, mealsLogged: 0, workoutsLogged: 0, exercisesCompleted: 0 };
     }
   };
 
-  const progressData = getProgressData();
+  const [progressData, setProgressData] = useState(getProgressData());
+
+  // Update progressData when localStorage changes
+  useEffect(() => {
+    const updateProgress = () => setProgressData(getProgressData());
+
+    // Listen for storage events (other tabs)
+    const handleStorage = (e: StorageEvent) => {
+      if (e.key === 'eatenMeals' || e.key === 'completedExercises') {
+        updateProgress();
+      }
+    };
+
+    // Listen for custom events (same tab)
+    window.addEventListener('storage', handleStorage);
+    window.addEventListener('eatenMealsUpdate', updateProgress);
+    window.addEventListener('completedExercisesUpdate', updateProgress);
+
+    return () => {
+      window.removeEventListener('storage', handleStorage);
+      window.removeEventListener('eatenMealsUpdate', updateProgress);
+      window.removeEventListener('completedExercisesUpdate', updateProgress);
+    };
+  }, []);
+
+  // Goal tracking - derive from user's survey data
+  const goalType = user?.activeSurvey?.goal === 'WEIGHT_LOSS' ? 'Weight Loss Journey' :
+                   user?.activeSurvey?.goal === 'MUSCLE_GAIN' ? 'Muscle Building Journey' :
+                   user?.activeSurvey?.goal === 'ENDURANCE' ? 'Endurance Training' :
+                   'Wellness Journey';
+
+  // Calculate days since user started (from survey creation)
+  const surveyCreatedAt = user?.activeSurvey?.createdAt
+    ? new Date(user.activeSurvey.createdAt)
+    : new Date();
+  const currentDay = Math.max(1, Math.floor((Date.now() - surveyCreatedAt.getTime()) / (1000 * 60 * 60 * 24)) + 1);
+  const totalDays = 90; // 90-day program
+
+  // Weight progress - calculate from weight logs
+  const startWeight = user?.activeSurvey?.weight || 0;
+  const currentWeight = weightLogs.length > 0 ? weightLogs[0].weight : startWeight;
+  const weightLost = startWeight > 0 ? Math.round((startWeight - currentWeight) * 10) / 10 : 0;
+  const weightGoal = user?.activeSurvey?.goal === 'WEIGHT_LOSS' ? 10 :
+                     user?.activeSurvey?.goal === 'MUSCLE_GAIN' ? -5 : 0; // negative = gain
+
+  // Weekly stats - derive from localStorage progress data
+  const weeklyStats = {
+    workoutsCompleted: progressData.workoutsLogged || 0,
+    workoutsPlanned: 5,
+    mealPlanAdherence: progressData.mealsLogged > 0
+      ? Math.min(100, Math.round((progressData.mealsLogged / 21) * 100))
+      : 0,
+    avgCalories: 2000, // Placeholder - would need to calculate from meal consumption logs
+    avgCaloriesBurned: 300, // Placeholder - would need workout data
+    avgActiveMinutes: 45, // Placeholder - would need workout data
+    steps: 8500 // Placeholder - would need device integration
+  };
+
+  // Monthly weight data for chart - use actual weight logs or generate placeholder
+  const monthlyWeight = weightLogs.length >= 2
+    ? weightLogs.slice(0, 4).reverse().map((log, i) => ({
+        week: `Week ${i + 1}`,
+        weight: log.weight
+      }))
+    : [
+        { week: 'Week 1', weight: startWeight || 165 },
+        { week: 'Week 2', weight: startWeight ? startWeight - 0.5 : 164.5 },
+        { week: 'Week 3', weight: startWeight ? startWeight - 1 : 164 },
+        { week: 'Week 4', weight: currentWeight || 163 }
+      ];
+
+  // Weekly activity data for bar chart
+  const weeklyData = [
+    { day: 'Mon', workouts: progressData.workoutsLogged > 0 ? 1 : 0 },
+    { day: 'Tue', workouts: progressData.workoutsLogged > 1 ? 1 : 0 },
+    { day: 'Wed', workouts: progressData.workoutsLogged > 2 ? 1 : 0 },
+    { day: 'Thu', workouts: progressData.workoutsLogged > 3 ? 1 : 0 },
+    { day: 'Fri', workouts: progressData.workoutsLogged > 4 ? 1 : 0 },
+    { day: 'Sat', workouts: 0 },
+    { day: 'Sun', workouts: 0 }
+  ];
+
+  // Achievements based on actual progress
+  const achievements = [
+    {
+      id: '1',
+      title: 'First Week Complete',
+      description: 'Complete your first 7 days on FYTR',
+      progress: Math.min(100, Math.round((currentDay / 7) * 100)),
+      earned: currentDay >= 7
+    },
+    {
+      id: '2',
+      title: 'Meal Logger',
+      description: 'Log 10 meals as eaten',
+      progress: Math.min(100, Math.round((progressData.mealsLogged / 10) * 100)),
+      earned: progressData.mealsLogged >= 10
+    },
+    {
+      id: '3',
+      title: 'Workout Warrior',
+      description: 'Complete 5 workouts',
+      progress: Math.min(100, Math.round((progressData.workoutsLogged / 5) * 100)),
+      earned: progressData.workoutsLogged >= 5
+    },
+    {
+      id: '4',
+      title: 'Weight Tracker',
+      description: 'Log your weight 7 times',
+      progress: Math.min(100, Math.round((weightLogs.length / 7) * 100)),
+      earned: weightLogs.length >= 7
+    },
+    {
+      id: '5',
+      title: 'Month One',
+      description: 'Stay consistent for 30 days',
+      progress: Math.min(100, Math.round((currentDay / 30) * 100)),
+      earned: currentDay >= 30
+    }
+  ];
 
   // Load weight history
   useEffect(() => {
@@ -121,59 +263,6 @@ export function ProgressPage({ onNavigate, user }: ProgressPageProps) {
     }
   };
 
-  // Empty state for when user hasn't started tracking yet
-  if (!progressData.hasData) {
-    return (
-      <div className="min-h-screen bg-gradient-to-br from-neutral-50 via-red-50/15 to-purple-50/10">
-        {/* Header */}
-        <div className="bg-white border-b border-neutral-200 p-6">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center">
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={() => onNavigate("dashboard")}
-                className="mr-3 text-neutral-600"
-              >
-                <ArrowLeft className="w-5 h-5" />
-              </Button>
-              <div>
-                <h1 className="text-2xl font-medium text-neutral-900">Progress</h1>
-                <p className="text-sm text-neutral-600">Track your health journey</p>
-              </div>
-            </div>
-          </div>
-        </div>
-
-        {/* Empty State */}
-        <div className="max-w-lg mx-auto px-6 py-16 text-center">
-          <ChartBar className="w-16 h-16 text-gray-400 mx-auto mb-6" weight="regular" />
-          <h2 className="text-xl font-medium text-gray-900 mb-4">Start Tracking Your Progress</h2>
-          <p className="text-gray-600 mb-8">
-            Complete workouts and log meals to see your progress charts and achievements here.
-          </p>
-          <div className="space-y-3">
-            <Button
-              onClick={() => onNavigate("meal-plan")}
-              className="w-full bg-[#c1272d] hover:bg-red-700 text-white"
-            >
-              View Meal Plan
-            </Button>
-            <Button
-              onClick={() => onNavigate("workout-plan")}
-              variant="outline"
-              className="w-full border-purple-300 text-purple-700 hover:bg-purple-50"
-            >
-              View Workout Plan
-            </Button>
-          </div>
-        </div>
-      </div>
-    );
-  }
-  const totalDays = 90;
-  const weightLost = 3;
-  const weightGoal = 10;
 
   // Motivational quotes
   const motivationalQuotes = [
@@ -228,8 +317,21 @@ export function ProgressPage({ onNavigate, user }: ProgressPageProps) {
             className="h-3 mb-2 bg-gray-200 [&>div]:bg-gradient-to-r [&>div]:from-[#8b5cf6] [&>div]:to-[#c1272d]"
           />
           <div className="flex items-center justify-between">
-            <p className="text-sm text-gray-600">Lost {weightLost} out of {weightGoal} pounds</p>
-            <p className="text-sm font-medium text-[#8b5cf6]">{Math.round((weightLost/weightGoal)*100)}% achieved</p>
+            {weightLogs.length > 0 && startWeight > 0 ? (
+              <>
+                <p className="text-sm text-gray-600">
+                  {weightLost > 0 ? `Lost ${weightLost} lbs` : weightLost < 0 ? `Gained ${Math.abs(weightLost)} lbs` : 'No change yet'}
+                  {weightGoal !== 0 && ` of ${Math.abs(weightGoal)} lb goal`}
+                </p>
+                {weightGoal !== 0 && (
+                  <p className="text-sm font-medium text-[#8b5cf6]">
+                    {Math.min(100, Math.round((Math.abs(weightLost) / Math.abs(weightGoal)) * 100))}% achieved
+                  </p>
+                )}
+              </>
+            ) : (
+              <p className="text-sm text-gray-500">Log your weight to track progress toward your goal</p>
+            )}
           </div>
         </div>
 
@@ -248,189 +350,130 @@ export function ProgressPage({ onNavigate, user }: ProgressPageProps) {
         <div className="bg-white border border-gray-200 rounded-2xl p-8 shadow-md">
           <h3 className="text-xl font-bold text-gray-900 mb-6">This Week</h3>
           <div className="grid grid-cols-2 gap-4">
+            {/* Workouts - Real data from localStorage */}
             <div className="p-4 bg-gradient-to-br from-[#8b5cf6]/10 to-[#8b5cf6]/5 rounded-xl">
               <div className="flex items-center justify-between mb-2">
                 <Barbell className="w-5 h-5 text-[#8b5cf6]" weight="regular" />
                 <Badge className="bg-white/50 text-[#8b5cf6] text-xs">
-                  {weeklyStats.workoutsCompleted}/{weeklyStats.workoutsPlanned}
+                  {progressData.workoutsLogged}/5
                 </Badge>
               </div>
-              <div className="text-2xl font-semibold text-gray-900">{weeklyStats.workoutsCompleted}</div>
-              <div className="text-sm text-gray-600">Workouts</div>
+              <div className="text-2xl font-semibold text-gray-900">{progressData.workoutsLogged}</div>
+              <div className="text-sm text-gray-600">Workouts completed</div>
             </div>
+
+            {/* Meals logged - Real data from localStorage */}
             <div className="p-4 bg-gradient-to-br from-[#c1272d]/10 to-[#c1272d]/5 rounded-xl">
               <div className="flex items-center justify-between mb-2">
                 <ForkKnife className="w-5 h-5 text-[#c1272d]" weight="regular" />
                 <Badge className="bg-white/50 text-[#c1272d] text-xs">
-                  {weeklyStats.mealPlanAdherence}%
+                  {progressData.mealsLogged}/21
                 </Badge>
               </div>
-              <div className="text-2xl font-semibold text-gray-900">{weeklyStats.avgCalories}</div>
-              <div className="text-sm text-gray-600">Avg calories per day</div>
+              <div className="text-2xl font-semibold text-gray-900">{progressData.mealsLogged}</div>
+              <div className="text-sm text-gray-600">Meals logged</div>
             </div>
-            <div className="p-4 bg-gradient-to-br from-orange-100 to-orange-50 rounded-xl">
-              <div className="flex items-center justify-between mb-2">
-                <Heartbeat className="w-5 h-5 text-orange-600" weight="regular" />
+
+            {/* Calories Burned - Coming Soon */}
+            <div className="p-4 bg-gradient-to-br from-orange-100 to-orange-50 rounded-xl relative">
+              <div className="absolute top-2 right-2">
+                <Badge className="bg-orange-200 text-orange-700 text-[10px]">Coming Soon</Badge>
               </div>
-              <div className="text-2xl font-semibold text-gray-900">{weeklyStats.avgCaloriesBurned}</div>
-              <div className="text-sm text-gray-600">Avg calories burned per day</div>
+              <div className="flex items-center justify-between mb-2">
+                <Heartbeat className="w-5 h-5 text-orange-400" weight="regular" />
+              </div>
+              <div className="text-2xl font-semibold text-gray-400">--</div>
+              <div className="text-sm text-gray-400">Calories burned</div>
             </div>
-            <div className="p-4 bg-gradient-to-br from-blue-100 to-blue-50 rounded-xl">
-              <div className="flex items-center justify-between mb-2">
-                <ChartBar className="w-5 h-5 text-blue-600" weight="regular" />
+
+            {/* Active Minutes - Coming Soon */}
+            <div className="p-4 bg-gradient-to-br from-blue-100 to-blue-50 rounded-xl relative">
+              <div className="absolute top-2 right-2">
+                <Badge className="bg-blue-200 text-blue-700 text-[10px]">Coming Soon</Badge>
               </div>
-              <div className="text-2xl font-semibold text-gray-900">{weeklyStats.avgActiveMinutes}</div>
-              <div className="text-sm text-gray-600">Avg active time per day (min)</div>
+              <div className="flex items-center justify-between mb-2">
+                <ChartBar className="w-5 h-5 text-blue-400" weight="regular" />
+              </div>
+              <div className="text-2xl font-semibold text-gray-400">--</div>
+              <div className="text-sm text-gray-400">Active minutes</div>
             </div>
           </div>
         </div>
 
-        {/* Device Integrations */}
-        <div className="bg-white border border-gray-200 rounded-2xl p-8 shadow-md">
-          <h3 className="text-xl font-bold text-gray-900 mb-6">Device Integrations</h3>
-          <div className="space-y-4">
-            {/* Apple Watch */}
-            <div className={`p-4 rounded-xl border-2 transition-all duration-200 ${
-              appleWatchConnected ? 'border-green-500 bg-green-50' : 'border-gray-200 bg-gray-50'
-            }`}>
-              <div className="flex items-center justify-between mb-3">
-                <div className="flex items-center gap-3">
-                  <div className={`w-10 h-10 rounded-full flex items-center justify-center ${
-                    appleWatchConnected ? 'bg-green-500' : 'bg-gray-200'
-                  }`}>
-                    <Watch className={`w-5 h-5 ${appleWatchConnected ? 'text-white' : 'text-gray-600'}`} />
-                  </div>
-                  <div>
-                    <h4 className="font-semibold text-gray-900">Apple Watch</h4>
-                    <p className="text-sm text-gray-600">Track steps, heart rate, and activity</p>
-                  </div>
-                </div>
-                <Button
-                  size="sm"
-                  onClick={() => setAppleWatchConnected(!appleWatchConnected)}
-                  className={appleWatchConnected
-                    ? "bg-green-500 hover:bg-green-600 text-white"
-                    : "bg-[#8b5cf6] hover:bg-purple-700 text-white"
-                  }
-                >
-                  {appleWatchConnected ? 'Connected' : 'Connect'}
-                </Button>
-              </div>
-              {appleWatchConnected && (
-                <div className="flex items-center gap-4 pt-3 border-t border-green-200">
-                  <div className="flex items-center gap-2">
-                    <Footprints className="w-4 h-4 text-green-600" />
-                    <span className="text-sm font-medium text-gray-900">{weeklyStats.steps.toLocaleString()} steps today</span>
-                  </div>
-                </div>
-              )}
-            </div>
-
-            {/* Renpho Scale */}
-            <div className={`p-4 rounded-xl border-2 transition-all duration-200 ${
-              renphoConnected ? 'border-blue-500 bg-blue-50' : 'border-gray-200 bg-gray-50'
-            }`}>
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-3">
-                  <div className={`w-10 h-10 rounded-full flex items-center justify-center ${
-                    renphoConnected ? 'bg-blue-500' : 'bg-gray-200'
-                  }`}>
-                    <Scales className={`w-5 h-5 ${renphoConnected ? 'text-white' : 'text-gray-600'}`} />
-                  </div>
-                  <div>
-                    <h4 className="font-semibold text-gray-900">Renpho Scale</h4>
-                    <p className="text-sm text-gray-600">Track weight, body fat, and muscle mass</p>
-                  </div>
-                </div>
-                <Button
-                  size="sm"
-                  onClick={() => setRenphoConnected(!renphoConnected)}
-                  className={renphoConnected
-                    ? "bg-blue-500 hover:bg-blue-600 text-white"
-                    : "bg-[#8b5cf6] hover:bg-purple-700 text-white"
-                  }
-                >
-                  {renphoConnected ? 'Connected' : 'Connect'}
-                </Button>
-              </div>
-            </div>
-
-            {/* OURA Ring */}
-            <div className={`p-4 rounded-xl border-2 transition-all duration-200 ${
-              ouraConnected ? 'border-purple-500 bg-purple-50' : 'border-gray-200 bg-gray-50'
-            }`}>
-              <div className="flex items-center justify-between mb-3">
-                <div className="flex items-center gap-3">
-                  <div className={`w-10 h-10 rounded-full flex items-center justify-center ${
-                    ouraConnected ? 'bg-purple-500' : 'bg-gray-200'
-                  }`}>
-                    <Moon className={`w-5 h-5 ${ouraConnected ? 'text-white' : 'text-gray-600'}`} />
-                  </div>
-                  <div>
-                    <h4 className="font-semibold text-gray-900">OURA Ring</h4>
-                    <p className="text-sm text-gray-600">Track sleep, recovery, and readiness</p>
-                  </div>
-                </div>
-                <Button
-                  size="sm"
-                  onClick={() => setOuraConnected(!ouraConnected)}
-                  className={ouraConnected
-                    ? "bg-purple-500 hover:bg-purple-600 text-white"
-                    : "bg-[#8b5cf6] hover:bg-purple-700 text-white"
-                  }
-                >
-                  {ouraConnected ? 'Connected' : 'Connect'}
-                </Button>
-              </div>
-              {ouraConnected && (
-                <div className="pt-3 border-t border-purple-200">
-                  <p className="text-sm text-purple-900 font-medium">
-                    AI will optimize your meals and workouts based on your sleep and recovery data
-                  </p>
-                </div>
-              )}
-            </div>
-          </div>
-        </div>
 
         {/* Weight Progress Chart */}
         <div className="bg-white border border-gray-200 rounded-2xl p-8 shadow-md">
           <h3 className="text-xl font-bold text-gray-900 mb-6">Weight Progress</h3>
-          <ResponsiveContainer width="100%" height={200}>
-            <LineChart data={monthlyWeight}>
-              <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
-              <XAxis dataKey="week" stroke="#9CA3AF" />
-              <YAxis stroke="#9CA3AF" domain={[160, 166]} />
-              <Tooltip />
-              <Line
-                type="monotone"
-                dataKey="weight"
-                stroke="#c1272d"
-                strokeWidth={3}
-                dot={{ fill: '#8b5cf6', r: 4 }}
-              />
-            </LineChart>
-          </ResponsiveContainer>
+          {weightLogs.length >= 2 ? (
+            <ResponsiveContainer width="100%" height={200}>
+              <LineChart data={weightLogs.slice(0, 8).reverse().map((log) => ({
+                date: new Date(log.loggedAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }),
+                weight: log.weight
+              }))}>
+                <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
+                <XAxis dataKey="date" stroke="#9CA3AF" tick={{ fontSize: 11 }} />
+                <YAxis
+                  stroke="#9CA3AF"
+                  domain={[
+                    Math.floor(Math.min(...weightLogs.map(l => l.weight)) - 5),
+                    Math.ceil(Math.max(...weightLogs.map(l => l.weight)) + 5)
+                  ]}
+                />
+                <Tooltip formatter={(value) => [`${value} lbs`, 'Weight']} />
+                <Line
+                  type="monotone"
+                  dataKey="weight"
+                  stroke="#c1272d"
+                  strokeWidth={3}
+                  dot={{ fill: '#8b5cf6', r: 4 }}
+                />
+              </LineChart>
+            </ResponsiveContainer>
+          ) : (
+            <div className="h-[200px] flex items-center justify-center bg-gray-50 rounded-xl">
+              <div className="text-center">
+                <Scales className="w-10 h-10 text-gray-300 mx-auto mb-2" />
+                <p className="text-gray-500">Log your weight below to see your progress chart</p>
+              </div>
+            </div>
+          )}
         </div>
 
         {/* Weekly Activity Chart */}
         <div className="bg-white border border-gray-200 rounded-2xl p-8 shadow-md">
           <h3 className="text-xl font-bold text-gray-900 mb-6">Weekly Activity</h3>
-          <ResponsiveContainer width="100%" height={200}>
-            <BarChart data={weeklyData}>
-              <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
-              <XAxis dataKey="day" stroke="#9CA3AF" />
-              <YAxis stroke="#9CA3AF" />
-              <Tooltip />
-              <Bar dataKey="workouts" fill="#8b5cf6" radius={[8, 8, 0, 0]} />
-            </BarChart>
-          </ResponsiveContainer>
+          {progressData.workoutsLogged > 0 ? (
+            <ResponsiveContainer width="100%" height={200}>
+              <BarChart data={weeklyData}>
+                <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
+                <XAxis dataKey="day" stroke="#9CA3AF" />
+                <YAxis stroke="#9CA3AF" />
+                <Tooltip />
+                <Bar dataKey="workouts" fill="#8b5cf6" radius={[8, 8, 0, 0]} />
+              </BarChart>
+            </ResponsiveContainer>
+          ) : (
+            <div className="h-[200px] flex items-center justify-center bg-gray-50 rounded-xl">
+              <div className="text-center">
+                <Barbell className="w-10 h-10 text-gray-300 mx-auto mb-2" />
+                <p className="text-gray-500">Complete workouts to see your activity chart</p>
+                <Button
+                  onClick={() => onNavigate("workout-plan")}
+                  variant="outline"
+                  size="sm"
+                  className="mt-3"
+                >
+                  View Workouts
+                </Button>
+              </div>
+            </div>
+          )}
         </div>
 
         {/* Achievements */}
         <div className="bg-white border border-gray-200 rounded-2xl p-8 shadow-md">
           <h3 className="text-xl font-bold text-gray-900 mb-6 flex items-center">
-            <Award className="w-6 h-6 mr-3 text-[#8b5cf6]" />
+            <Trophy className="w-6 h-6 mr-3 text-[#8b5cf6]" weight="duotone" />
             Achievements
           </h3>
           <div className="space-y-4">
@@ -549,6 +592,70 @@ export function ProgressPage({ onNavigate, user }: ProgressPageProps) {
             <p className="text-center text-gray-500 py-4">No weight entries yet. Start tracking above!</p>
           )}
         </div>
+
+        {/* Device Integrations - Coming Soon */}
+        <div className="bg-white border border-gray-200 rounded-2xl p-8 shadow-md">
+          <div className="flex items-center justify-between mb-6">
+            <h3 className="text-xl font-bold text-gray-900">Device Integrations</h3>
+            <Badge className="bg-purple-100 text-purple-700">Coming Soon</Badge>
+          </div>
+          <p className="text-gray-600 mb-6">Connect your devices to automatically sync your health data.</p>
+          <div className="space-y-4 opacity-60">
+            {/* Apple Watch */}
+            <div className="p-4 rounded-xl border-2 border-gray-200 bg-gray-50">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 rounded-full flex items-center justify-center bg-gray-200">
+                    <Watch className="w-5 h-5 text-gray-600" />
+                  </div>
+                  <div>
+                    <h4 className="font-semibold text-gray-900">Apple Watch</h4>
+                    <p className="text-sm text-gray-600">Track steps, heart rate, and activity</p>
+                  </div>
+                </div>
+                <Button size="sm" disabled className="bg-gray-300 text-gray-500 cursor-not-allowed">
+                  Coming Soon
+                </Button>
+              </div>
+            </div>
+
+            {/* Renpho Scale */}
+            <div className="p-4 rounded-xl border-2 border-gray-200 bg-gray-50">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 rounded-full flex items-center justify-center bg-gray-200">
+                    <Scales className="w-5 h-5 text-gray-600" />
+                  </div>
+                  <div>
+                    <h4 className="font-semibold text-gray-900">Renpho Scale</h4>
+                    <p className="text-sm text-gray-600">Track weight, body fat, and muscle mass</p>
+                  </div>
+                </div>
+                <Button size="sm" disabled className="bg-gray-300 text-gray-500 cursor-not-allowed">
+                  Coming Soon
+                </Button>
+              </div>
+            </div>
+
+            {/* OURA Ring */}
+            <div className="p-4 rounded-xl border-2 border-gray-200 bg-gray-50">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 rounded-full flex items-center justify-center bg-gray-200">
+                    <Moon className="w-5 h-5 text-gray-600" />
+                  </div>
+                  <div>
+                    <h4 className="font-semibold text-gray-900">OURA Ring</h4>
+                    <p className="text-sm text-gray-600">Track sleep, recovery, and readiness</p>
+                  </div>
+                </div>
+                <Button size="sm" disabled className="bg-gray-300 text-gray-500 cursor-not-allowed">
+                  Coming Soon
+                </Button>
+              </div>
+            </div>
+          </div>
+        </div>
       </div>
 
       {/* Bottom Navigation */}
@@ -565,25 +672,25 @@ export function ProgressPage({ onNavigate, user }: ProgressPageProps) {
             className="flex flex-col items-center justify-center text-gray-400 hover:text-[#c1272d] transition-colors"
             onClick={() => onNavigate("meal-plan")}
           >
-            <Apple className="w-5 h-5 mb-1 stroke-1" />
+            <ForkKnife className="w-5 h-5 mb-1" weight="regular" />
             <span className="text-xs">Meals</span>
           </button>
           <button
             className="flex flex-col items-center justify-center text-gray-400 hover:text-[#c1272d] transition-colors"
             onClick={() => onNavigate("workout-plan")}
           >
-            <Dumbbell className="w-5 h-5 mb-1 stroke-1" />
+            <Barbell className="w-5 h-5 mb-1" weight="regular" />
             <span className="text-xs">Workouts</span>
           </button>
           <button className="flex flex-col items-center justify-center text-[#c1272d]">
-            <TrendingUp className="w-5 h-5 mb-1 stroke-1" />
+            <ChartLineUp className="w-5 h-5 mb-1" weight="regular" />
             <span className="text-xs">Progress</span>
           </button>
           <button
             className="flex flex-col items-center justify-center text-gray-400 hover:text-[#c1272d] transition-colors"
             onClick={() => onNavigate("account")}
           >
-            <User className="w-5 h-5 mb-1 stroke-1" />
+            <UserCircle className="w-5 h-5 mb-1" weight="regular" />
             <span className="text-xs">Account</span>
           </button>
         </div>

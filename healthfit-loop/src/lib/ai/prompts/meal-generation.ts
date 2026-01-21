@@ -23,11 +23,59 @@ export interface RestaurantMealContext {
   nutritionTargets?: any;
 }
 
+// Helper function to format strict exclusions as a critical warning
+function formatStrictExclusions(surveyData: any): string {
+  const exclusions = surveyData.strictExclusions;
+  if (!exclusions) return '';
+
+  const allExclusions: string[] = [];
+
+  Object.entries(exclusions).forEach(([category, items]) => {
+    if (Array.isArray(items) && items.length > 0) {
+      items.forEach(item => {
+        allExclusions.push(`${item} (${category})`);
+      });
+    }
+  });
+
+  if (allExclusions.length === 0) return '';
+
+  return `
+🚨🚨🚨 CRITICAL SAFETY ALERT - STRICT EXCLUSIONS 🚨🚨🚨
+════════════════════════════════════════════════════════════
+THE FOLLOWING INGREDIENTS ARE STRICTLY FORBIDDEN DUE TO
+ALLERGIES, INTOLERANCES, OR USER SAFETY REQUIREMENTS.
+
+THIS IS NOT A PREFERENCE - VIOLATION COULD CAUSE HARM.
+
+NEVER include these ingredients in ANY recipe or meal:
+${allExclusions.map(item => `  ❌ ${item}`).join('\n')}
+
+RULES:
+1. Do NOT use any ingredient from this list
+2. Do NOT use any derivative or product containing these items
+3. Do NOT suggest meals that "can be modified" to exclude these
+4. When in doubt about an ingredient, DO NOT USE IT
+5. Double-check EVERY ingredient against this list
+
+Example violations to avoid:
+- If "Shellfish" is excluded: No shrimp, crab, lobster, scallops, clams, mussels
+- If "Tree nuts" is excluded: No almonds, walnuts, cashews, almond milk, almond flour
+- If "Wheat/Gluten" is excluded: No bread, pasta, flour, soy sauce (contains wheat)
+- If "Dairy" is excluded: No milk, cheese, butter, cream, whey protein
+════════════════════════════════════════════════════════════
+
+`;
+}
+
 // Home meal generation prompt for 7-day system (NOW INCLUDES GROCERY LIST)
 export function createHomeMealGenerationPrompt(context: MealGenerationContext): string {
   const { homeMeals, nutritionTargets, scheduleText, surveyData } = context;
 
-  return `Generate home-cooked meal recipes for a 7-day meal plan WITH a consolidated grocery list.
+  // Get strict exclusions warning
+  const strictExclusionsWarning = formatStrictExclusions(surveyData);
+
+  return `${strictExclusionsWarning}Generate home-cooked meal recipes for a 7-day meal plan WITH a consolidated grocery list.
 
 USER WEEKLY SCHEDULE:
 ${scheduleText}
@@ -720,6 +768,9 @@ GROCERY LIST RULES:
 export function createRestaurantMealGenerationPrompt(context: RestaurantMealContext): string {
   const { restaurantMealsSchedule, restaurantMenuData, surveyData, nutritionTargets } = context;
 
+  // Get strict exclusions warning
+  const strictExclusionsWarning = formatStrictExclusions(surveyData);
+
   // Build detailed restaurant info with ordering links prominently displayed
   const restaurantDetails = restaurantMenuData.map(restaurant => {
     const links = restaurant.orderingLinks || {};
@@ -744,7 +795,7 @@ ${(restaurant.menuData || []).slice(0, 8).map((item: any) =>
 `;
   }).join('\n---\n');
 
-  return `Select specific restaurant meals for this user's weekly schedule.
+  return `${strictExclusionsWarning}Select specific restaurant meals for this user's weekly schedule.
 
 RESTAURANT MEALS NEEDED:
 ${restaurantMealsSchedule.map(meal => `- ${meal.day} ${meal.mealType}`).join('\n')}
@@ -858,7 +909,8 @@ Return ONLY this JSON structure:
 
 // Restaurant selection prompt (for choosing best restaurants from search results)
 export function createRestaurantSelectionPrompt(restaurants: any[], surveyData: any): string {
-  return `Select the 8-10 best restaurants from this list for a weekly meal plan.
+  const strictExclusionsWarning = formatStrictExclusions(surveyData);
+  return `${strictExclusionsWarning}Select the 8-10 best restaurants from this list for a weekly meal plan.
 
 AVAILABLE RESTAURANTS:
 ${restaurants.map((r, i) => `

@@ -78,6 +78,17 @@ export const SurveySchema = z.object({
   uploadedFiles: z.array(z.string()).default([]),
   preferredNutrients: z.array(z.string()).default([]),
 
+  // Strict exclusions for allergies and dietary restrictions
+  strictExclusions: z.object({
+    proteins: z.array(z.string()).default([]),
+    dairy: z.array(z.string()).default([]),
+    fruits: z.array(z.string()).default([]),
+    vegetables: z.array(z.string()).default([]),
+    nuts: z.array(z.string()).default([]),
+    grains: z.array(z.string()).default([]),
+    other: z.array(z.string()).default([])
+  }).optional(),
+
   // Step 6: Workout Preferences
   workoutPreferences: z
     .object({

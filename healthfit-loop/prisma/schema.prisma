@@ -71,6 +71,7 @@ model SurveyResponse {
   monthlyFoodBudget      Int        @default(200)
   sportsInterests        String     @default("")
   preferredNutrients     String[]   @default([])
+  strictExclusions       Json?      // { proteins: [], dairy: [], fruits: [], vegetables: [], nuts: [], grains: [], other: [] }
   uploadedFiles          String[]   @default([])
   primaryGoal            String?
   goalChallenge          String?

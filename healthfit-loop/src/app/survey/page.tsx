@@ -240,6 +240,15 @@ interface SurveyData {
   customFoodInput: string;
   uploadedFiles: string[];
   preferredNutrients: string[];
+  strictExclusions: {
+    proteins: string[];
+    dairy: string[];
+    fruits: string[];
+    vegetables: string[];
+    nuts: string[];
+    grains: string[];
+    other: string[];
+  };
   biomarkers: {
     cholesterol?: number;
     vitaminD?: number;
@@ -627,6 +636,16 @@ function OnboardingSteps({ onComplete, onBack }: OnboardingStepsProps) {
     'Berries', 'Bananas', 'Apples', 'Oranges', 'Brown Rice', 'Whole Wheat Bread', 'Almonds'
   ];
 
+  // Strict exclusion categories for allergies
+  const exclusionCategories = {
+    proteins: ['All Proteins (Vegetarian)', 'Shellfish (shrimp, crab, lobster)', 'Fish', 'Pork', 'Beef', 'Poultry (chicken, turkey)', 'Eggs'],
+    dairy: ['Milk', 'Cheese', 'Yogurt', 'Butter', 'Cream', 'Whey'],
+    fruits: ['Strawberries', 'Citrus (orange, lemon, lime)', 'Stone fruits (peach, plum)', 'Tropical (mango, pineapple, kiwi)', 'Berries'],
+    vegetables: ['Nightshades (tomatoes, peppers, eggplant)', 'Alliums (onion, garlic, leeks)', 'Cruciferous (broccoli, cabbage, cauliflower)', 'Celery', 'Mushrooms'],
+    nuts: ['Peanuts', 'Tree nuts (almonds, walnuts, cashews, pecans)', 'Sesame seeds', 'Coconut', 'Pine nuts'],
+    grains: ['Wheat/Gluten', 'Soy', 'Corn', 'Oats', 'Rice']
+  };
+
   const [formData, setFormData] = useState<SurveyData>({
     email: '',
     firstName: '',
@@ -673,6 +692,15 @@ function OnboardingSteps({ onComplete, onBack }: OnboardingStepsProps) {
     customFoodInput: '',
     uploadedFiles: [],
     preferredNutrients: [],
+    strictExclusions: {
+      proteins: [],
+      dairy: [],
+      fruits: [],
+      vegetables: [],
+      nuts: [],
+      grains: [],
+      other: []
+    },
     biomarkers: {},
     workoutPreferences: {
       preferredDuration: 45,
@@ -1072,6 +1100,126 @@ function OnboardingSteps({ onComplete, onBack }: OnboardingStepsProps) {
       const updated = [...currentArray, item];
       updateFormData(field, updated);
     }
+  };
+
+  const toggleExclusion = (category: string, item: string) => {
+    const currentExclusions = formData.strictExclusions[category as keyof typeof formData.strictExclusions] || [];
+
+    if (category === 'proteins' && item === 'All Proteins (Vegetarian)') {
+      // Special handling for "All Proteins" - toggles all animal proteins
+      const allAnimalProteins = ['Shellfish (shrimp, crab, lobster)', 'Fish', 'Pork', 'Beef', 'Poultry (chicken, turkey)', 'Eggs'];
+      const hasAllProteins = allAnimalProteins.every(protein => currentExclusions.includes(protein));
+
+      let updated;
+      if (hasAllProteins) {
+        // Remove all proteins and the "All Proteins" item
+        updated = currentExclusions.filter(i => !allAnimalProteins.includes(i) && i !== 'All Proteins (Vegetarian)');
+      } else {
+        // Add all proteins and the "All Proteins" item
+        const newProteins = [...new Set([...currentExclusions, 'All Proteins (Vegetarian)', ...allAnimalProteins])];
+        updated = newProteins;
+      }
+
+      setFormData(prev => ({
+        ...prev,
+        strictExclusions: {
+          ...prev.strictExclusions,
+          [category]: updated
+        }
+      }));
+      return;
+    }
+
+    // Handle individual protein items - if selecting/deselecting individual proteins, update "All Proteins" accordingly
+    if (category === 'proteins' && item !== 'All Proteins (Vegetarian)') {
+      const allAnimalProteins = ['Shellfish (shrimp, crab, lobster)', 'Fish', 'Pork', 'Beef', 'Poultry (chicken, turkey)', 'Eggs'];
+      const isRemoving = currentExclusions.includes(item);
+
+      let updated = isRemoving
+        ? currentExclusions.filter(i => i !== item)
+        : [...currentExclusions, item];
+
+      // Check if all animal proteins are now selected
+      const hasAllAnimalProteins = allAnimalProteins.every(protein => updated.includes(protein));
+
+      if (hasAllAnimalProteins && !updated.includes('All Proteins (Vegetarian)')) {
+        updated = [...updated, 'All Proteins (Vegetarian)'];
+      } else if (!hasAllAnimalProteins && updated.includes('All Proteins (Vegetarian)')) {
+        updated = updated.filter(i => i !== 'All Proteins (Vegetarian)');
+      }
+
+      setFormData(prev => ({
+        ...prev,
+        strictExclusions: {
+          ...prev.strictExclusions,
+          [category]: updated
+        }
+      }));
+      return;
+    }
+
+    // Default behavior for non-protein categories
+    const updated = currentExclusions.includes(item)
+      ? currentExclusions.filter(i => i !== item)
+      : [...currentExclusions, item];
+
+    setFormData(prev => ({
+      ...prev,
+      strictExclusions: {
+        ...prev.strictExclusions,
+        [category]: updated
+      }
+    }));
+  };
+
+  const toggleDietPreference = (dietPref: string) => {
+    const currentDietPrefs = formData.dietPrefs || [];
+    const isRemoving = currentDietPrefs.includes(dietPref);
+
+    // Update diet preferences
+    const updatedDietPrefs = isRemoving
+      ? currentDietPrefs.filter(d => d !== dietPref)
+      : [...currentDietPrefs, dietPref];
+
+    let updatedExclusions = { ...formData.strictExclusions };
+
+    // Handle protein exclusions based on diet preferences
+    if (dietPref === 'Vegetarian' || dietPref === 'Vegan') {
+      const allAnimalProteins = ['Shellfish (shrimp, crab, lobster)', 'Fish', 'Pork', 'Beef', 'Poultry (chicken, turkey)', 'Eggs'];
+
+      if (isRemoving) {
+        // Removing vegetarian/vegan - remove all animal protein exclusions
+        updatedExclusions.proteins = updatedExclusions.proteins.filter(
+          p => !allAnimalProteins.includes(p) && p !== 'All Proteins (Vegetarian)'
+        );
+      } else {
+        // Adding vegetarian/vegan - add all animal protein exclusions
+        const newProteins = [...new Set([...updatedExclusions.proteins, 'All Proteins (Vegetarian)', ...allAnimalProteins])];
+        updatedExclusions.proteins = newProteins;
+      }
+    }
+
+    if (dietPref === 'Vegan') {
+      const allDairyProducts = ['Milk', 'Cheese', 'Yogurt', 'Butter', 'Cream', 'Whey'];
+
+      if (isRemoving) {
+        // Removing vegan - remove dairy exclusions
+        updatedExclusions.dairy = updatedExclusions.dairy.filter(d => !allDairyProducts.includes(d));
+        // Also remove eggs since it's both protein and vegan exclusion
+        updatedExclusions.proteins = updatedExclusions.proteins.filter(p => p !== 'Eggs');
+      } else {
+        // Adding vegan - add dairy exclusions and eggs
+        const newDairy = [...new Set([...updatedExclusions.dairy, ...allDairyProducts])];
+        updatedExclusions.dairy = newDairy;
+        // Eggs handled by vegetarian logic above
+      }
+    }
+
+    setFormData(prev => ({
+      ...prev,
+      dietPrefs: updatedDietPrefs,
+      strictExclusions: updatedExclusions
+    }));
   };
 
   const renderStep = () => {
@@ -1868,7 +2016,14 @@ function OnboardingSteps({ onComplete, onBack }: OnboardingStepsProps) {
                 ].map((dietPref) => (
                   <button
                     key={dietPref}
-                    onClick={() => toggleArrayItem("dietPrefs", dietPref)}
+                    onClick={() => {
+                      // Use special handling for Vegetarian/Vegan to auto-update protein exclusions
+                      if (dietPref === 'Vegetarian' || dietPref === 'Vegan') {
+                        toggleDietPreference(dietPref);
+                      } else {
+                        toggleArrayItem("dietPrefs", dietPref);
+                      }
+                    }}
                     className={`px-3 py-2 text-sm rounded-lg border transition-all duration-200 transform hover:scale-105 focus:outline-none focus:ring-2 focus:ring-red-500 focus:ring-offset-2 text-center min-h-[44px] flex items-center justify-center ${
                       formData.dietPrefs.includes(dietPref)
                         ? "bg-red-600 text-white border-red-600"
@@ -1876,9 +2031,92 @@ function OnboardingSteps({ onComplete, onBack }: OnboardingStepsProps) {
                     }`}
                   >
                     {dietPref}
+                    {(dietPref === 'Vegetarian' || dietPref === 'Vegan') && (
+                      <span className="ml-1 text-xs">🌱</span>
+                    )}
                   </button>
                 ))}
               </div>
+            </div>
+
+            {/* Strict Exclusions / Allergies Section */}
+            <div className="border-t pt-6 mt-6">
+              <div className="bg-red-50 border-2 border-red-200 rounded-xl p-4 mb-6">
+                <div className="flex items-start gap-3">
+                  <Shield className="w-6 h-6 text-red-600 flex-shrink-0 mt-0.5" />
+                  <div>
+                    <h3 className="font-bold text-red-800 text-lg">⚠️ Allergy & Strict Exclusions</h3>
+                    <p className="text-red-700 text-sm mt-1">
+                      Items selected here will <strong>NEVER</strong> appear in your meal recommendations.
+                      Use this for allergies, intolerances, or foods you absolutely cannot eat.
+                    </p>
+                    <p className="text-green-700 text-xs mt-2 bg-green-50 px-2 py-1 rounded">
+                      💡 <strong>Smart Sync:</strong> Selecting Vegetarian/Vegan above automatically excludes all animal proteins here!
+                    </p>
+                  </div>
+                </div>
+              </div>
+
+              {Object.entries(exclusionCategories).map(([category, items]) => (
+                <div key={category} className="mb-6">
+                  <Label className="text-neutral-700 mb-3 block text-base font-semibold capitalize">
+                    {category === 'nuts' ? 'Nuts & Seeds' : category}
+                  </Label>
+                  <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+                    {items.map((item) => {
+                      const isSelected = formData.strictExclusions[category as keyof typeof formData.strictExclusions]?.includes(item);
+                      return (
+                        <button
+                          key={item}
+                          onClick={() => toggleExclusion(category, item)}
+                          className={`px-3 py-2 text-sm rounded-lg border transition-all duration-200 text-left ${
+                            item === 'All Proteins (Vegetarian)'
+                              ? isSelected
+                                ? "bg-green-600 text-white border-green-600 shadow-md"
+                                : "border-green-300 bg-green-50 text-green-800 hover:border-green-400 hover:bg-green-100 font-medium"
+                              : isSelected
+                              ? "bg-red-600 text-white border-red-600"
+                              : "border-gray-300 bg-white text-gray-700 hover:border-red-300 hover:bg-red-50"
+                          }`}
+                        >
+                          {isSelected && <span className="mr-1">{item === 'All Proteins (Vegetarian)' ? '🌱' : '❌'}</span>}
+                          {item}
+                          {item === 'All Proteins (Vegetarian)' && !isSelected && <span className="ml-1">🌱</span>}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              ))}
+
+              {/* Custom exclusions input */}
+              <div className="mt-4">
+                <Label className="text-neutral-700 mb-2 block">Other allergies or exclusions (comma-separated):</Label>
+                <Input
+                  value={formData.strictExclusions.other?.join(', ') || ''}
+                  onChange={(e) => {
+                    const items = e.target.value.split(',').map(s => s.trim()).filter(s => s.length > 0);
+                    setFormData(prev => ({
+                      ...prev,
+                      strictExclusions: {
+                        ...prev.strictExclusions,
+                        other: items
+                      }
+                    }));
+                  }}
+                  placeholder="e.g., MSG, sulfites, red dye 40..."
+                  className="border-red-200 focus:border-red-500 bg-white text-gray-900 placeholder:text-gray-400"
+                />
+              </div>
+
+              {/* Summary of exclusions */}
+              {Object.values(formData.strictExclusions).flat().length > 0 && (
+                <div className="mt-4 p-3 bg-red-100 border border-red-200 rounded-lg">
+                  <p className="text-sm font-medium text-red-800">
+                    🚫 Excluding {Object.values(formData.strictExclusions).flat().length} item(s) from all meals
+                  </p>
+                </div>
+              )}
             </div>
           </div>
         );

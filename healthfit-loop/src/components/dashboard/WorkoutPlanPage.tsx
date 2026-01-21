@@ -21,7 +21,8 @@ import {
   X,
   Calendar,
   PencilSimple,
-  Trash
+  Trash,
+  Heart  // ADD THIS
 } from "@phosphor-icons/react";
 import Logo from '@/components/logo';
 import { getPlanDayIndex, getCurrentMealPeriod, getPlanDays, getDayStatus, isPlanExpired, getBrowserTimezone } from '@/lib/utils/date-utils';
@@ -45,6 +46,7 @@ export function WorkoutPlanPage({ onNavigate, generationStatus }: WorkoutPlanPag
   const [selectedActivity, setSelectedActivity] = useState<string>('');
   const [workoutDetails, setWorkoutDetails] = useState('');
   const [showSuccessMessage, setShowSuccessMessage] = useState(false);
+  const [workoutRatings, setWorkoutRatings] = useState<Record<string, number>>({});
 
   const [userTimezone] = useState(() => getBrowserTimezone());
   const planStartDate = workoutData?.workoutPlan?.startDate || workoutData?.workoutPlan?.generatedAt;
@@ -201,6 +203,25 @@ export function WorkoutPlanPage({ onNavigate, generationStatus }: WorkoutPlanPag
     window.dispatchEvent(event);
   }, [completedExercises]);
 
+  // Load workout ratings from localStorage
+  useEffect(() => {
+    const saved = localStorage.getItem('workoutRatings');
+    if (saved) {
+      try {
+        const parsed = JSON.parse(saved);
+        // Filter to current day's ratings
+        const dayRatings: Record<string, number> = {};
+        Object.entries(parsed).forEach(([key, value]) => {
+          if (key.startsWith(`${selectedDay}-`)) {
+            const exerciseName = key.replace(`${selectedDay}-`, '');
+            dayRatings[exerciseName] = value as number;
+          }
+        });
+        setWorkoutRatings(dayRatings);
+      } catch (e) {}
+    }
+  }, [selectedDay]);
+
   const fetchWorkoutData = async () => {
     try {
       const response = await fetch('/api/ai/workouts/current');
@@ -216,7 +237,13 @@ export function WorkoutPlanPage({ onNavigate, generationStatus }: WorkoutPlanPag
   };
 
   const toggleExerciseComplete = async (exerciseId: string) => {
-    const isCurrentlyCompleted = completedExercises[selectedDay]?.has(exerciseId);
+    // Safe check - handle both Set and Array (from localStorage)
+    const dayExercises = completedExercises[selectedDay];
+    const isCurrentlyCompleted = dayExercises instanceof Set
+      ? dayExercises.has(exerciseId)
+      : Array.isArray(dayExercises)
+        ? dayExercises.includes(exerciseId)
+        : false;
     const newCompletedState = !isCurrentlyCompleted;
 
     // Update local state immediately
@@ -273,6 +300,38 @@ export function WorkoutPlanPage({ onNavigate, generationStatus }: WorkoutPlanPag
       serializable[selectedDay] = (serializable[selectedDay] || []).filter(e => e !== exerciseId);
     }
     window.dispatchEvent(new CustomEvent('completedExercisesUpdate', { detail: serializable }));
+  };
+
+  const rateWorkout = async (exerciseName: string, rating: number) => {
+    // Update local state
+    setWorkoutRatings(prev => ({ ...prev, [exerciseName]: rating }));
+
+    // Save to localStorage
+    const saved = JSON.parse(localStorage.getItem('workoutRatings') || '{}');
+    saved[`${selectedDay}-${exerciseName}`] = rating;
+    localStorage.setItem('workoutRatings', JSON.stringify(saved));
+
+    // Save to database
+    if (workoutPlanId) {
+      try {
+        await fetch('/api/workouts/rate-exercise', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            surveyId,
+            workoutPlanId,
+            weekNumber,
+            day: selectedDay,
+            exerciseName,
+            rating,
+            liked: rating >= 4
+          })
+        });
+        console.log(`[WORKOUT-RATING] ${exerciseName}: ${rating >= 4 ? '👍 Liked' : '👎 Not liked'}`);
+      } catch (err) {
+        console.error('[WORKOUT-RATING] Error:', err);
+      }
+    }
   };
 
   const activities = [
@@ -393,15 +452,22 @@ export function WorkoutPlanPage({ onNavigate, generationStatus }: WorkoutPlanPag
 
   const currentWorkout = getCurrentWorkout();
 
-  // Get completion for current day only
-  const currentDayCompleted = completedExercises[selectedDay] || new Set();
+  // Get completion for current day only - with safety checks
+  const currentDayCompleted: Set<string> = (() => {
+    if (!selectedDay) return new Set<string>();
+    const dayData = completedExercises[selectedDay];
+    if (!dayData) return new Set<string>();
+    if (dayData instanceof Set) return dayData;
+    if (Array.isArray(dayData)) return new Set<string>(dayData);
+    return new Set<string>();
+  })();
   const completionPercentage = currentWorkout.exercises.length > 0
     ? (currentDayCompleted.size / currentWorkout.exercises.length) * 100
     : 0;
 
   const ExerciseCard = ({ exercise }: { exercise: any }) => {
     const exerciseId = exercise.name;
-    const isCompleted = currentDayCompleted.has(exerciseId);
+    const isCompleted = currentDayCompleted?.has?.(exerciseId) ?? false;
     const [showDetails, setShowDetails] = useState(false);
 
     return (
@@ -457,6 +523,25 @@ export function WorkoutPlanPage({ onNavigate, generationStatus }: WorkoutPlanPag
                   <Play className="w-3 h-3" />
                 )}
               </Button>
+              {/* Like Workout Button */}
+              {isCompleted && (
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  onClick={() => rateWorkout(exerciseId, workoutRatings[exerciseId] === 5 ? 0 : 5)}
+                  className={`text-xs px-2 py-1 h-7 ml-1 ${
+                    workoutRatings[exerciseId] >= 4
+                      ? "text-red-500 hover:text-red-600"
+                      : "text-gray-400 hover:text-red-400"
+                  }`}
+                  title={workoutRatings[exerciseId] >= 4 ? "Unlike workout" : "Like workout"}
+                >
+                  <Heart
+                    className="w-4 h-4"
+                    weight={workoutRatings[exerciseId] >= 4 ? "fill" : "regular"}
+                  />
+                </Button>
+              )}
             </div>
 
             {/* Exercise Stats Row */}

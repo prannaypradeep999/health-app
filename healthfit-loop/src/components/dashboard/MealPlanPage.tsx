@@ -658,6 +658,176 @@ export function MealPlanPage({ onNavigate, generationStatus }: MealPlanPageProps
 
   const totalCalories = getTotalCalories();
 
+  // Star Rating Component
+  const StarRating = ({
+    dishName,
+    restaurantName,
+    mealType,
+    day,
+    weekNumber: wn
+  }: {
+    dishName: string;
+    restaurantName?: string;
+    mealType: string;
+    day: string;
+    weekNumber?: number;
+  }) => {
+    const mealOptionId = `${day}-${mealType}-${dishName}`;
+
+    // Load existing rating from mealFeedback state (populated on page load)
+    const existingFeedback = mealFeedback[mealOptionId];
+    const initialRating = existingFeedback === 'loved' ? 5
+      : existingFeedback === 'disliked' ? 1
+      : existingFeedback === 'neutral' ? 3
+      : 0;
+
+    const [rating, setRating] = useState(initialRating);
+    const [hover, setHover] = useState(0);
+    const [saving, setSaving] = useState(false);
+
+    // Update rating if mealFeedback changes (e.g., loaded from API)
+    useEffect(() => {
+      if (existingFeedback) {
+        const loadedRating = existingFeedback === 'loved' ? 5
+          : existingFeedback === 'disliked' ? 1
+          : existingFeedback === 'neutral' ? 3
+          : 0;
+        setRating(loadedRating);
+      }
+    }, [existingFeedback]);
+
+    // Also check localStorage for ratings
+    useEffect(() => {
+      const savedRatings = localStorage.getItem('mealRatings');
+      if (savedRatings) {
+        try {
+          const parsed = JSON.parse(savedRatings);
+          if (parsed[mealOptionId]) {
+            setRating(parsed[mealOptionId]);
+          }
+        } catch (e) {}
+      }
+    }, [mealOptionId]);
+
+    const handleRate = async (value: number) => {
+      if (saving) return;
+      setSaving(true);
+      setRating(value);
+
+      try {
+        await fetch('/api/meals/feedback', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            mealOptionId,
+            feedbackType: value >= 4 ? 'loved' : value <= 2 ? 'disliked' : 'neutral',
+            rating: value,
+            dishName,
+            restaurantName: restaurantName || null,
+            isHomemade: !restaurantName,
+            mealType,
+            day,
+            weekNumber: wn || weekNumber || 1,
+            weekOf: new Date().toISOString()
+          })
+        });
+
+        // Update local mealFeedback state so it persists across renders
+        setMealFeedback(prev => ({
+          ...prev,
+          [mealOptionId]: value >= 4 ? 'loved' : value <= 2 ? 'disliked' : 'neutral'
+        }));
+
+        // Save to localStorage as backup
+        const savedRatings = JSON.parse(localStorage.getItem('mealRatings') || '{}');
+        savedRatings[mealOptionId] = value;
+        localStorage.setItem('mealRatings', JSON.stringify(savedRatings));
+
+        console.log(`[RATING] ${dishName}: ${value} stars`);
+      } catch (err) {
+        console.error('[RATING] Error:', err);
+        // Revert on error
+        setRating(initialRating);
+      }
+      setSaving(false);
+    };
+
+    return (
+      <div className="flex gap-0.5 items-center">
+        {[1, 2, 3, 4, 5].map((star) => (
+          <button
+            key={star}
+            type="button"
+            disabled={saving}
+            onMouseEnter={() => setHover(star)}
+            onMouseLeave={() => setHover(0)}
+            onClick={() => handleRate(star)}
+            className="p-0.5 transition-transform hover:scale-110 disabled:opacity-50"
+          >
+            <Star
+              size={14}
+              weight={(hover || rating) >= star ? "fill" : "regular"}
+              className={`transition-colors ${
+                (hover || rating) >= star
+                  ? 'text-yellow-400'
+                  : 'text-gray-300 hover:text-yellow-200'
+              }`}
+            />
+          </button>
+        ))}
+      </div>
+    );
+  };
+
+  // Favorite Restaurant Button Component
+  const FavoriteButton = ({
+    restaurantName,
+    cuisine,
+    mealOption
+  }: {
+    restaurantName: string;
+    cuisine?: string;
+    mealOption: any;
+  }) => {
+    const [isFavorite, setIsFavorite] = useState(false);
+
+    const toggleFavorite = async () => {
+      if (!surveyId) return;
+      const newState = !isFavorite;
+      setIsFavorite(newState);
+
+      try {
+        await fetch('/api/restaurants/favorite', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            surveyId,
+            restaurantName,
+            cuisine,
+            isFavorite: newState
+          })
+        });
+      } catch (err) {
+        console.error('[FAVORITE] Error:', err);
+        setIsFavorite(!newState);
+      }
+    };
+
+    return (
+      <button
+        onClick={toggleFavorite}
+        className="p-1 rounded-full hover:bg-red-50 transition-colors"
+        title={isFavorite ? 'Remove from favorites' : 'Add to favorites'}
+      >
+        <Heart
+          size={16}
+          weight={isFavorite ? "fill" : "regular"}
+          className={isFavorite ? 'text-red-500' : 'text-gray-400 hover:text-red-400'}
+        />
+      </button>
+    );
+  };
+
   const MealCard = ({ meal, type }: { meal: any, type: string }) => {
     const selectedOption = getSelectedOption(selectedDay, type);
     const [userRating, setUserRating] = useState(0);
@@ -1054,127 +1224,7 @@ export function MealPlanPage({ onNavigate, generationStatus }: MealPlanPageProps
       );
     };
 
-    // Star Rating Component
-    const StarRating = ({
-      dishName,
-      restaurantName,
-      mealType,
-      day,
-      weekNumber: wn
-    }: {
-      dishName: string;
-      restaurantName?: string;
-      mealType: string;
-      day: string;
-      weekNumber?: number;
-    }) => {
-      const [rating, setRating] = useState(0);
-      const [hover, setHover] = useState(0);
-      const [saving, setSaving] = useState(false);
 
-      const handleRate = async (value: number) => {
-        if (saving) return;
-        setSaving(true);
-        setRating(value);
-
-        try {
-          await fetch('/api/meals/feedback', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              mealOptionId: `${day}-${mealType}-${dishName}`,
-              feedbackType: value >= 4 ? 'loved' : value <= 2 ? 'disliked' : 'neutral',
-              dishName,
-              restaurantName: restaurantName || null,
-              isHomemade: !restaurantName,
-              mealType,
-              day,
-              weekNumber: wn || weekNumber || 1,
-              weekOf: new Date().toISOString()
-            })
-          });
-          console.log(`[RATING] ${dishName}: ${value} stars`);
-        } catch (err) {
-          console.error('[RATING] Error:', err);
-        }
-        setSaving(false);
-      };
-
-      return (
-        <div className="flex gap-0.5 items-center">
-          {[1, 2, 3, 4, 5].map((star) => (
-            <button
-              key={star}
-              type="button"
-              disabled={saving}
-              onMouseEnter={() => setHover(star)}
-              onMouseLeave={() => setHover(0)}
-              onClick={() => handleRate(star)}
-              className="p-0.5 transition-transform hover:scale-110 disabled:opacity-50"
-            >
-              <Star
-                size={14}
-                weight={(hover || rating) >= star ? "fill" : "regular"}
-                className={`transition-colors ${
-                  (hover || rating) >= star
-                    ? 'text-yellow-400'
-                    : 'text-gray-300 hover:text-yellow-200'
-                }`}
-              />
-            </button>
-          ))}
-        </div>
-      );
-    };
-
-    // Favorite Restaurant Button Component
-    const FavoriteButton = ({
-      restaurantName,
-      cuisine,
-      mealOption
-    }: {
-      restaurantName: string;
-      cuisine?: string;
-      mealOption: any;
-    }) => {
-      const [isFavorite, setIsFavorite] = useState(false);
-
-      const toggleFavorite = async () => {
-        if (!surveyId) return;
-        const newState = !isFavorite;
-        setIsFavorite(newState);
-
-        try {
-          await fetch('/api/restaurants/favorite', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              surveyId,
-              restaurantName,
-              cuisine,
-              isFavorite: newState
-            })
-          });
-        } catch (err) {
-          console.error('[FAVORITE] Error:', err);
-          setIsFavorite(!newState);
-        }
-      };
-
-      return (
-        <button
-          onClick={toggleFavorite}
-          className="p-1 rounded-full hover:bg-red-50 transition-colors"
-          title={isFavorite ? 'Remove from favorites' : 'Add to favorites'}
-        >
-          <Heart
-            size={16}
-            weight={isFavorite ? "fill" : "regular"}
-            className={isFavorite ? 'text-red-500' : 'text-gray-400 hover:text-red-400'}
-          />
-        </button>
-      );
-    };
 
     return (
       <>
@@ -1291,6 +1341,18 @@ export function MealPlanPage({ onNavigate, generationStatus }: MealPlanPageProps
                         >
                           {isMealEaten(type, 0, selectedOption) ? '✓ Eaten' : 'Mark Eaten'}
                         </Button>
+
+                        {/* Star Rating */}
+                        <div className="flex items-center gap-2">
+                          <span className="text-xs text-gray-500">Rate:</span>
+                          <StarRating
+                            dishName={currentMeal.source === 'restaurant' ? currentMeal.dish : currentMeal.name}
+                            restaurantName={currentMeal.source === 'restaurant' ? currentMeal.restaurant : undefined}
+                            mealType={type}
+                            day={selectedDay}
+                            weekNumber={weekNumber}
+                          />
+                        </div>
                       </div>
                     </div>
 
