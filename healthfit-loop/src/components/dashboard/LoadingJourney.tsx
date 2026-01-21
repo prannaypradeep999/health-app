@@ -70,6 +70,29 @@ const initialStages: GenerationStage[] = [
   }
 ];
 
+// Friendly status messages that rotate during longer wait times
+const friendlyMessages = [
+  "Still working on your personalized plan...",
+  "Making sure everything is perfect for you...",
+  "Almost done! Creating something amazing...",
+  "Your plan is taking shape nicely...",
+  "Putting the finishing touches on your program...",
+  "Great things take a little time...",
+  "Customizing every detail for your success...",
+  "Building something truly personalized...",
+  "Your patience will be worth it...",
+  "Creating your perfect fitness journey..."
+];
+
+// Timeout handling messages
+const timeoutMessages = [
+  "Taking a bit longer than usual, but we're still working...",
+  "Your plan is complex and worth the wait...",
+  "Sometimes the best things take extra time...",
+  "We're making sure everything is just right...",
+  "Still crafting your personalized experience..."
+];
+
 // Educational tips to cycle through
 const nutritionTips = [
   {
@@ -107,6 +130,9 @@ export function LoadingJourney({ surveyData, onComplete, onSkipToDashboard }: Lo
   const [overallProgress, setOverallProgress] = useState(0);
   const [elapsedTime, setElapsedTime] = useState(0);
   const [generationComplete, setGenerationComplete] = useState(false);
+  const [currentFriendlyMessage, setCurrentFriendlyMessage] = useState(0);
+  const [showTimeoutMessage, setShowTimeoutMessage] = useState(false);
+  const [currentTimeoutMessage, setCurrentTimeoutMessage] = useState(0);
 
   // Calculate macro targets from survey data (instant, no API needed)
   // Round all values to nearest 10 for cleaner display
@@ -149,6 +175,31 @@ export function LoadingJourney({ surveyData, onComplete, onSkipToDashboard }: Lo
       setShowSkipButton(true);
     }, 30000);
     return () => clearTimeout(skipTimer);
+  }, []);
+
+  // Cycle through friendly messages every 12 seconds after 45 seconds
+  useEffect(() => {
+    const friendlyTimer = setTimeout(() => {
+      setCurrentFriendlyMessage(0);
+      const interval = setInterval(() => {
+        setCurrentFriendlyMessage(prev => (prev + 1) % friendlyMessages.length);
+      }, 12000);
+      return () => clearInterval(interval);
+    }, 45000);
+    return () => clearTimeout(friendlyTimer);
+  }, []);
+
+  // Show timeout messages after 2 minutes
+  useEffect(() => {
+    const timeoutTimer = setTimeout(() => {
+      setShowTimeoutMessage(true);
+      setCurrentTimeoutMessage(0);
+      const interval = setInterval(() => {
+        setCurrentTimeoutMessage(prev => (prev + 1) % timeoutMessages.length);
+      }, 15000);
+      return () => clearInterval(interval);
+    }, 120000);
+    return () => clearTimeout(timeoutTimer);
   }, []);
 
   // Cycle through tips every 8 seconds
@@ -379,9 +430,13 @@ export function LoadingJourney({ surveyData, onComplete, onSkipToDashboard }: Lo
                     <p className={`text-sm mt-0.5 ${
                       stage.status === 'active' ? 'text-red-700' : 'text-gray-500'
                     }`}>
-                      {stage.id === 'restaurants' && restaurantPreview.length > 0
-                        ? `Found: ${restaurantPreview.join(', ')}`
-                        : stage.description}
+                      {stage.id === 'restaurants' && restaurantPreview.length > 0 ? (
+                        `Found: ${restaurantPreview.join(', ')}`
+                      ) : stage.status === 'active' && elapsedTime > 45 ? (
+                        showTimeoutMessage ? timeoutMessages[currentTimeoutMessage] : friendlyMessages[currentFriendlyMessage]
+                      ) : (
+                        stage.description
+                      )}
                     </p>
                   </div>
                 </motion.div>

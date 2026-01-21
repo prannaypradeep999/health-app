@@ -8,6 +8,7 @@ import {
   createRestaurantSelectionPrompt
 } from '@/lib/ai/prompts';
 import { calculateMacroTargets, UserProfile } from '@/lib/utils/nutrition';
+import { withGPTRetry } from '@/lib/utils/retry';
 
 export const runtime = 'nodejs';
 
@@ -204,34 +205,32 @@ async function findAndSelectBestRestaurants(surveyData: any): Promise<Restaurant
     console.log(`[RESTAURANT-SEARCH]   - Restaurants to choose from: ${uniqueRestaurants.length}`);
     console.log(`[RESTAURANT-SEARCH]   - Model: gpt-4o`);
 
-    const response = await fetch('https://api.openai.com/v1/chat/completions', {
-      method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${process.env.GPT_KEY}`,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        model: 'gpt-4o',
-        messages: [{ role: 'user', content: selectionPrompt }],
-        response_format: { type: "json_object" },
-        temperature: 0.3
-      })
-    });
+    const gptResult = await withGPTRetry(async () => {
+      const response = await fetch('https://api.openai.com/v1/chat/completions', {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${process.env.GPT_KEY}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          model: 'gpt-4o',
+          messages: [{ role: 'user', content: selectionPrompt }],
+          response_format: { type: "json_object" },
+          temperature: 0.3
+        })
+      });
 
-    console.log(`[RESTAURANT-SEARCH] 📥 GPT Response received:`);
-    console.log(`[RESTAURANT-SEARCH]   - Status: ${response.status} ${response.statusText}`);
-    console.log(`[RESTAURANT-SEARCH]   - Content-Type: ${response.headers.get('content-type')}`);
+      if (!response.ok) {
+        throw new Error(`GPT API error: ${response.status}`);
+      }
+      return response.json();
+    }, 'Restaurant selection');
 
-    if (!response.ok) {
-      const errorText = await response.text();
-      console.error(`[RESTAURANT-SEARCH] ❌ GPT API Error: ${response.status} ${response.statusText}`);
-      console.error(`[RESTAURANT-SEARCH] ❌ Error details: ${errorText}`);
-      // Fall back to first 8 restaurants instead of crashing
-      console.warn('[RESTAURANT-SEARCH] ⚠️ GPT selection failed, using first 8 restaurants');
+    if (!gptResult.success) {
+      console.warn('[RESTAURANT-SEARCH] ⚠️ Using fallback after retry failures');
       return uniqueRestaurants.slice(0, 8);
     }
-
-    const data = await response.json();
+    const data = gptResult.data;
     console.log(`[RESTAURANT-SEARCH] 📊 GPT Response data:`);
     console.log(`[RESTAURANT-SEARCH]   - Has choices: ${!!data.choices}`);
     console.log(`[RESTAURANT-SEARCH]   - Choices length: ${data.choices?.length || 0}`);
@@ -430,32 +429,32 @@ async function selectRestaurantMealsForSchedule(
     console.log(`[RESTAURANT-SELECTION]   - Estimated tokens: ${estimatedTokens}`);
     console.log(`[RESTAURANT-SELECTION]   - Model: gpt-4o`);
 
-    const response = await fetch('https://api.openai.com/v1/chat/completions', {
-      method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${process.env.GPT_KEY}`,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        model: 'gpt-4o',
-        messages: [{ role: 'user', content: prompt }],
-        response_format: { type: "json_object" },
-        temperature: 0.4
-      })
-    });
+    const gptResult = await withGPTRetry(async () => {
+      const response = await fetch('https://api.openai.com/v1/chat/completions', {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${process.env.GPT_KEY}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          model: 'gpt-4o',
+          messages: [{ role: 'user', content: prompt }],
+          response_format: { type: "json_object" },
+          temperature: 0.4
+        })
+      });
 
-    console.log(`[RESTAURANT-SELECTION] 📥 GPT Response received:`);
-    console.log(`[RESTAURANT-SELECTION]   - Status: ${response.status} ${response.statusText}`);
-    console.log(`[RESTAURANT-SELECTION]   - Content-Type: ${response.headers.get('content-type')}`);
+      if (!response.ok) {
+        throw new Error(`GPT API error: ${response.status}`);
+      }
+      return response.json();
+    }, 'Restaurant meal selection');
 
-    if (!response.ok) {
-      const errorText = await response.text();
-      console.error(`[RESTAURANT-SELECTION] ❌ GPT API Error: ${response.status} ${response.statusText}`);
-      console.error(`[RESTAURANT-SELECTION] ❌ Error details: ${errorText}`);
-      throw new Error(`GPT API failed: ${response.status} ${response.statusText} - ${errorText}`);
+    if (!gptResult.success) {
+      console.error('[RESTAURANT-SELECTION] ❌ All retries failed');
+      return [];
     }
-
-    const data = await response.json();
+    const data = gptResult.data;
     console.log(`[RESTAURANT-SELECTION] 📊 GPT Response data:`);
     console.log(`[RESTAURANT-SELECTION]   - Has choices: ${!!data.choices}`);
     console.log(`[RESTAURANT-SELECTION]   - Choices length: ${data.choices?.length || 0}`);

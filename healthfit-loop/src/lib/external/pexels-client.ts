@@ -1,4 +1,5 @@
 import { prisma } from '@/lib/db';
+import { withPexelsRetry } from '@/lib/utils/retry';
 
 /**
  * Simple normalization for cache keys - the AI will handle the smart categorization
@@ -228,10 +229,10 @@ export class PexelsClient {
   }
 
   /**
-   * Makes actual API call to Pexels
+   * Makes actual API call to Pexels with retry logic
    */
   private async searchPexels(query: string): Promise<string | null> {
-    try {
+    const pexelsResult = await withPexelsRetry(async () => {
       const response = await fetch(`${this.baseUrl}?query=${encodeURIComponent(query)}&per_page=1&orientation=landscape`, {
         headers: {
           'Authorization': this.apiKey
@@ -249,10 +250,14 @@ export class PexelsClient {
       }
 
       return null;
-    } catch (error) {
-      console.error(`[PEXELS] API error for query "${query}":`, error);
+    }, `Pexels image search: "${query}"`);
+
+    if (!pexelsResult.success) {
+      console.error(`[PEXELS] API error for query "${query}" after retries:`, pexelsResult.error);
       return null;
     }
+
+    return pexelsResult.data;
   }
 
   /**

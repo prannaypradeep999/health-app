@@ -1,4 +1,5 @@
 // src/lib/external/places-client.ts
+import { withPlacesRetry } from '@/lib/utils/retry';
 
 export interface Restaurant {
   name: string;
@@ -36,7 +37,7 @@ export class GooglePlacesClient {
   }
 
   async geocodeAddress(address: string): Promise<{ lat: number; lng: number } | null> {
-    try {
+    const geocodeResult = await withPlacesRetry(async () => {
       const url = `${this.geocodeBaseUrl}/json?` + new URLSearchParams({
         address: address,
         key: this.apiKey,
@@ -53,31 +54,46 @@ export class GooglePlacesClient {
         return { lat, lng };
       }
 
-      console.error(`[GooglePlaces] ❌ Geocoding failed: ${data.status}`, data.error_message || '');
-      return null;
-    } catch (error) {
-      console.error('[GooglePlaces] ❌ Geocoding error:', error);
+      if (data.status === 'ZERO_RESULTS') {
+        console.log(`[GooglePlaces] 📍 No results for address: "${address}"`);
+        return null;
+      }
+
+      throw new Error(`Geocoding failed: ${data.status} ${data.error_message || ''}`);
+    }, `Geocoding address: "${address}"`);
+
+    if (!geocodeResult.success) {
+      console.error('[GooglePlaces] ❌ Geocoding error after retries:', geocodeResult.error);
       return null;
     }
+
+    return geocodeResult.data;
   }
 
   async getRestaurantDetails(placeId: string): Promise<any> {
-    try {
+    const detailsResult = await withPlacesRetry(async () => {
       const detailsUrl = `${this.placesBaseUrl}/details/json?place_id=${placeId}&fields=name,formatted_address,formatted_phone_number,opening_hours,price_level,rating,reviews,website,business_status,editorial_summary,types,user_ratings_total&key=${this.apiKey}`;
 
       const response = await fetch(detailsUrl);
       const data = await response.json();
 
       if (data.status !== 'OK') {
-        console.warn(`[GooglePlaces] Details failed for ${placeId}: ${data.status}`);
-        return null;
+        if (data.status === 'NOT_FOUND') {
+          console.warn(`[GooglePlaces] Place not found: ${placeId}`);
+          return null;
+        }
+        throw new Error(`Place details failed: ${data.status} ${data.error_message || ''}`);
       }
 
       return data.result;
-    } catch (error) {
-      console.error(`[GooglePlaces] Error getting details for ${placeId}:`, error);
+    }, `Place details for ${placeId}`);
+
+    if (!detailsResult.success) {
+      console.warn(`[GooglePlaces] Details failed for ${placeId} after retries:`, detailsResult.error);
       return null;
     }
+
+    return detailsResult.data;
   }
 
   async filterOpenRestaurants(restaurants: Restaurant[]): Promise<Restaurant[]> {
@@ -134,13 +150,28 @@ export class GooglePlacesClient {
 
       console.log(`[GooglePlaces] 🔍 Nearby search: "${keyword}" within ${radiusMiles} miles (${radiusMeters}m) of (${lat.toFixed(4)}, ${lng.toFixed(4)})`);
 
-      const response = await fetch(searchUrl);
-      const data = await response.json();
+      const searchResult = await withPlacesRetry(async () => {
+        const response = await fetch(searchUrl);
+        const data = await response.json();
 
-      if (data.status !== 'OK' && data.status !== 'ZERO_RESULTS') {
-        console.error(`[GooglePlaces] ❌ Search failed: ${data.status}`, data.error_message || '');
+        if (data.status === 'ZERO_RESULTS') {
+          console.log(`[GooglePlaces] ⚠️ No results for "${keyword}"`);
+          return { results: [] };
+        }
+
+        if (data.status !== 'OK') {
+          throw new Error(`Places search failed: ${data.status} ${data.error_message || ''}`);
+        }
+
+        return data;
+      }, `Places search: "${keyword}"`);
+
+      if (!searchResult.success) {
+        console.error(`[GooglePlaces] ❌ Search failed after retries:`, searchResult.error);
         return [];
       }
+
+      const data = searchResult.data;
 
       if (!data.results?.length) {
         console.log(`[GooglePlaces] ⚠️ No results for "${keyword}" - trying broader search`);
@@ -190,13 +221,28 @@ export class GooglePlacesClient {
 
       console.log(`[GooglePlaces] 🔄 Fallback search: "${keyword}"`);
 
-      const response = await fetch(searchUrl);
-      const data = await response.json();
+      const fallbackResult = await withPlacesRetry(async () => {
+        const response = await fetch(searchUrl);
+        const data = await response.json();
 
-      if (data.status !== 'OK' || !data.results?.length) {
-        console.log(`[GooglePlaces] ❌ Fallback search returned no results`);
+        if (data.status === 'ZERO_RESULTS') {
+          console.log(`[GooglePlaces] ⚠️ Fallback search returned no results`);
+          return { results: [] };
+        }
+
+        if (data.status !== 'OK') {
+          throw new Error(`Fallback search failed: ${data.status} ${data.error_message || ''}`);
+        }
+
+        return data;
+      }, `Fallback search: "${keyword}"`);
+
+      if (!fallbackResult.success || !fallbackResult.data.results?.length) {
+        console.log(`[GooglePlaces] ❌ Fallback search failed or returned no results`);
         return [];
       }
+
+      const data = fallbackResult.data;
 
       const places = data.results.slice(0, maxResults);
       const restaurants = await Promise.all(

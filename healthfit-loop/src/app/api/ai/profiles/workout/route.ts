@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { cookies } from 'next/headers';
 import { prisma } from '@/lib/db';
+import { withGPTRetry } from '@/lib/utils/retry';
 
 export const runtime = 'nodejs';
 
@@ -241,29 +242,35 @@ Write a comprehensive fitness profile (300-400 words) that includes:
 
 Make it feel personal, specific to their situation, and motivating. Use their name naturally throughout.`;
 
-  const response = await fetch('https://api.openai.com/v1/chat/completions', {
-    method: 'POST',
-    headers: {
-      'Authorization': `Bearer ${process.env.GPT_KEY}`,
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify({
-      model: 'gpt-4o-mini',
-      messages: [
-        {
-          role: 'system',
-          content: 'You are a friendly, knowledgeable fitness coach creating personalized training profiles. Write in a warm, motivating tone.'
-        },
-        { role: 'user', content: prompt }
-      ],
-      temperature: 0.7
-    })
-  });
+  const gptResult = await withGPTRetry(async () => {
+    const response = await fetch('https://api.openai.com/v1/chat/completions', {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${process.env.GPT_KEY}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        model: 'gpt-4o-mini',
+        messages: [
+          {
+            role: 'system',
+            content: 'You are a friendly, knowledgeable fitness coach creating personalized training profiles. Write in a warm, motivating tone.'
+          },
+          { role: 'user', content: prompt }
+        ],
+        temperature: 0.7
+      })
+    });
 
-  if (!response.ok) {
-    throw new Error(`GPT API error: ${response.status}`);
+    if (!response.ok) {
+      throw new Error(`GPT API error: ${response.status}`);
+    }
+    return response.json();
+  }, 'Workout profile generation');
+
+  if (!gptResult.success) {
+    throw new Error(`Workout profile generation failed: ${gptResult.error}`);
   }
 
-  const completion = await response.json();
-  return completion.choices[0].message.content;
+  return gptResult.data.choices[0].message.content;
 }

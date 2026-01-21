@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { cookies } from 'next/headers';
 import { prisma } from '@/lib/db';
 import { perplexityClient } from '@/lib/external/perplexity-client';
+import { withPerplexityRetry } from '@/lib/utils/retry';
 
 export const runtime = 'nodejs';
 export const maxDuration = 60; // Allow up to 60 seconds for price lookups
@@ -77,21 +78,19 @@ export async function POST(req: NextRequest) {
 
     // Step 1: Find local grocery stores via Perplexity
     console.log('[GROCERY-PRICES] Step 1/3: Finding local stores...');
-    const storeResponse = await perplexityClient.getLocalGroceryStores(
-      streetAddress,
-      city,
-      state,
-      zipcode
-    );
+    const storeResult = await withPerplexityRetry(async () => {
+      return perplexityClient.getLocalGroceryStores(streetAddress, city, state, zipcode);
+    }, 'Local grocery stores');
 
-    if (!storeResponse.searchSuccess || storeResponse.stores.length === 0) {
-      console.error('[GROCERY-PRICES] ❌ Could not find stores');
+    if (!storeResult.success || !storeResult.data?.stores?.length) {
+      console.error('[GROCERY-PRICES] ❌ Could not find stores after retries');
       return NextResponse.json({
         success: false,
-        error: 'Could not find grocery stores. Please verify your location.',
+        error: 'Taking longer to find stores in your area. Please try again.',
         location: `${city}, ${zipcode}`
       }, { status: 404 });
     }
+    const storeResponse = storeResult.data;
 
     console.log(`[GROCERY-PRICES] ✅ Found ${storeResponse.stores.length} stores: ${storeResponse.stores.map(s => s.name).join(', ')}`);
 
@@ -125,16 +124,13 @@ export async function POST(req: NextRequest) {
 
     // Step 3: Get prices for all items via Perplexity
     console.log('[GROCERY-PRICES] Step 3/3: Getting prices from Perplexity...');
-    const priceResponse = await perplexityClient.getGroceryPrices(
-      allItems,
-      storeResponse.stores,
-      city,
-      userGoal
-    );
+    const priceResult = await withPerplexityRetry(async () => {
+      return perplexityClient.getGroceryPrices(allItems, storeResponse.stores, city, userGoal);
+    }, 'Grocery prices');
 
-    // If price lookup failed, save stores but note prices unavailable
-    if (!priceResponse.priceSearchSuccess || priceResponse.items.length === 0) {
-      console.warn('[GROCERY-PRICES] ⚠️ Could not get prices, saving stores only');
+    // If price lookup failed after retries, save stores but note prices unavailable
+    if (!priceResult.success || !priceResult.data?.items?.length) {
+      console.warn('[GROCERY-PRICES] ⚠️ Price lookup taking longer than expected');
 
       const partialGroceryList = {
         ...groceryList,
@@ -142,7 +138,7 @@ export async function POST(req: NextRequest) {
         location: storeResponse.location,
         pricesUpdatedAt: new Date().toISOString(),
         priceSearchSuccess: false,
-        priceError: priceResponse.error || 'Could not retrieve prices'
+        priceError: priceResult.error || 'Could not retrieve prices'
       };
 
       await prisma.mealPlan.update({
@@ -163,6 +159,7 @@ export async function POST(req: NextRequest) {
         stores: storeResponse.stores
       });
     }
+    const priceResponse = priceResult.data;
 
     // Step 4: Reorganize items back into categories
     const groceryListWithPrices: Record<string, any[]> = {

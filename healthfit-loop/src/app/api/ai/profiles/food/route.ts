@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { cookies } from 'next/headers';
 import { prisma } from '@/lib/db';
 import { createFoodProfilePrompt } from '@/lib/ai/prompts/profile-generation';
+import { withGPTRetry } from '@/lib/utils/retry';
 
 /**
  * Food Profile API Route
@@ -145,34 +146,40 @@ export async function POST(request: NextRequest) {
     console.log('[Food Profile API] Generating new food profile with AI');
     const profilePrompt = createFoodProfilePrompt(surveyData);
 
-    const response = await fetch('https://api.openai.com/v1/chat/completions', {
-      method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${process.env.GPT_KEY}`,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        model: 'gpt-4o-mini',
-        messages: [
-          {
-            role: 'system',
-            content: 'You are an expert nutritionist creating personalized, conversational food profiles for health and fitness clients. Your responses should be warm, encouraging, and professionally informative.'
-          },
-          {
-            role: 'user',
-            content: profilePrompt
-          }
-        ],
-        temperature: 0.7
-      }),
-    });
+    const gptResult = await withGPTRetry(async () => {
+      const response = await fetch('https://api.openai.com/v1/chat/completions', {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${process.env.GPT_KEY}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          model: 'gpt-4o-mini',
+          messages: [
+            {
+              role: 'system',
+              content: 'You are an expert nutritionist creating personalized, conversational food profiles for health and fitness clients. Your responses should be warm, encouraging, and professionally informative.'
+            },
+            {
+              role: 'user',
+              content: profilePrompt
+            }
+          ],
+          temperature: 0.7
+        }),
+      });
 
-    if (!response.ok) {
-      throw new Error(`OpenAI API error: ${response.status}`);
+      if (!response.ok) {
+        throw new Error(`GPT API error: ${response.status}`);
+      }
+      return response.json();
+    }, 'Food profile generation');
+
+    if (!gptResult.success) {
+      throw new Error(`Food profile generation failed: ${gptResult.error}`);
     }
 
-    const aiResponse = await response.json();
-    const profileContent = aiResponse.choices[0]?.message?.content;
+    const profileContent = gptResult.data.choices[0]?.message?.content;
 
     if (!profileContent) {
       throw new Error('No profile content generated from AI');

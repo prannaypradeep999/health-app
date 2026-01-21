@@ -1,4 +1,5 @@
 // src/lib/external/perplexity-client.ts
+import { withPerplexityRetry, withGPTRetry } from '@/lib/utils/retry';
 
 export interface PerplexityMenuResponse {
   menuItems: Array<{
@@ -127,26 +128,34 @@ export class PerplexityClient {
 
       console.log(`[PERPLEXITY] 🚀 Making API request to ${this.baseUrl}`);
 
-      const response = await fetch(this.baseUrl, {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${this.apiKey}`,
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify(requestBody)
-      });
-
-      if (!response.ok) {
-        const errorText = await response.text();
-        console.error(`[PERPLEXITY] ❌ API Error Details:`, {
-          status: response.status,
-          statusText: response.statusText,
-          response: errorText
+      const perplexityResult = await withPerplexityRetry(async () => {
+        const response = await fetch(this.baseUrl, {
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${this.apiKey}`,
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify(requestBody)
         });
-        throw new Error(`Perplexity API failed: ${response.status} ${response.statusText} - ${errorText}`);
+
+        if (!response.ok) {
+          const errorText = await response.text();
+          console.error(`[PERPLEXITY] ❌ API Error Details:`, {
+            status: response.status,
+            statusText: response.statusText,
+            response: errorText
+          });
+          throw new Error(`Perplexity API failed: ${response.status} ${response.statusText} - ${errorText}`);
+        }
+
+        return response.json();
+      }, `Restaurant menu for ${restaurantName}`);
+
+      if (!perplexityResult.success) {
+        throw new Error(`Perplexity API failed after retries: ${perplexityResult.error}`);
       }
 
-      const data = await response.json();
+      const data = perplexityResult.data;
       const content = data.choices?.[0]?.message?.content || '';
       const citations = data.citations || [];
 
@@ -257,30 +266,38 @@ Return as JSON only, no other text:
   ]
 }`;
 
-      const response = await fetch(this.baseUrl, {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${this.apiKey}`,
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({
-          model: 'sonar',
-          messages: [
-            {
-              role: 'system',
-              content: 'You are a helpful assistant that finds local grocery stores. Return accurate, real store information in JSON format only. No markdown, no explanation, just the JSON object. Always provide 3 stores - use common regional chains if exact location data is unavailable.'
-            },
-            { role: 'user', content: query }
-          ],
-          temperature: 0.1
-        })
-      });
+      const storeResult = await withPerplexityRetry(async () => {
+        const response = await fetch(this.baseUrl, {
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${this.apiKey}`,
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify({
+            model: 'sonar',
+            messages: [
+              {
+                role: 'system',
+                content: 'You are a helpful assistant that finds local grocery stores. Return accurate, real store information in JSON format only. No markdown, no explanation, just the JSON object. Always provide 3 stores - use common regional chains if exact location data is unavailable.'
+              },
+              { role: 'user', content: query }
+            ],
+            temperature: 0.1
+          })
+        });
 
-      if (!response.ok) {
-        throw new Error(`Perplexity API error: ${response.status}`);
+        if (!response.ok) {
+          throw new Error(`Perplexity API error: ${response.status}`);
+        }
+
+        return response.json();
+      }, `Grocery stores near ${city}`);
+
+      if (!storeResult.success) {
+        throw new Error(`Grocery store search failed after retries: ${storeResult.error}`);
       }
 
-      const data = await response.json();
+      const data = storeResult.data;
       const content = data.choices?.[0]?.message?.content || '';
 
       // Parse JSON from response
@@ -382,30 +399,38 @@ Return as JSON only:
   "savings": "Save $8.80 vs Store2"
 }`;
 
-      const response = await fetch(this.baseUrl, {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${this.apiKey}`,
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({
-          model: 'sonar',
-          messages: [
-            {
-              role: 'system',
-              content: 'You are a grocery price expert. Provide accurate, current grocery prices based on typical prices in the specified city. Include brand descriptors only when they matter for health/quality. Always return valid JSON only, no markdown or explanation.'
-            },
-            { role: 'user', content: query }
-          ],
-          temperature: 0.2
-        })
-      });
+      const priceResult = await withPerplexityRetry(async () => {
+        const response = await fetch(this.baseUrl, {
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${this.apiKey}`,
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify({
+            model: 'sonar',
+            messages: [
+              {
+                role: 'system',
+                content: 'You are a grocery price expert. Provide accurate, current grocery prices based on typical prices in the specified city. Include brand descriptors only when they matter for health/quality. Always return valid JSON only, no markdown or explanation.'
+              },
+              { role: 'user', content: query }
+            ],
+            temperature: 0.2
+          })
+        });
 
-      if (!response.ok) {
-        throw new Error(`Perplexity API error: ${response.status}`);
+        if (!response.ok) {
+          throw new Error(`Perplexity API error: ${response.status}`);
+        }
+
+        return response.json();
+      }, `Grocery prices in ${city}`);
+
+      if (!priceResult.success) {
+        throw new Error(`Grocery price lookup failed after retries: ${priceResult.error}`);
       }
 
-      const data = await response.json();
+      const data = priceResult.data;
       const content = data.choices?.[0]?.message?.content || '';
 
       // Parse JSON from response
@@ -566,25 +591,33 @@ REQUIRED JSON FORMAT:
 IMPORTANT: For orderingLinks, use "" (empty string) if not found. Do not use null, undefined, or made-up URLs.
 Extract 6-12 menu items maximum. Return ONLY valid JSON.`;
 
-      const gptResponse = await fetch('https://api.openai.com/v1/chat/completions', {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${process.env.GPT_KEY}`,
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          model: 'gpt-4o',
-          messages: [{ role: 'user', content: gptPrompt }],
-          response_format: { type: "json_object" },
-          temperature: 0.1
-        })
-      });
+      const gptResult = await withGPTRetry(async () => {
+        const response = await fetch('https://api.openai.com/v1/chat/completions', {
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${process.env.GPT_KEY}`,
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            model: 'gpt-4o',
+            messages: [{ role: 'user', content: gptPrompt }],
+            response_format: { type: "json_object" },
+            temperature: 0.1
+          })
+        });
 
-      if (!gptResponse.ok) {
-        throw new Error(`GPT-4 processing failed: ${gptResponse.status}`);
+        if (!response.ok) {
+          throw new Error(`GPT-4 processing failed: ${response.status}`);
+        }
+
+        return response.json();
+      }, 'Menu data structuring');
+
+      if (!gptResult.success) {
+        throw new Error(`GPT-4 processing failed after retries: ${gptResult.error}`);
       }
 
-      const gptData = await gptResponse.json();
+      const gptData = gptResult.data;
       const gptContent = gptData.choices?.[0]?.message?.content || '{}';
 
       // Parse JSON response

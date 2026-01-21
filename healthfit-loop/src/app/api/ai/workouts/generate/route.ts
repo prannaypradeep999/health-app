@@ -3,6 +3,7 @@ import { cookies } from 'next/headers';
 import { prisma } from '@/lib/db';
 import { pexelsClient } from '@/lib/external/pexels-client';
 import { createWorkoutPlanPrompt, type WorkoutPlan, type WorkoutDay } from '@/lib/ai/prompts';
+import { withGPTRetry } from '@/lib/utils/retry';
 
 export const runtime = 'nodejs';
 
@@ -132,32 +133,38 @@ async function generateWorkoutPlan(surveyData: any): Promise<WorkoutPlan> {
 
   const userPrompt = createWorkoutPlanPrompt(surveyData, workoutPrefs);
 
-  const response = await fetch('https://api.openai.com/v1/chat/completions', {
-    method: 'POST',
-    headers: {
-      'Authorization': `Bearer ${process.env.GPT_KEY}`,
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify({
-      model: 'gpt-4o-mini',
-      messages: [
-        {
-          role: 'system',
-          content: 'You must respond with valid JSON only. Start with { and end with }. No markdown, no code blocks, no additional text.'
-        },
-        { role: 'user', content: userPrompt }
-      ],
-      response_format: { type: 'json_object' },
-      temperature: 0.2
-    })
-  });
+  const gptResult = await withGPTRetry(async () => {
+    const response = await fetch('https://api.openai.com/v1/chat/completions', {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${process.env.GPT_KEY}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        model: 'gpt-4o-mini',
+        messages: [
+          {
+            role: 'system',
+            content: 'You must respond with valid JSON only. Start with { and end with }. No markdown, no code blocks, no additional text.'
+          },
+          { role: 'user', content: userPrompt }
+        ],
+        response_format: { type: 'json_object' },
+        temperature: 0.2
+      })
+    });
 
-  if (!response.ok) {
-    console.error('[GPT-WORKOUT] ❌ API error:', response.status);
-    throw new Error(`GPT API error: ${response.status}`);
+    if (!response.ok) {
+      throw new Error(`GPT API error: ${response.status}`);
+    }
+    return response.json();
+  }, 'Workout plan generation');
+
+  if (!gptResult.success) {
+    throw new Error(`Workout generation failed after retries: ${gptResult.error}`);
   }
 
-  const completion = await response.json();
+  const completion = gptResult.data;
   const workoutContent = completion.choices[0].message.content;
 
   try {

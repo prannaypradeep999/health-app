@@ -4,6 +4,7 @@ import { prisma } from '@/lib/db';
 import { calculateMacroTargets, UserProfile } from '@/lib/utils/nutrition';
 import { createHomeMealGenerationPrompt } from '@/lib/ai/prompts';
 import { pexelsClient } from '@/lib/external/pexels-client';
+import { withGPTRetry } from '@/lib/utils/retry';
 
 export const runtime = 'nodejs';
 
@@ -163,25 +164,42 @@ async function generateHomeMealsForSchedule(
       scheduleText
     });
 
-    const response = await fetch('https://api.openai.com/v1/chat/completions', {
-      method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${process.env.GPT_KEY}`,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        model: 'gpt-4o-mini',
-        messages: [{ role: 'system', content: prompt }],
-        temperature: 0.8,
-        response_format: { type: "json_object" }
-      })
-    });
+    // Replace the direct fetch with retry wrapper:
+    const gptResult = await withGPTRetry(async () => {
+      const response = await fetch('https://api.openai.com/v1/chat/completions', {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${process.env.GPT_KEY}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          model: 'gpt-4o-mini',
+          messages: [{ role: 'system', content: prompt }],
+          temperature: 0.8,
+          response_format: { type: "json_object" }
+        })
+      });
 
-    if (!response.ok) {
-      throw new Error(`Home meal generation failed: ${response.status}`);
+      if (!response.ok) {
+        const errorText = await response.text();
+        throw new Error(`GPT API error ${response.status}: ${errorText.substring(0, 100)}`);
+      }
+
+      return response.json();
+    }, 'Home meal generation');
+
+    if (!gptResult.success) {
+      console.error(`[HOME-MEALS-7DAY] ❌ Generation failed after ${gptResult.attempts} attempts`);
+      return {
+        homeMeals: [],
+        groceryList: null,
+        error: gptResult.error,
+        retryAttempts: gptResult.attempts
+      };
     }
 
-    const data = await response.json();
+    const data = gptResult.data;
+    console.log(`[HOME-MEALS-7DAY] ✅ Succeeded after ${gptResult.attempts} attempt(s)`);
     const content = data.choices?.[0]?.message?.content || '{}';
 
     console.log('[HOME-MEALS-7DAY] 🔍 Raw GPT response (first 500 chars):', content.substring(0, 500));
