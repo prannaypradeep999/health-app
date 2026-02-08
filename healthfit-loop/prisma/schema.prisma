@@ -73,6 +73,12 @@ model SurveyResponse {
   preferredNutrients     String[]   @default([])
   strictExclusions       Json?      // { proteins: [], dairy: [], fruits: [], vegetables: [], nuts: [], grains: [], other: [] }
   uploadedFiles          String[]   @default([])
+  cookingFrequency       String?
+  foodAllergies          String[]   @default([])
+  eatingOutOccasions     String?
+  healthGoalPriority     String?
+  motivationLevel        String?
+  customFoodInput        String?
   primaryGoal            String?
   goalChallenge          String?
   fitnessLevel           String?

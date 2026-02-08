@@ -1,8 +1,8 @@
 import { NextResponse } from 'next/server';
 import { cookies } from 'next/headers';
 import { prisma } from '@/lib/db';
-import { getStartOfWeek } from '@/lib/utils/date-utils';
-import { calculateMacroTargets, UserProfile } from '@/lib/utils/nutrition';
+import { formatDateKey, getStartOfWeek } from '@/lib/utils/date-utils';
+import { calculateMacroTargets, getMealCalorieDistribution, UserProfile } from '@/lib/utils/nutrition';
 
 const shouldLog = true; // Enable logging for debugging
 
@@ -171,9 +171,47 @@ export async function GET() {
     // Always convert to 7-day structured format
     const userContext = finalMealPlan.userContext as any;
 
+    // Add per-meal targets when available (prefer stored, fallback to calculated)
+    if (nutritionTargets) {
+      let mealTargets = userContext?.nutritionTargets?.mealTargets || null;
+
+      if (!mealTargets) {
+        const mealCalories = getMealCalorieDistribution(nutritionTargets.dailyCalories);
+        const dailyCalories = nutritionTargets.dailyCalories || 0;
+        const dailyProtein = nutritionTargets.dailyProtein || 0;
+        const dailyCarbs = nutritionTargets.dailyCarbs || 0;
+        const dailyFat = nutritionTargets.dailyFat || 0;
+
+        const buildMacroTarget = (calories: number) => {
+          if (!dailyCalories || calories <= 0) {
+            return { calories, protein: 0, carbs: 0, fat: 0 };
+          }
+          const proportion = calories / dailyCalories;
+          return {
+            calories,
+            protein: Math.round(dailyProtein * proportion),
+            carbs: Math.round(dailyCarbs * proportion),
+            fat: Math.round(dailyFat * proportion)
+          };
+        };
+
+        mealTargets = {
+          breakfast: buildMacroTarget(mealCalories.breakfast),
+          lunch: buildMacroTarget(mealCalories.lunch),
+          dinner: buildMacroTarget(mealCalories.dinner)
+        };
+      }
+
+      nutritionTargets = {
+        ...nutritionTargets,
+        mealTargets
+      };
+    }
+
     let restaurantMeals = userContext?.restaurantMeals || [];
     let metadata = userContext?.metadata || {};
-    let days = userContext?.days || [];
+    const days: any[] = Array.isArray(userContext?.days) ? userContext.days : [];
+    const dailySummaries = userContext?.dailySummaries || null;
 
     // MERGE: Inject restaurant meals into days structure if they exist separately
     if (restaurantMeals.length > 0 && days.length > 0) {
@@ -245,8 +283,8 @@ export async function GET() {
     let homeMealCount = 0;
     if (days.length > 0) {
       // Count from 7-day structure
-      days.forEach(day => {
-        Object.values(day.meals || {}).forEach(meal => {
+      days.forEach((day: any) => {
+        Object.values(day.meals || {}).forEach((meal: any) => {
           if (meal && meal.source === 'restaurant') {
             restaurantMealCount++;
           } else if (meal && meal.source !== 'restaurant') {
@@ -263,8 +301,8 @@ export async function GET() {
     if (shouldLog) console.log(`[MealCurrent] Using 7-day structured format with ${days.length} days`);
 
     // Extract all meals from the 7-day structure for compatibility
-    let weeklyPlan = [];
-    days.forEach(dayData => {
+    const weeklyPlan: any[] = [];
+    days.forEach((dayData: any) => {
       Object.entries(dayData.meals || {}).forEach(([mealType, meal]) => {
         if (meal) {
           weeklyPlan.push({
@@ -276,6 +314,9 @@ export async function GET() {
         }
       });
     });
+
+    const currentWeekStart = getStartOfWeek();
+    const isCurrentWeek = formatDateKey(currentWeekStart) === formatDateKey(finalMealPlan.weekOf);
 
     // Always return the 7-day structured format
     const mealData = {
@@ -295,7 +336,8 @@ export async function GET() {
       totalEstimatedCost: totalEstimatedCost,
       homeMealsCount: homeMealCount,
       restaurantMealsCount: restaurantMealCount,
-      nutritionTargets
+      nutritionTargets,
+      dailySummaries
     };
 
     console.log('[MEALS-CURRENT-API] 📤 Returning meal plan:', {
@@ -315,7 +357,10 @@ export async function GET() {
     if (shouldLog) console.log(`[MealCurrent] Returning 7-day structured plan: ${days.length} days, ${weeklyPlan.length} total meals (${restaurantMealCount} restaurant)`);
     return NextResponse.json({
       success: true,
-      mealPlan: mealData
+      mealPlan: mealData,
+      isCurrentWeek,
+      weekOf: mealData.weekOf,
+      currentWeek: formatDateKey(currentWeekStart)
     });
 
   } catch (error) {

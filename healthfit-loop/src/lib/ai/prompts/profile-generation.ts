@@ -6,8 +6,30 @@ import { SurveyResponse } from '@prisma/client';
 // User Food Profile Generation Prompt
 export const createFoodProfilePrompt = (surveyData: SurveyResponse): string => {
   // Get the relevant sub-option based on primary goal
+  const getGoalKey = () => {
+    const goalValue = surveyData.goal;
+    if (typeof goalValue === 'string') {
+      const lowerGoal = goalValue.toLowerCase();
+      if (['lose_weight', 'build_muscle', 'get_healthier', 'maintain'].includes(lowerGoal)) {
+        return lowerGoal;
+      }
+      switch (goalValue) {
+        case 'WEIGHT_LOSS':
+          return 'lose_weight';
+        case 'MUSCLE_GAIN':
+          return 'build_muscle';
+        case 'ENDURANCE':
+          return 'get_healthier';
+        case 'GENERAL_WELLNESS':
+          return null;
+        default:
+          return null;
+      }
+    }
+    return surveyData.primaryGoal || null;
+  };
   const getSubOptionContext = () => {
-    switch (surveyData.primaryGoal) {
+    switch (getGoalKey()) {
       case 'lose_weight':
         return surveyData.goalChallenge
           ? `Their main challenge: ${surveyData.goalChallenge.replace('_', ' ')}`
@@ -34,7 +56,7 @@ export const createFoodProfilePrompt = (surveyData: SurveyResponse): string => {
 USER PROFILE:
 - Name: ${surveyData.firstName} ${surveyData.lastName}
 - Age: ${surveyData.age}, Sex: ${surveyData.sex}
-- Primary Goal: ${surveyData.primaryGoal || surveyData.goal}
+- Primary Goal: ${surveyData.goal || surveyData.primaryGoal || 'GENERAL_WELLNESS'}
 ${getSubOptionContext()}
 - Activity Level: ${surveyData.activityLevel}
 - Diet Restrictions: ${(surveyData.dietPrefs || []).join(', ') || 'None'}
@@ -44,7 +66,7 @@ ${getSubOptionContext()}
 - Additional Notes: ${surveyData.additionalGoalsNotes || 'None'}
 
 TASK: Create a friendly, conversational profile that:
-1. Acknowledges their specific goal (${surveyData.primaryGoal || surveyData.goal}) and their particular focus/challenge
+1. Acknowledges their specific goal (${surveyData.goal || surveyData.primaryGoal || 'GENERAL_WELLNESS'}) and their particular focus/challenge
 2. Addresses their specific sub-goal directly (e.g., if they struggle with snacking, mention strategies for that)
 3. Summarizes their dietary preferences and restrictions
 4. Explains our planned nutrition approach tailored to their situation
@@ -72,7 +94,7 @@ export const createWorkoutProfilePrompt = (surveyData: SurveyResponse): string =
 USER PROFILE:
 - Name: ${surveyData.firstName} ${surveyData.lastName}
 - Age: ${surveyData.age}, Sex: ${surveyData.sex}
-- Primary Goal: ${surveyData.primaryGoal || surveyData.goal}
+- Primary Goal: ${surveyData.goal || surveyData.primaryGoal || 'GENERAL_WELLNESS'}
 - Fitness Level: ${surveyData.fitnessLevel || workoutPrefs.fitnessExperience || 'intermediate'}
 - Health Focus: ${surveyData.healthFocus || 'general fitness'}
 - Activity Level: ${surveyData.activityLevel}

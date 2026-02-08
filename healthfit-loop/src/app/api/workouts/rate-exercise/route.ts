@@ -25,7 +25,8 @@ export async function POST(req: Request) {
     // Upsert exercise rating
     const ratingKey = `${day}-${exerciseName}-${weekNumber}`;
 
-    const exerciseRating = await prisma.workoutExerciseRating.upsert({
+    const prismaClient = prisma as any;
+    const exerciseRating = await prismaClient.workoutExerciseRating.upsert({
       where: {
         uniqueRating: {
           odayExerciseWeek: ratingKey

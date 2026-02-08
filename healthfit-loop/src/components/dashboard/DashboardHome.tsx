@@ -33,7 +33,23 @@ import {
   Minus
 } from "@phosphor-icons/react";
 import { motion } from "framer-motion";
-import { calculateMacroTargets, UserProfile } from '@/lib/utils/nutrition';
+
+const getMealStorageKey = (mealPlanId?: string, surveyId?: string, weekNumber?: number) => {
+  if (mealPlanId) return `eatenMeals:${mealPlanId}`;
+  if (surveyId) return `eatenMeals:${surveyId}:${weekNumber || 1}`;
+  return null;
+};
+
+const getLoggedMealsStorageKey = (mealPlanId?: string, surveyId?: string, weekNumber?: number) => {
+  if (mealPlanId) return `loggedMeals:${mealPlanId}`;
+  if (surveyId) return `loggedMeals:${surveyId}:${weekNumber || 1}`;
+  return null;
+};
+
+const getWorkoutStorageKey = (workoutPlanId?: string) => {
+  if (workoutPlanId) return `completedExercises:${workoutPlanId}`;
+  return null;
+};
 
 interface DashboardHomeProps {
   user: any;
@@ -45,6 +61,12 @@ interface DashboardHomeProps {
     homeMealsGenerated: boolean;
     restaurantMealsGenerated: boolean;
   };
+  nutritionTargets?: {
+    dailyCalories: number;
+    dailyProtein: number;
+    dailyCarbs: number;
+    dailyFat: number;
+  } | null;
   isGuest?: boolean;
   onShowAccountModal?: () => void;
 }
@@ -136,7 +158,7 @@ const BuildingItem = ({ icon: Icon, label, isComplete, isLoading, detail, previe
   </div>
 );
 
-export function DashboardHome({ user, onNavigate, generationStatus, isGuest, onShowAccountModal }: DashboardHomeProps) {
+export function DashboardHome({ user, onNavigate, generationStatus, nutritionTargets, isGuest, onShowAccountModal }: DashboardHomeProps) {
   const [mealData, setMealData] = useState<any>(null);
   const [consumedMeals, setConsumedMeals] = useState<any>(null);
   const [workoutProgress, setWorkoutProgress] = useState<any>(null);
@@ -152,6 +174,19 @@ export function DashboardHome({ user, onNavigate, generationStatus, isGuest, onS
     dinner: 'primary' | 'alternative'
   }>({ breakfast: 'primary', lunch: 'primary', dinner: 'primary' });
   const [bannerDismissed, setBannerDismissed] = useState(false);
+  const [showLogModal, setShowLogModal] = useState(false);
+
+  const mealStorageKey = getMealStorageKey(
+    mealData?.mealPlan?.id,
+    mealData?.mealPlan?.surveyId,
+    mealData?.mealPlan?.weekNumber
+  );
+  const loggedMealsStorageKey = getLoggedMealsStorageKey(
+    mealData?.mealPlan?.id,
+    mealData?.mealPlan?.surveyId,
+    mealData?.mealPlan?.weekNumber
+  );
+  const workoutStorageKey = getWorkoutStorageKey(workoutData?.workoutPlan?.id);
 
   // Debug: Log incoming user data and survey info
   useEffect(() => {
@@ -403,48 +438,16 @@ export function DashboardHome({ user, onNavigate, generationStatus, isGuest, onS
     };
   };
 
-  // Calculate macro targets instantly from survey data (no API needed)
-  // Round all values to nearest 10 for cleaner display
-  const macroTargets = React.useMemo(() => {
-    const survey = user?.activeSurvey;
-    console.log('[DASHBOARD-HOME] 🧮 Calculating macroTargets, survey data:', {
-      hasActiveSurvey: !!survey,
-      age: survey?.age,
-      weight: survey?.weight,
-      height: survey?.height,
-      sex: survey?.sex,
-      activityLevel: survey?.activityLevel,
-      goal: survey?.goal
-    });
-
-    if (!survey?.age || !survey?.weight || !survey?.height) {
-      console.error('[DASHBOARD-HOME] ❌ Cannot calculate macros - missing:', {
-        missingAge: !survey?.age,
-        missingWeight: !survey?.weight,
-        missingHeight: !survey?.height
-      });
-      return null; // Return null instead of hardcoded fallback
-    }
-
-    const userProfile: UserProfile = {
-      age: survey.age,
-      sex: survey.sex || 'male',
-      height: survey.height,
-      weight: survey.weight,
-      activityLevel: survey.activityLevel || 'MODERATELY_ACTIVE',
-      goal: survey.goal || 'GENERAL_WELLNESS'
-    };
-
-    const calculated = calculateMacroTargets(userProfile);
-
-    // Round to nearest 10 for cleaner display
+  // Use meal plan nutrition targets from API (single source of truth)
+  const roundedTargets = React.useMemo(() => {
+    if (!nutritionTargets) return null;
     return {
-      calories: Math.round(calculated.calories / 10) * 10,
-      protein: Math.round(calculated.protein / 10) * 10,
-      carbs: Math.round(calculated.carbs / 10) * 10,
-      fat: Math.round(calculated.fat / 10) * 10
+      dailyCalories: Math.round(nutritionTargets.dailyCalories / 10) * 10,
+      dailyProtein: Math.round(nutritionTargets.dailyProtein / 10) * 10,
+      dailyCarbs: Math.round(nutritionTargets.dailyCarbs / 10) * 10,
+      dailyFat: Math.round(nutritionTargets.dailyFat / 10) * 10
     };
-  }, [user?.activeSurvey]);
+  }, [nutritionTargets]);
 
   const getGoalText = () => {
     const goal = user?.activeSurvey?.goal || "GENERAL_WELLNESS";
@@ -454,7 +457,8 @@ export function DashboardHome({ user, onNavigate, generationStatus, isGuest, onS
       'ENDURANCE': 'Improve endurance',
       'GENERAL_WELLNESS': 'Stay healthy & active'
     };
-    return goalMap[goal] || goalMap['GENERAL_WELLNESS'];
+    const goalKey = goal as keyof typeof goalMap;
+    return goalMap[goalKey] || goalMap['GENERAL_WELLNESS'];
   };
 
   const getDayCount = () => {
@@ -479,43 +483,51 @@ export function DashboardHome({ user, onNavigate, generationStatus, isGuest, onS
     fetchConsumptionData();
     fetchWorkoutProgress();
 
-    // Load persisted eaten meals from localStorage
-    const savedEatenMeals = localStorage.getItem('eatenMeals');
-    console.log('Dashboard useEffect - Loading from localStorage:', savedEatenMeals);
-    if (savedEatenMeals) {
-      const parsed = JSON.parse(savedEatenMeals);
-      console.log('Dashboard useEffect - Parsed eatenMeals:', parsed);
-      setEatenMeals(parsed);
+    if (mealStorageKey) {
+      const savedEatenMeals = localStorage.getItem(mealStorageKey);
+      console.log('Dashboard useEffect - Loading from localStorage:', savedEatenMeals);
+      if (savedEatenMeals) {
+        const parsed = JSON.parse(savedEatenMeals);
+        console.log('Dashboard useEffect - Parsed eatenMeals:', parsed);
+        setEatenMeals(parsed);
+      } else {
+        setEatenMeals({});
+      }
     }
 
-    // Load persisted logged meals from localStorage
-    const savedLoggedMeals = localStorage.getItem('loggedMeals');
-    if (savedLoggedMeals) {
-      const parsed = JSON.parse(savedLoggedMeals);
-      console.log('[Dashboard] Loaded logged meals:', parsed.length);
-      setLoggedMeals(parsed);
+    if (loggedMealsStorageKey) {
+      const savedLoggedMeals = localStorage.getItem(loggedMealsStorageKey);
+      if (savedLoggedMeals) {
+        const parsed = JSON.parse(savedLoggedMeals);
+        console.log('[Dashboard] Loaded logged meals:', parsed.length);
+        setLoggedMeals(parsed);
+      } else {
+        setLoggedMeals([]);
+      }
     }
 
     setIsInitialized(true);
 
-    // Load persisted completed exercises from localStorage
-    const savedCompletedExercises = localStorage.getItem('completedExercises');
-    console.log('Dashboard useEffect - Loading completedExercises from localStorage:', savedCompletedExercises);
-    if (savedCompletedExercises) {
-      try {
-        const parsed = JSON.parse(savedCompletedExercises);
-        console.log('Dashboard useEffect - Parsed completedExercises:', parsed);
-        // Convert Sets back from arrays (localStorage can't store Sets)
-        const restoredState: Record<string, Set<string>> = {};
-        Object.keys(parsed).forEach(day => {
-          restoredState[day] = new Set(parsed[day]);
-        });
-        setCompletedExercises(restoredState);
-      } catch (error) {
-        console.error('Error parsing completed exercises from localStorage:', error);
+    if (workoutStorageKey) {
+      const savedCompletedExercises = localStorage.getItem(workoutStorageKey);
+      console.log('Dashboard useEffect - Loading completedExercises from localStorage:', savedCompletedExercises);
+      if (savedCompletedExercises) {
+        try {
+          const parsed = JSON.parse(savedCompletedExercises);
+          console.log('Dashboard useEffect - Parsed completedExercises:', parsed);
+          const restoredState: Record<string, Set<string>> = {};
+          Object.keys(parsed).forEach(day => {
+            restoredState[day] = new Set(parsed[day]);
+          });
+          setCompletedExercises(restoredState);
+        } catch (error) {
+          console.error('Error parsing completed exercises from localStorage:', error);
+        }
+      } else {
+        setCompletedExercises({});
       }
     }
-  }, [generationStatus.mealsGenerated]);
+  }, [generationStatus.mealsGenerated, mealStorageKey, loggedMealsStorageKey, workoutStorageKey]);
 
   // Refresh data when dashboard comes into focus (user switches back from other tabs)
   useEffect(() => {
@@ -525,15 +537,17 @@ export function DashboardHome({ user, onNavigate, generationStatus, isGuest, onS
       fetchConsumptionData();
 
       // Also reload eaten meals from localStorage in case they changed in other tabs
-      const savedEatenMeals = localStorage.getItem('eatenMeals');
-      if (savedEatenMeals) {
-        setEatenMeals(JSON.parse(savedEatenMeals));
+      if (mealStorageKey) {
+        const savedEatenMeals = localStorage.getItem(mealStorageKey);
+        if (savedEatenMeals) {
+          setEatenMeals(JSON.parse(savedEatenMeals));
+        }
       }
     };
 
     // Listen for localStorage changes from other tabs/windows
     const handleStorageChange = (e: StorageEvent) => {
-      if (e.key === 'eatenMeals' && e.newValue) {
+      if (mealStorageKey && e.key === mealStorageKey && e.newValue) {
         console.log('Dashboard - localStorage changed in another tab:', e.newValue);
         setEatenMeals(JSON.parse(e.newValue));
       }
@@ -543,23 +557,27 @@ export function DashboardHome({ user, onNavigate, generationStatus, isGuest, onS
     const handleEatenMealsUpdate = (e: CustomEvent) => {
       console.log('Dashboard - received eatenMealsUpdate event:', e.detail);
       // Only update if the new state is different and has content
-      if (e.detail && Object.keys(e.detail).length > 0) {
-        setEatenMeals(e.detail);
+      if (e.detail?.storageKey === mealStorageKey && e.detail?.data) {
+        if (Object.keys(e.detail.data).length > 0) {
+          setEatenMeals(e.detail.data);
+        }
       }
     };
 
     // Listen for logged meals updates
     const handleLoggedMealsUpdate = (e: CustomEvent) => {
       console.log('[Dashboard] Logged meals update received');
-      if (e.detail) {
-        setLoggedMeals(e.detail);
+      if (e.detail?.storageKey === loggedMealsStorageKey && e.detail?.data) {
+        setLoggedMeals(e.detail.data);
       }
     };
 
     // Listen for custom events from same tab (workout plan page)
     const handleCompletedExercisesUpdate = (e: CustomEvent) => {
       console.log('Dashboard - received completedExercisesUpdate event:', e.detail);
-      setCompletedExercises(e.detail);
+      if (e.detail?.storageKey === workoutStorageKey && e.detail?.data) {
+        setCompletedExercises(e.detail.data);
+      }
     };
 
     window.addEventListener('focus', handleFocus);
@@ -575,21 +593,23 @@ export function DashboardHome({ user, onNavigate, generationStatus, isGuest, onS
       window.removeEventListener('loggedMealsUpdate', handleLoggedMealsUpdate as EventListener);
       window.removeEventListener('completedExercisesUpdate', handleCompletedExercisesUpdate as EventListener);
     };
-  }, []);
+  }, [mealStorageKey, loggedMealsStorageKey, workoutStorageKey]);
 
   // Save eaten meals to localStorage whenever it changes (but skip initial empty state)
   useEffect(() => {
     // Only save if we're initialized and have some data
-    if (isInitialized && Object.keys(eatenMeals).length > 0) {
+    if (isInitialized && mealStorageKey && Object.keys(eatenMeals).length > 0) {
       console.log('Dashboard - Saving to localStorage:', eatenMeals);
-      localStorage.setItem('eatenMeals', JSON.stringify(eatenMeals));
-      console.log('Dashboard - Saved to localStorage, checking:', localStorage.getItem('eatenMeals'));
+      localStorage.setItem(mealStorageKey, JSON.stringify(eatenMeals));
+      localStorage.setItem('currentMealStorageKey', mealStorageKey);
+      console.log('Dashboard - Saved to localStorage, checking:', localStorage.getItem(mealStorageKey));
 
-      // Dispatch custom event to notify other components in the same tab (like meal plan page)
-      const event = new CustomEvent('eatenMealsUpdate', { detail: eatenMeals });
+      const event = new CustomEvent('eatenMealsUpdate', {
+        detail: { storageKey: mealStorageKey, data: eatenMeals }
+      });
       window.dispatchEvent(event);
     }
-  }, [eatenMeals, isInitialized]);
+  }, [eatenMeals, isInitialized, mealStorageKey]);
 
   // Extract restaurant preview when meal data arrives
   useEffect(() => {
@@ -686,7 +706,7 @@ export function DashboardHome({ user, onNavigate, generationStatus, isGuest, onS
       if (response.ok) {
         const data = await response.json();
         console.log('Dashboard meal data:', data);
-        console.log('Day 1 meals:', data?.mealPlan?.planData?.weeklyPlan?.find(d => d.day === 1));
+        console.log('Day 1 meals:', data?.mealPlan?.planData?.weeklyPlan?.find((d: any) => d.day === 1));
         setMealData(data);
       }
     } catch (error) {
@@ -895,7 +915,7 @@ export function DashboardHome({ user, onNavigate, generationStatus, isGuest, onS
           return {
             name: `${actualMeal.dish} from ${actualMeal.restaurant}`,
             image: actualMeal.imageUrl || actualMeal.image,
-            calories: actualMeal.estimatedCalories || actualMeal.calories || 0,
+            calories: actualMeal.calories ?? actualMeal.estimatedCalories ?? 0,
             protein: actualMeal.protein || 0,
             carbs: actualMeal.carbs || 0,
             fat: actualMeal.fat || 0,
@@ -906,7 +926,7 @@ export function DashboardHome({ user, onNavigate, generationStatus, isGuest, onS
           return {
             name: actualMeal.name || actualMeal.dish || "Home-cooked meal",
             image: actualMeal.imageUrl || actualMeal.image,
-            calories: actualMeal.estimatedCalories || actualMeal.calories || 0,
+            calories: actualMeal.calories ?? actualMeal.estimatedCalories ?? 0,
             protein: actualMeal.protein || 0,
             carbs: actualMeal.carbs || 0,
             fat: actualMeal.fat || 0
@@ -1034,26 +1054,26 @@ export function DashboardHome({ user, onNavigate, generationStatus, isGuest, onS
   // Calculate real consumed macros for today
   const getTotalCaloriesEaten = () => {
     let total = 0;
-    const meals = getTodaysMeals();
+    const meals = getTodaysMeals() as any;
 
     // Check primary and alternative options for all meals
     if (isMealEaten('breakfast', 0, 'primary')) {
-      total += meals.breakfast?.primary?.calories || 0;
+      total += meals.breakfast?.primary?.calories ?? meals.breakfast?.primary?.estimatedCalories ?? 0;
     }
     if (isMealEaten('breakfast', 0, 'alternative')) {
-      total += meals.breakfast?.alternative?.calories || 0;
+      total += meals.breakfast?.alternative?.calories ?? meals.breakfast?.alternative?.estimatedCalories ?? 0;
     }
     if (isMealEaten('lunch', 0, 'primary')) {
-      total += meals.lunch?.primary?.calories || 0;
+      total += meals.lunch?.primary?.calories ?? meals.lunch?.primary?.estimatedCalories ?? 0;
     }
     if (isMealEaten('lunch', 0, 'alternative')) {
-      total += meals.lunch?.alternative?.calories || 0;
+      total += meals.lunch?.alternative?.calories ?? meals.lunch?.alternative?.estimatedCalories ?? 0;
     }
     if (isMealEaten('dinner', 0, 'primary')) {
-      total += meals.dinner?.primary?.calories || 0;
+      total += meals.dinner?.primary?.calories ?? meals.dinner?.primary?.estimatedCalories ?? 0;
     }
     if (isMealEaten('dinner', 0, 'alternative')) {
-      total += meals.dinner?.alternative?.calories || 0;
+      total += meals.dinner?.alternative?.calories ?? meals.dinner?.alternative?.estimatedCalories ?? 0;
     }
 
     // Add logged meals for today
@@ -1061,7 +1081,7 @@ export function DashboardHome({ user, onNavigate, generationStatus, isGuest, onS
     loggedMeals
       .filter(meal => meal.day === todayDayName && meal.completed)
       .forEach(meal => {
-        total += meal.calories || 0;
+        total += meal.calories ?? meal.estimatedCalories ?? 0;
       });
 
     console.log('Real calories eaten - total:', total);
@@ -1175,7 +1195,7 @@ export function DashboardHome({ user, onNavigate, generationStatus, isGuest, onS
   };
 
   // Helper function to extract macro values from meal data
-  const getMealMacro = (meal: any, macroType: string): number => {
+  const getMealMacro = (meal: any, macroType: 'protein' | 'carbs' | 'fat'): number => {
     if (!meal) return 0;
 
     // Try to get macro data from the meal object (direct from API)
@@ -1199,7 +1219,7 @@ export function DashboardHome({ user, onNavigate, generationStatus, isGuest, onS
 
   // Helper function to detect skipped meals and calculate snack recommendations
   const getSkippedMealsAndSnackRecommendation = () => {
-    const meals = getTodaysMeals();
+    const meals = getTodaysMeals() as any;
     const skippedMeals = [];
 
     if (meals.breakfast.primary.isSkipped || meals.breakfast.primary.isEmpty) {
@@ -1232,16 +1252,11 @@ export function DashboardHome({ user, onNavigate, generationStatus, isGuest, onS
     };
   };
 
-  const todaysMeals = getTodaysMeals();
+  const todaysMeals = getTodaysMeals() as any;
   const todaysWorkout = getTodaysWorkout();
 
-  // Use macroTargets for consistency - ensures both sections show same rounded values
-  const nutritionTargets = macroTargets ? {
-    dailyCalories: macroTargets.calories,
-    dailyProtein: macroTargets.protein,
-    dailyCarbs: macroTargets.carbs,
-    dailyFat: macroTargets.fat
-  } : null;
+  // Use rounded targets for consistency across sections
+  const displayTargets = roundedTargets;
 
   // Use real eaten calories from checkbox tracking
   const caloriesEaten = getTotalCaloriesEaten();
@@ -1340,22 +1355,22 @@ export function DashboardHome({ user, onNavigate, generationStatus, isGuest, onS
             <h3 className="font-semibold text-gray-900">Your Daily Targets</h3>
           </div>
 
-          {macroTargets ? (
+          {displayTargets ? (
             <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 sm:gap-3">
               <div className="text-center p-3 bg-gray-50 rounded-xl">
-                <div className="text-lg sm:text-xl font-bold text-gray-900">{macroTargets.calories.toLocaleString()}</div>
+                <div className="text-lg sm:text-xl font-bold text-gray-900">{displayTargets.dailyCalories.toLocaleString()}</div>
                 <div className="text-xs text-gray-500">calories</div>
               </div>
               <div className="text-center p-3 bg-blue-50 rounded-xl">
-                <div className="text-lg sm:text-xl font-bold text-blue-700">{macroTargets.protein}g</div>
+                <div className="text-lg sm:text-xl font-bold text-blue-700">{displayTargets.dailyProtein}g</div>
                 <div className="text-xs text-blue-600">protein</div>
               </div>
               <div className="text-center p-3 bg-amber-50 rounded-xl">
-                <div className="text-lg sm:text-xl font-bold text-amber-700">{macroTargets.carbs}g</div>
+                <div className="text-lg sm:text-xl font-bold text-amber-700">{displayTargets.dailyCarbs}g</div>
                 <div className="text-xs text-amber-600">carbs</div>
               </div>
               <div className="text-center p-3 bg-green-50 rounded-xl">
-                <div className="text-lg sm:text-xl font-bold text-green-700">{macroTargets.fat}g</div>
+                <div className="text-lg sm:text-xl font-bold text-green-700">{displayTargets.dailyFat}g</div>
                 <div className="text-xs text-green-600">fat</div>
               </div>
             </div>
@@ -1421,11 +1436,11 @@ export function DashboardHome({ user, onNavigate, generationStatus, isGuest, onS
                 Nutrition
               </span>
             </div>
-            {nutritionTargets ? (
+            {displayTargets ? (
               <>
-                <div className="text-2xl sm:text-3xl font-bold text-[#c1272d] mb-1">{caloriesEaten > 0 ? Math.round((caloriesEaten/nutritionTargets.dailyCalories)*100) : 0}%</div>
+                <div className="text-2xl sm:text-3xl font-bold text-[#c1272d] mb-1">{caloriesEaten > 0 ? Math.round((caloriesEaten/displayTargets.dailyCalories)*100) : 0}%</div>
                 <div className="text-lg font-bold text-[#8b5cf6] mb-1">Daily goal</div>
-                <div className="text-sm text-gray-600">{caloriesEaten} / {nutritionTargets.dailyCalories} calories</div>
+                <div className="text-sm text-gray-600">{caloriesEaten} / {displayTargets.dailyCalories} calories</div>
               </>
             ) : (
               <>
@@ -1838,27 +1853,27 @@ export function DashboardHome({ user, onNavigate, generationStatus, isGuest, onS
                 <p className="text-xs text-[#8b5cf6] font-medium">Track your macro intake</p>
               </div>
             </div>
-            {nutritionTargets && (
+            {displayTargets && (
               <div className="text-xl font-bold text-[#c1272d] bg-gray-50 px-3 py-1 rounded-full">
-                {Math.round((caloriesEaten/nutritionTargets.dailyCalories)*100)}%
+                {Math.round((caloriesEaten/displayTargets.dailyCalories)*100)}%
               </div>
             )}
           </div>
 
-          {nutritionTargets ? (
+          {displayTargets ? (
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
               {/* Calories Progress */}
               <div className="bg-gray-50 rounded-lg p-3 border border-gray-200">
                 <div className="flex justify-between items-center text-xs mb-2">
                   <span className="text-[#c1272d] font-bold">Calories</span>
                   <span className="text-gray-700 font-bold">
-                    {caloriesEaten}/{nutritionTargets.dailyCalories}
+                    {caloriesEaten}/{displayTargets.dailyCalories}
                   </span>
                 </div>
                 <div className="w-full bg-gray-200 rounded-full h-2">
                   <div
                     className="h-2 rounded-full transition-all duration-500 bg-gradient-to-r from-[#c1272d] to-red-500"
-                    style={{ width: `${Math.min((caloriesEaten / nutritionTargets.dailyCalories) * 100, 100)}%` }}
+                    style={{ width: `${Math.min((caloriesEaten / displayTargets.dailyCalories) * 100, 100)}%` }}
                   />
                 </div>
               </div>
@@ -1868,13 +1883,13 @@ export function DashboardHome({ user, onNavigate, generationStatus, isGuest, onS
                 <div className="flex justify-between items-center text-xs mb-2">
                   <span className="text-[#8b5cf6] font-bold">Protein</span>
                   <span className="text-gray-700 font-bold">
-                    {proteinEaten}g/{Math.round(nutritionTargets.dailyProtein)}g
+                    {proteinEaten}g/{Math.round(displayTargets.dailyProtein)}g
                   </span>
                 </div>
                 <div className="w-full bg-gray-200 rounded-full h-2">
                   <div
                     className="h-2 rounded-full transition-all duration-500 bg-gradient-to-r from-[#8b5cf6] to-purple-600"
-                    style={{ width: `${Math.min((proteinEaten / nutritionTargets.dailyProtein) * 100, 100)}%` }}
+                    style={{ width: `${Math.min((proteinEaten / displayTargets.dailyProtein) * 100, 100)}%` }}
                   />
                 </div>
               </div>
@@ -1884,13 +1899,13 @@ export function DashboardHome({ user, onNavigate, generationStatus, isGuest, onS
                 <div className="flex justify-between items-center text-xs mb-2">
                   <span className="text-[#c1272d] font-bold">Carbs</span>
                   <span className="text-gray-700 font-bold">
-                    {carbsEaten}g/{Math.round(nutritionTargets.dailyCarbs)}g
+                    {carbsEaten}g/{Math.round(displayTargets.dailyCarbs)}g
                   </span>
                 </div>
                 <div className="w-full bg-gray-200 rounded-full h-2">
                   <div
                     className="h-2 rounded-full transition-all duration-500 bg-gradient-to-r from-[#c1272d] to-[#8b5cf6]"
-                    style={{ width: `${Math.min((carbsEaten / nutritionTargets.dailyCarbs) * 100, 100)}%` }}
+                    style={{ width: `${Math.min((carbsEaten / displayTargets.dailyCarbs) * 100, 100)}%` }}
                   />
                 </div>
               </div>
@@ -1900,13 +1915,13 @@ export function DashboardHome({ user, onNavigate, generationStatus, isGuest, onS
                 <div className="flex justify-between items-center text-xs mb-2">
                   <span className="text-[#8b5cf6] font-bold">Fat</span>
                   <span className="text-gray-700 font-bold">
-                    {fatEaten}g/{Math.round(nutritionTargets.dailyFat)}g
+                    {fatEaten}g/{Math.round(displayTargets.dailyFat)}g
                   </span>
                 </div>
                 <div className="w-full bg-gray-200 rounded-full h-2">
                   <div
                     className="h-2 rounded-full transition-all duration-500 bg-gradient-to-r from-[#8b5cf6] to-purple-600"
-                    style={{ width: `${Math.min((fatEaten / nutritionTargets.dailyFat) * 100, 100)}%` }}
+                    style={{ width: `${Math.min((fatEaten / displayTargets.dailyFat) * 100, 100)}%` }}
                   />
                 </div>
               </div>

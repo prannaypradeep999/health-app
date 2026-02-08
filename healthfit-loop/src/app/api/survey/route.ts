@@ -1,8 +1,11 @@
 import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/db';
 import { SurveySchema } from '@/lib/schemas';
+import { parseHeight } from '@/lib/utils/nutrition';
 import { cookies } from 'next/headers';
 import { nanoid } from 'nanoid';
+import { getStartOfWeek } from '@/lib/utils/date-utils';
+import { checkPreferenceConflicts } from '@/lib/utils/preference-conflict-checker';
 
 export const runtime = 'nodejs';
 
@@ -21,13 +24,22 @@ export const runtime = 'nodejs';
 
 // Helper function to build survey data object (reduces duplication)
 function buildSurveyData(data: any, sessionId: string, mealsOutPerWeek: number) {
+  let height = typeof data.height === 'string'
+    ? parseHeight(data.height)
+    : (Number(data.height) || 68);
+
+  if (height < 36 || height > 96) {
+    console.warn(`[SURVEY] Invalid height: ${height}, using default 68`);
+    height = 68;
+  }
+
   return {
     email: data.email || '',
     firstName: data.firstName || '',
     lastName: data.lastName || '',
     age: data.age || 0,
     sex: data.sex || '',
-    height: Number(data.height) || 0,
+    height,
     weight: data.weight || 0,
     streetAddress: data.streetAddress || '',
     city: data.city || '',
@@ -53,8 +65,14 @@ function buildSurveyData(data: any, sessionId: string, mealsOutPerWeek: number) 
     distancePreference: data.distancePreference || 'medium',
     preferredCuisines: data.preferredCuisines || [],
     preferredFoods: data.preferredFoods || [],
+    customFoodInput: data.customFoodInput || null,
     uploadedFiles: data.uploadedFiles || [],
     preferredNutrients: data.preferredNutrients || [],
+    cookingFrequency: data.fillerQuestions?.cookingFrequency || null,
+    foodAllergies: data.fillerQuestions?.foodAllergies || [],
+    eatingOutOccasions: data.fillerQuestions?.eatingOutOccasions || null,
+    healthGoalPriority: data.fillerQuestions?.healthGoalPriority || null,
+    motivationLevel: data.fillerQuestions?.motivationLevel || null,
     strictExclusions: data.strictExclusions || null,
     workoutPreferencesJson: data.workoutPreferences || undefined,
     biomarkerJson: data.biomarkers || undefined,
@@ -97,6 +115,77 @@ export async function POST(req: Request) {
       );
     }
 
+    const conflicts = checkPreferenceConflicts(
+      parsed.data.preferredFoods || [],
+      parsed.data.dietPrefs || [],
+      parsed.data.strictExclusions || {},
+      parsed.data.fillerQuestions?.foodAllergies || []
+    );
+
+    const errorConflicts = conflicts.filter(conflict => conflict.severity === 'error');
+    if (errorConflicts.length > 0) {
+      return NextResponse.json(
+        {
+          error: 'Conflicting preferences detected',
+          conflicts: errorConflicts,
+        },
+        { status: 400 }
+      );
+    }
+
+    const requiredFields = ['age', 'sex', 'height', 'weight', 'activityLevel', 'goal'] as const;
+    const missingFields = requiredFields.filter((field) => {
+      const value = parsed.data[field];
+      if (typeof value === 'number') {
+        return Number.isNaN(value);
+      }
+      return value === null || value === undefined || value === '';
+    });
+
+    if (missingFields.length > 0) {
+      return NextResponse.json(
+        { error: 'Missing required fields', fields: missingFields },
+        { status: 400 }
+      );
+    }
+
+    if (parsed.data.age < 13 || parsed.data.age > 120) {
+      return NextResponse.json({ error: 'Invalid age' }, { status: 400 });
+    }
+    if (parsed.data.height < 36 || parsed.data.height > 96) {
+      return NextResponse.json({ error: 'Invalid height' }, { status: 400 });
+    }
+    if (parsed.data.weight < 50 || parsed.data.weight > 700) {
+      return NextResponse.json({ error: 'Invalid weight' }, { status: 400 });
+    }
+
+    const normalizedData = {
+      ...parsed.data,
+      dietPrefs: parsed.data.dietPrefs ?? [],
+      strictExclusions: parsed.data.strictExclusions ?? {
+        proteins: [],
+        dairy: [],
+        fruits: [],
+        vegetables: [],
+        nuts: [],
+        grains: [],
+        other: []
+      },
+      preferredCuisines: parsed.data.preferredCuisines ?? [],
+      weeklyMealSchedule: parsed.data.weeklyMealSchedule ?? {},
+      workoutPreferences: {
+        preferredDuration: parsed.data.workoutPreferences?.preferredDuration ?? 45,
+        availableDays: parsed.data.workoutPreferences?.availableDays?.length
+          ? parsed.data.workoutPreferences.availableDays
+          : ['monday', 'wednesday', 'friday'],
+        workoutTypes: parsed.data.workoutPreferences?.workoutTypes ?? [],
+        gymAccess: parsed.data.workoutPreferences?.gymAccess ?? 'no_gym',
+        fitnessExperience: parsed.data.workoutPreferences?.fitnessExperience ?? 'intermediate',
+        injuryConsiderations: parsed.data.workoutPreferences?.injuryConsiderations ?? [],
+        timePreferences: parsed.data.workoutPreferences?.timePreferences ?? []
+      }
+    };
+
     const cookieStore = await cookies();
     let sessionId = cookieStore.get('guest_session')?.value;
     
@@ -104,8 +193,8 @@ export async function POST(req: Request) {
       sessionId = nanoid();
     }
 
-    const mealsOutPerWeek = countRestaurantMeals(parsed.data.weeklyMealSchedule);
-    const surveyFields = buildSurveyData(parsed.data, sessionId, mealsOutPerWeek);
+    const mealsOutPerWeek = countRestaurantMeals(normalizedData.weeklyMealSchedule);
+    const surveyFields = buildSurveyData(normalizedData, sessionId, mealsOutPerWeek);
 
     // Check if survey already exists for this session
     const existingSurvey = await prisma.surveyResponse.findFirst({
@@ -176,15 +265,36 @@ export async function POST(req: Request) {
       });
       console.log(`[FINAL] 🍪 Set meal_plan_id cookie: ${mealPlan.id}`);
 
-      // Step 2: Fire all generation processes in parallel with shared mealPlanId
+      // Step 2: Sequential meal generation + parallel workout generation
       // The LoadingJourney will poll for status updates
-      Promise.all([
-        triggerHomeMealGeneration(survey.id, sessionId, baseUrl, mealPlan.id),
-        triggerBackgroundWorkoutGeneration(survey.id, sessionId, baseUrl),
-        triggerRestaurantGeneration(survey.id, sessionId, baseUrl, mealPlan.id)
-      ]).catch(error => {
-        console.error('[FINAL] ❌ Generation error:', error);
-      });
+
+      // Workouts are independent - start in background
+      const workoutPromise = triggerBackgroundWorkoutGeneration(survey.id, sessionId, baseUrl);
+
+      // Sequential meal generation for budget coordination
+      (async () => {
+        try {
+          // Step 1: Generate restaurant meals FIRST (they're constrained by real menus)
+          console.log('[FINAL] 🏪 Starting restaurant generation first (sequential)...');
+          const restaurantResult = await triggerRestaurantGeneration(survey.id, sessionId, baseUrl, mealPlan.id);
+
+          // Step 2: Extract actual calories from restaurant meals
+          let restaurantCalories: Array<{ day: string; mealType: string; calories: number }> = [];
+          if (restaurantResult.success && restaurantResult.mealCalories) {
+            restaurantCalories = restaurantResult.mealCalories;
+            console.log('[FINAL] 📊 Restaurant calories extracted:', restaurantCalories);
+          }
+
+          // Step 3: Pass remaining budget to home meal generator
+          console.log('[FINAL] 🏠 Starting home meal generation with restaurant budget context...');
+          await triggerHomeMealGeneration(survey.id, sessionId, baseUrl, mealPlan.id, restaurantCalories);
+
+          // Wait for workouts too
+          await workoutPromise;
+        } catch (error) {
+          console.error('[FINAL] ❌ Sequential generation error:', error);
+        }
+      })();
 
       // Also trigger profile generation (fast)
       Promise.all([
@@ -294,12 +404,7 @@ async function createCoordinatedMealPlan(surveyId: string) {
   }
 
   // Get start of week date for consistent meal plans
-  const weekOfDate = new Date();
-  weekOfDate.setHours(0, 0, 0, 0);
-  // Set to Monday of current week
-  const dayOfWeek = weekOfDate.getDay();
-  const daysToMonday = dayOfWeek === 0 ? -6 : 1 - dayOfWeek;
-  weekOfDate.setDate(weekOfDate.getDate() + daysToMonday);
+  const weekOfDate = getStartOfWeek();
 
   // Now create fresh coordinated meal plan
   const mealPlan = await prisma.mealPlan.create({
@@ -342,7 +447,8 @@ async function triggerHomeMealGeneration(
   surveyId: string,
   sessionId: string,
   baseUrl: string,
-  mealPlanId?: string
+  mealPlanId?: string,
+  restaurantCalories?: Array<{ day: string; mealType: string; calories: number }>
 ): Promise<{ success: boolean; groceryList?: any; error?: string }> {
   const startTime = Date.now();
   try {
@@ -356,7 +462,8 @@ async function triggerHomeMealGeneration(
       },
       body: JSON.stringify({
         backgroundGeneration: true,
-        mealPlanId: mealPlanId // Pass coordinated meal plan ID
+        mealPlanId: mealPlanId, // Pass coordinated meal plan ID
+        restaurantCalories: restaurantCalories || [] // NEW: Pass restaurant budget context
       })
     });
 
@@ -397,14 +504,14 @@ async function triggerHomeMealGeneration(
 }
 
 /**
- * Triggers restaurant meal generation in the background (fire-and-forget)
+ * Triggers restaurant meal generation and returns actual meal calorie data
  */
 async function triggerRestaurantGeneration(
   surveyId: string,
   sessionId: string,
   baseUrl: string,
   mealPlanId?: string
-): Promise<void> {
+): Promise<{ success: boolean; mealCalories?: Array<{ day: string; mealType: string; calories: number }>; error?: string }> {
   const startTime = Date.now();
   try {
     console.log('[RESTAURANT-TRIGGER] 🏪 Starting restaurant generation (BACKGROUND)...');
@@ -430,19 +537,31 @@ async function triggerRestaurantGeneration(
         restaurantCount: result.restaurantMeals?.length || 0,
         totalTime: `${totalTime}ms`
       });
+
+      // Extract per-meal calories from restaurant results
+      const mealCalories = (result.restaurantMeals || []).map((meal: any) => ({
+        day: meal.day,
+        mealType: meal.mealType,
+        calories: meal.primary?.estimatedCalories || meal.estimatedCalories || 0
+      }));
+
+      return { success: true, mealCalories };
     } else {
       console.error('[RESTAURANT-TRIGGER] ❌ Failed:', {
         status: response.status,
         totalTime: `${totalTime}ms`
       });
+      return { success: false, error: `HTTP ${response.status}` };
     }
 
   } catch (error) {
     const totalTime = Date.now() - startTime;
+    const errorMessage = error instanceof Error ? error.message : 'Unknown error';
     console.error('[RESTAURANT-TRIGGER] ❌ Error:', {
-      error: error instanceof Error ? error.message : 'Unknown error',
+      error: errorMessage,
       totalTime: `${totalTime}ms`
     });
+    return { success: false, error: errorMessage };
   }
 }
 

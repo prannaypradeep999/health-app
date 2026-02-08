@@ -67,7 +67,7 @@ export class GooglePlacesClient {
       return null;
     }
 
-    return geocodeResult.data;
+    return geocodeResult.data || null;
   }
 
   async getRestaurantDetails(placeId: string): Promise<any> {
@@ -281,7 +281,7 @@ export class GooglePlacesClient {
         isOpen: place.opening_hours?.open_now ?? details?.opening_hours?.open_now,
         businessStatus: details?.business_status || 'UNKNOWN',
         website: details?.website,
-        description: description,
+        description: description || undefined,
         userRatingsTotal: details?.user_ratings_total || 0,
         editorialSummary: details?.editorial_summary?.overview,
         needsMenuAnalysis: true

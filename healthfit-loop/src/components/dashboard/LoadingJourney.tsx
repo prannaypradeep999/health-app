@@ -1,8 +1,9 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
+  Warning,
   CheckCircle,
   Circle,
   Spinner,
@@ -14,10 +15,10 @@ import {
   MapPin,
   Target
 } from '@phosphor-icons/react';
+import { useRouter } from 'next/navigation';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Progress } from '@/components/ui/progress';
-import { calculateMacroTargets, UserProfile } from '@/lib/utils/nutrition';
 import Logo from '@/components/logo';
 
 interface LoadingJourneyProps {
@@ -118,9 +119,14 @@ const nutritionTips = [
 ];
 
 // Custom easing for smooth animations
-const smoothEase = [0.25, 0.46, 0.45, 0.94];
+const smoothEase: [number, number, number, number] = [0.25, 0.46, 0.45, 0.94];
+
+const GENERATION_TIMEOUT_MS = 3 * 60 * 1000;
+const MAX_POLL_ATTEMPTS = 60;
+const MAX_CONSECUTIVE_FAILURES = 5;
 
 export function LoadingJourney({ surveyData, onComplete, onSkipToDashboard }: LoadingJourneyProps) {
+  const router = useRouter();
   const [stages, setStages] = useState<GenerationStage[]>(initialStages);
   const [currentTipIndex, setCurrentTipIndex] = useState(0);
   const [showSkipButton, setShowSkipButton] = useState(false);
@@ -133,33 +139,30 @@ export function LoadingJourney({ surveyData, onComplete, onSkipToDashboard }: Lo
   const [currentFriendlyMessage, setCurrentFriendlyMessage] = useState(0);
   const [showTimeoutMessage, setShowTimeoutMessage] = useState(false);
   const [currentTimeoutMessage, setCurrentTimeoutMessage] = useState(0);
+  const [hasTimedOut, setHasTimedOut] = useState(false);
+  const [pollAttempts, setPollAttempts] = useState(0);
+  const [pollError, setPollError] = useState(false);
+  const [consecutiveFailures, setConsecutiveFailures] = useState(0);
+  const [pollResetKey, setPollResetKey] = useState(0);
+  const pollAttemptsRef = useRef(0);
+  const consecutiveFailuresRef = useRef(0);
+  const [nutritionTargets, setNutritionTargets] = useState<{
+    dailyCalories: number;
+    dailyProtein: number;
+    dailyCarbs: number;
+    dailyFat: number;
+  } | null>(null);
 
-  // Calculate macro targets from survey data (instant, no API needed)
-  // Round all values to nearest 10 for cleaner display
-  const macroTargets = React.useMemo(() => {
-    if (!surveyData?.age || !surveyData?.weight || !surveyData?.height) {
-      return null; // Return null instead of hardcoded fallback
-    }
-
-    const userProfile: UserProfile = {
-      age: surveyData.age,
-      sex: surveyData.sex || 'male',
-      height: surveyData.height,
-      weight: surveyData.weight,
-      activityLevel: surveyData.activityLevel || 'MODERATELY_ACTIVE',
-      goal: surveyData.goal || 'GENERAL_WELLNESS'
-    };
-
-    const calculated = calculateMacroTargets(userProfile);
-
-    // Round to nearest 10 for cleaner display
+  // Use meal plan nutrition targets from API (single source of truth)
+  const displayTargets = React.useMemo(() => {
+    if (!nutritionTargets) return null;
     return {
-      calories: Math.round(calculated.calories / 10) * 10,
-      protein: Math.round(calculated.protein / 10) * 10,
-      carbs: Math.round(calculated.carbs / 10) * 10,
-      fat: Math.round(calculated.fat / 10) * 10
+      calories: Math.round(nutritionTargets.dailyCalories / 10) * 10,
+      protein: Math.round(nutritionTargets.dailyProtein / 10) * 10,
+      carbs: Math.round(nutritionTargets.dailyCarbs / 10) * 10,
+      fat: Math.round(nutritionTargets.dailyFat / 10) * 10
     };
-  }, [surveyData]);
+  }, [nutritionTargets]);
 
   // Timer for elapsed time
   useEffect(() => {
@@ -168,6 +171,15 @@ export function LoadingJourney({ surveyData, onComplete, onSkipToDashboard }: Lo
     }, 1000);
     return () => clearInterval(timer);
   }, []);
+
+  // Hard timeout for generation
+  useEffect(() => {
+    if (generationComplete) return;
+    const timeout = setTimeout(() => {
+      setHasTimedOut(true);
+    }, GENERATION_TIMEOUT_MS);
+    return () => clearTimeout(timeout);
+  }, [generationComplete]);
 
   // Show skip button after 30 seconds
   useEffect(() => {
@@ -217,11 +229,14 @@ export function LoadingJourney({ surveyData, onComplete, onSkipToDashboard }: Lo
         const res = await fetch('/api/ai/meals/current');
         if (res.ok) {
           const data = await res.json();
+          setNutritionTargets(data.mealPlan?.nutritionTargets || null);
           const restaurants = data.mealPlan?.planData?.restaurantMeals || [];
           if (restaurants.length > 0) {
-            const names = [...new Set(restaurants.map((r: any) =>
-              r.primary?.restaurant || r.restaurant
-            ).filter(Boolean))].slice(0, 4);
+            const names = Array.from(
+              new Set(
+                (restaurants.map((r: any) => r.primary?.restaurant || r.restaurant).filter(Boolean) as string[])
+              )
+            ).slice(0, 4);
             setRestaurantPreview(names);
           }
         }
@@ -242,7 +257,15 @@ export function LoadingJourney({ surveyData, onComplete, onSkipToDashboard }: Lo
 
   // Poll for actual generation status
   useEffect(() => {
+    if (generationComplete || pollError || hasTimedOut) return;
     const pollStatus = async () => {
+      if (pollAttemptsRef.current >= MAX_POLL_ATTEMPTS) {
+        setPollError(true);
+        return;
+      }
+      pollAttemptsRef.current += 1;
+      setPollAttempts(pollAttemptsRef.current);
+
       try {
         const [mealsRes, workoutsRes] = await Promise.all([
           fetch('/api/ai/meals/current'),
@@ -251,6 +274,8 @@ export function LoadingJourney({ surveyData, onComplete, onSkipToDashboard }: Lo
 
         const mealsReady = mealsRes.ok;
         const workoutsReady = workoutsRes.ok;
+        consecutiveFailuresRef.current = 0;
+        setConsecutiveFailures(0);
 
         // Update stages based on actual status
         setStages(prev => prev.map(stage => {
@@ -271,6 +296,12 @@ export function LoadingJourney({ surveyData, onComplete, onSkipToDashboard }: Lo
           return stage;
         }));
 
+        // Set nutrition targets from meals response if available
+        if (mealsRes.ok) {
+          const mealsData = await mealsRes.json();
+          setNutritionTargets(mealsData.mealPlan?.nutritionTargets || null);
+        }
+
         // Calculate overall progress
         const completedCount = stages.filter(s => s.status === 'complete').length;
         setOverallProgress((completedCount / stages.length) * 100);
@@ -285,6 +316,11 @@ export function LoadingJourney({ surveyData, onComplete, onSkipToDashboard }: Lo
         }
       } catch (error) {
         console.error('Error polling generation status:', error);
+        consecutiveFailuresRef.current += 1;
+        setConsecutiveFailures(consecutiveFailuresRef.current);
+        if (consecutiveFailuresRef.current >= MAX_CONSECUTIVE_FAILURES) {
+          setPollError(true);
+        }
       }
     };
 
@@ -297,7 +333,7 @@ export function LoadingJourney({ surveyData, onComplete, onSkipToDashboard }: Lo
       clearInterval(pollInterval);
       clearTimeout(initialPoll);
     };
-  }, [onComplete, stages]);
+  }, [onComplete, stages, generationComplete, pollError, hasTimedOut, pollResetKey]);
 
   // Simulate stage progression for visual feedback (even if actual status lags)
   useEffect(() => {
@@ -341,6 +377,78 @@ export function LoadingJourney({ surveyData, onComplete, onSkipToDashboard }: Lo
   };
 
   const currentTip = nutritionTips[currentTipIndex];
+
+  if (pollError) {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-gray-50 to-gray-100 flex flex-col items-center justify-center px-6">
+        <div className="bg-white rounded-2xl p-6 shadow-sm border border-gray-100 w-full max-w-lg text-center">
+          <div className="text-red-500 mb-4 flex justify-center">
+            <Warning size={48} />
+          </div>
+          <h2 className="text-xl font-semibold mb-2 text-gray-900">
+            Something went wrong
+          </h2>
+          <p className="text-gray-600 mb-6">
+            We couldn't load your plan. This might be a temporary issue.
+          </p>
+          <div className="flex flex-col sm:flex-row gap-3 justify-center">
+            <button
+              onClick={() => {
+                setPollError(false);
+                setHasTimedOut(false);
+                setPollAttempts(0);
+                setConsecutiveFailures(0);
+                pollAttemptsRef.current = 0;
+                consecutiveFailuresRef.current = 0;
+                setPollResetKey(prev => prev + 1);
+              }}
+              className="px-4 py-2 bg-blue-600 text-white rounded-lg"
+            >
+              Try Again
+            </button>
+            <button
+              onClick={() => router.push('/survey')}
+              className="px-4 py-2 border border-gray-300 rounded-lg"
+            >
+              Start Over
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  if (hasTimedOut) {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-gray-50 to-gray-100 flex flex-col items-center justify-center px-6">
+        <div className="bg-white rounded-2xl p-6 shadow-sm border border-gray-100 w-full max-w-lg text-center">
+          <h2 className="text-xl font-semibold mb-2 text-gray-900">
+            Taking longer than expected
+          </h2>
+          <p className="text-gray-600 mb-6">
+            Your plan is still being created, but it's taking longer than usual.
+          </p>
+          <div className="flex flex-col sm:flex-row gap-3 justify-center">
+            <button
+              onClick={() => window.location.reload()}
+              className="px-4 py-2 bg-blue-600 text-white rounded-lg"
+            >
+              Refresh Page
+            </button>
+            <button
+              onClick={() => router.push('/dashboard')}
+              className="px-4 py-2 border border-gray-300 rounded-lg"
+            >
+              Go to Dashboard
+            </button>
+          </div>
+          <p className="text-sm text-gray-500 mt-4">
+            If this keeps happening, please contact support.
+          </p>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-gray-50 to-gray-100 flex flex-col">
@@ -466,22 +574,22 @@ export function LoadingJourney({ surveyData, onComplete, onSkipToDashboard }: Lo
             <h3 className="font-semibold text-gray-900">Your Daily Targets</h3>
           </div>
 
-          {macroTargets ? (
+          {displayTargets ? (
             <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 sm:gap-3">
               <div className="text-center p-3 bg-gray-50 rounded-xl">
-                <div className="text-lg sm:text-xl font-bold text-gray-900">{macroTargets.calories.toLocaleString()}</div>
+                <div className="text-lg sm:text-xl font-bold text-gray-900">{displayTargets.calories.toLocaleString()}</div>
                 <div className="text-xs text-gray-500">calories</div>
               </div>
               <div className="text-center p-3 bg-blue-50 rounded-xl">
-                <div className="text-lg sm:text-xl font-bold text-blue-700">{macroTargets.protein}g</div>
+                <div className="text-lg sm:text-xl font-bold text-blue-700">{displayTargets.protein}g</div>
                 <div className="text-xs text-blue-600">protein</div>
               </div>
               <div className="text-center p-3 bg-amber-50 rounded-xl">
-                <div className="text-lg sm:text-xl font-bold text-amber-700">{macroTargets.carbs}g</div>
+                <div className="text-lg sm:text-xl font-bold text-amber-700">{displayTargets.carbs}g</div>
                 <div className="text-xs text-amber-600">carbs</div>
               </div>
               <div className="text-center p-3 bg-green-50 rounded-xl">
-                <div className="text-lg sm:text-xl font-bold text-green-700">{macroTargets.fat}g</div>
+                <div className="text-lg sm:text-xl font-bold text-green-700">{displayTargets.fat}g</div>
                 <div className="text-xs text-green-600">fat</div>
               </div>
             </div>

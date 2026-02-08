@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/db';
 import { createRecipeGenerationPrompt } from '@/lib/ai/prompts';
+import { validateIngredientSums } from '@/lib/utils/ingredient-validator';
 
 export async function POST(req: NextRequest) {
   try {
@@ -25,23 +26,50 @@ export async function POST(req: NextRequest) {
       }
     });
 
-    // Always use cache if recipe exists for the dish
-
     if (existingRecipe) {
-      // Update hit count
-      await prisma.recipe.update({
-        where: { id: existingRecipe.id },
-        data: {
-          hitCount: { increment: 1 },
-          lastUsed: new Date()
+      const targetCalories = nutritionTargets?.calories;
+      const cachedCalories = (existingRecipe.recipeData as any)?.nutrition?.calories;
+
+      const hasTarget = typeof targetCalories === 'number';
+      const hasCachedCalories = typeof cachedCalories === 'number';
+
+      if (hasTarget && hasCachedCalories && targetCalories > 0) {
+        const deviationPercent = Math.abs(cachedCalories - targetCalories) / targetCalories * 100;
+
+        if (deviationPercent > 15) {
+          console.log(`[RECIPE-CACHE] Skipping cache for "${dishName}" — cached: ${cachedCalories} cal, target: ${targetCalories} cal (${Math.round(deviationPercent)}% off)`);
+        } else {
+          // Update hit count
+          await prisma.recipe.update({
+            where: { id: existingRecipe.id },
+            data: {
+              hitCount: { increment: 1 },
+              lastUsed: new Date()
+            }
+          });
+          console.log(`[RECIPE] ✅ Using cached recipe for "${dishName}" (hits: ${existingRecipe.hitCount + 1})`);
+          return NextResponse.json({
+            success: true,
+            recipe: existingRecipe.recipeData,
+            cached: true
+          });
         }
-      });
-      console.log(`[RECIPE] ✅ Using cached recipe for "${dishName}" (hits: ${existingRecipe.hitCount + 1})`);
-      return NextResponse.json({
-        success: true,
-        recipe: existingRecipe.recipeData,
-        cached: true
-      });
+      } else {
+        // No target to compare against or cached calories missing - return cache
+        await prisma.recipe.update({
+          where: { id: existingRecipe.id },
+          data: {
+            hitCount: { increment: 1 },
+            lastUsed: new Date()
+          }
+        });
+        console.log(`[RECIPE] ✅ Using cached recipe for "${dishName}" (hits: ${existingRecipe.hitCount + 1})`);
+        return NextResponse.json({
+          success: true,
+          recipe: existingRecipe.recipeData,
+          cached: true
+        });
+      }
     }
 
     console.log(`[RECIPE] 🍳 Generating new recipe for "${dishName}" with targets:`, nutritionTargets);
@@ -85,6 +113,25 @@ export async function POST(req: NextRequest) {
 
     const data = await response.json();
     const recipeData = JSON.parse(data.choices[0].message.content);
+
+    if (recipeData?.ingredientsWithNutrition) {
+      const validation = validateIngredientSums(
+        recipeData.name || 'Recipe',
+        {
+          estimatedCalories: recipeData.nutrition?.calories,
+          protein: recipeData.nutrition?.protein,
+          carbs: recipeData.nutrition?.carbs,
+          fat: recipeData.nutrition?.fat,
+          ingredientsWithNutrition: recipeData.ingredientsWithNutrition
+        }
+      );
+
+      validation.errors.forEach((e) => console.error(`[RECIPE-INGREDIENT-VALIDATOR] ❌ ${e}`));
+      validation.warnings.forEach((w) => console.warn(`[RECIPE-INGREDIENT-VALIDATOR] ⚠️ ${w}`));
+      if (validation.valid && validation.details) {
+        console.log(`[RECIPE-INGREDIENT-VALIDATOR] ✅ ${recipeData.name}: ${validation.details.ingredientCount} ingredients, sums match`);
+      }
+    }
 
     // Always save recipe to cache using upsert
     try {

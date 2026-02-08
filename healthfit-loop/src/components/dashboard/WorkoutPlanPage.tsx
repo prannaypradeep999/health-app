@@ -27,6 +27,11 @@ import {
 import Logo from '@/components/logo';
 import { getPlanDayIndex, getCurrentMealPeriod, getPlanDays, getDayStatus, isPlanExpired, getBrowserTimezone } from '@/lib/utils/date-utils';
 
+const getWorkoutStorageKey = (workoutPlanId?: string) => {
+  if (workoutPlanId) return `completedExercises:${workoutPlanId}`;
+  return null;
+};
+
 interface WorkoutPlanPageProps {
   onNavigate: (screen: string) => void;
   generationStatus: {
@@ -34,11 +39,24 @@ interface WorkoutPlanPageProps {
     workoutsGenerated: boolean;
     restaurantsDiscovered: boolean;
   };
+  isGuest?: boolean;
+  onShowAccountModal?: () => void;
 }
+
+type WorkoutDayInfo = {
+  id: string;
+  name: string;
+  dayNumber: number;
+  dayIndex: number;
+  date: string;
+  fullName?: string;
+  focus?: string;
+  fullFocus?: string;
+};
 
 export function WorkoutPlanPage({ onNavigate, generationStatus }: WorkoutPlanPageProps) {
   const [selectedDay, setSelectedDay] = useState('');
-  const [completedExercises, setCompletedExercises] = useState<Record<string, Set<string>>>({});
+  const [completedExercises, setCompletedExercises] = useState<Record<string, Set<string> | string[]>>({});
   const [workoutData, setWorkoutData] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [showLogModal, setShowLogModal] = useState(false);
@@ -49,10 +67,11 @@ export function WorkoutPlanPage({ onNavigate, generationStatus }: WorkoutPlanPag
   const [workoutRatings, setWorkoutRatings] = useState<Record<string, number>>({});
 
   const [userTimezone] = useState(() => getBrowserTimezone());
+  const workoutStorageKey = getWorkoutStorageKey(workoutData?.workoutPlan?.id);
   const planStartDate = workoutData?.workoutPlan?.startDate || workoutData?.workoutPlan?.generatedAt;
   const currentDayIndex = planStartDate ? getPlanDayIndex(planStartDate, userTimezone) : 0;
   const planExpired = planStartDate ? isPlanExpired(planStartDate, userTimezone) : false;
-  const days = planStartDate ? getPlanDays(planStartDate) : [];
+  const days = planStartDate ? (getPlanDays(planStartDate) as WorkoutDayInfo[]) : [];
 
   // Extract workout plan IDs for database persistence
   const surveyId = workoutData?.workoutPlan?.surveyId;
@@ -89,27 +108,29 @@ export function WorkoutPlanPage({ onNavigate, generationStatus }: WorkoutPlanPag
       setLoading(false);
     }
 
-    // Load persisted completed exercises from localStorage
-    const savedCompletedExercises = localStorage.getItem('completedExercises');
-    console.log('WorkoutPlanPage useEffect - Loading from localStorage:', savedCompletedExercises);
-    if (savedCompletedExercises) {
-      try {
-        const parsed = JSON.parse(savedCompletedExercises);
-        console.log('WorkoutPlanPage useEffect - Parsed completedExercises:', parsed);
-        // Convert Sets back from arrays (localStorage can't store Sets)
-        const restoredState: Record<string, Set<string>> = {};
-        Object.keys(parsed).forEach(day => {
-          restoredState[day] = new Set(parsed[day]);
-        });
-        setCompletedExercises(restoredState);
-      } catch (error) {
-        console.error('Error parsing completed exercises from localStorage:', error);
+    if (workoutStorageKey) {
+      const savedCompletedExercises = localStorage.getItem(workoutStorageKey);
+      console.log('WorkoutPlanPage useEffect - Loading from localStorage:', savedCompletedExercises);
+      if (savedCompletedExercises) {
+        try {
+          const parsed = JSON.parse(savedCompletedExercises);
+          console.log('WorkoutPlanPage useEffect - Parsed completedExercises:', parsed);
+          const restoredState: Record<string, Set<string>> = {};
+          Object.keys(parsed).forEach(day => {
+            restoredState[day] = new Set(parsed[day]);
+          });
+          setCompletedExercises(restoredState);
+        } catch (error) {
+          console.error('Error parsing completed exercises from localStorage:', error);
+        }
+      } else {
+        setCompletedExercises({});
       }
     }
 
     // Listen for localStorage changes from other tabs/windows
     const handleStorageChange = (e: StorageEvent) => {
-      if (e.key === 'completedExercises' && e.newValue) {
+      if (workoutStorageKey && e.key === workoutStorageKey && e.newValue) {
         console.log('WorkoutPlanPage - localStorage changed in another tab:', e.newValue);
         try {
           const parsed = JSON.parse(e.newValue);
@@ -126,8 +147,10 @@ export function WorkoutPlanPage({ onNavigate, generationStatus }: WorkoutPlanPag
 
     // Listen for custom events from same tab (dashboard)
     const handleCompletedExercisesUpdate = (e: CustomEvent) => {
-      console.log('WorkoutPlanPage - received completedExercisesUpdate event:', e.detail);
-      setCompletedExercises(e.detail);
+      if (e.detail?.storageKey === workoutStorageKey && e.detail?.data) {
+        console.log('WorkoutPlanPage - received completedExercisesUpdate event:', e.detail);
+        setCompletedExercises(e.detail.data);
+      }
     };
 
     window.addEventListener('storage', handleStorageChange);
@@ -137,7 +160,7 @@ export function WorkoutPlanPage({ onNavigate, generationStatus }: WorkoutPlanPag
       window.removeEventListener('storage', handleStorageChange);
       window.removeEventListener('completedExercisesUpdate', handleCompletedExercisesUpdate as EventListener);
     };
-  }, [generationStatus.workoutsGenerated]);
+  }, [generationStatus.workoutsGenerated, workoutStorageKey]);
 
   // Auto-select current day when workout data loads
   useEffect(() => {
@@ -189,19 +212,21 @@ export function WorkoutPlanPage({ onNavigate, generationStatus }: WorkoutPlanPag
 
   // Save completed exercises to localStorage whenever it changes
   useEffect(() => {
+    if (!workoutStorageKey) return;
     console.log('WorkoutPlanPage - Saving to localStorage:', completedExercises);
-    // Convert Sets to arrays for localStorage (JSON.stringify can't handle Sets)
     const serializable: Record<string, string[]> = {};
     Object.keys(completedExercises).forEach(day => {
       serializable[day] = Array.from(completedExercises[day]);
     });
-    localStorage.setItem('completedExercises', JSON.stringify(serializable));
-    console.log('WorkoutPlanPage - Saved to localStorage, checking:', localStorage.getItem('completedExercises'));
+    localStorage.setItem(workoutStorageKey, JSON.stringify(serializable));
+    localStorage.setItem('currentWorkoutStorageKey', workoutStorageKey);
+    console.log('WorkoutPlanPage - Saved to localStorage, checking:', localStorage.getItem(workoutStorageKey));
 
-    // Dispatch custom event to notify other components in the same tab (like dashboard)
-    const event = new CustomEvent('completedExercisesUpdate', { detail: completedExercises });
+    const event = new CustomEvent('completedExercisesUpdate', {
+      detail: { storageKey: workoutStorageKey, data: completedExercises }
+    });
     window.dispatchEvent(event);
-  }, [completedExercises]);
+  }, [completedExercises, workoutStorageKey]);
 
   // Load workout ratings from localStorage
   useEffect(() => {
@@ -246,7 +271,7 @@ export function WorkoutPlanPage({ onNavigate, generationStatus }: WorkoutPlanPag
         : false;
     const newCompletedState = !isCurrentlyCompleted;
 
-    // Update local state immediately
+    let nextState: Record<string, Set<string>> = {};
     setCompletedExercises(prev => {
       const dayExercises = new Set(prev[selectedDay] || []);
       if (newCompletedState) {
@@ -254,16 +279,18 @@ export function WorkoutPlanPage({ onNavigate, generationStatus }: WorkoutPlanPag
       } else {
         dayExercises.delete(exerciseId);
       }
-      const newState = { ...prev, [selectedDay]: dayExercises };
+      nextState = { ...prev, [selectedDay]: dayExercises };
 
-      // Save to localStorage
-      const serializable: Record<string, string[]> = {};
-      Object.entries(newState).forEach(([day, exercises]) => {
-        serializable[day] = Array.from(exercises);
-      });
-      localStorage.setItem('completedExercises', JSON.stringify(serializable));
+      if (workoutStorageKey) {
+        const serializable: Record<string, string[]> = {};
+        Object.entries(nextState).forEach(([day, exercises]) => {
+          serializable[day] = Array.from(exercises);
+        });
+        localStorage.setItem(workoutStorageKey, JSON.stringify(serializable));
+        localStorage.setItem('currentWorkoutStorageKey', workoutStorageKey);
+      }
 
-      return newState;
+      return nextState;
     });
 
     // Get exercise details
@@ -289,17 +316,11 @@ export function WorkoutPlanPage({ onNavigate, generationStatus }: WorkoutPlanPag
       }).catch(err => console.error('[WORKOUT-LOG] API Error:', err));
     }
 
-    // Dispatch event for dashboard
-    const serializable: Record<string, string[]> = {};
-    Object.entries(completedExercises).forEach(([day, exercises]) => {
-      serializable[day] = Array.from(exercises);
-    });
-    if (newCompletedState) {
-      serializable[selectedDay] = [...(serializable[selectedDay] || []), exerciseId];
-    } else {
-      serializable[selectedDay] = (serializable[selectedDay] || []).filter(e => e !== exerciseId);
+    if (workoutStorageKey) {
+      window.dispatchEvent(new CustomEvent('completedExercisesUpdate', {
+        detail: { storageKey: workoutStorageKey, data: nextState }
+      }));
     }
-    window.dispatchEvent(new CustomEvent('completedExercisesUpdate', { detail: serializable }));
   };
 
   const rateWorkout = async (exerciseName: string, rating: number) => {

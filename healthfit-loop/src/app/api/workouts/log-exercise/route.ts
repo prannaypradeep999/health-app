@@ -87,7 +87,7 @@ export async function POST(req: Request) {
       where: { id: workoutLog.id },
       data: {
         completed: completedCount > 0,
-        totalCaloriesBurned: allExercises.reduce((sum, e) => sum + (estimatedCalories || 0), 0)
+        totalCaloriesBurned: allExercises.reduce((sum, e) => sum + (estimatedCalories ?? 0), 0)
       }
     });
 

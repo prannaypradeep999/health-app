@@ -3,6 +3,7 @@ import { cookies } from 'next/headers';
 import { prisma } from '@/lib/db';
 import { perplexityClient } from '@/lib/external/perplexity-client';
 import { withPerplexityRetry } from '@/lib/utils/retry';
+import { normalizeGroceryKey } from '@/lib/utils/grocery-list';
 
 export const runtime = 'nodejs';
 export const maxDuration = 60; // Allow up to 60 seconds for price lookups
@@ -171,9 +172,25 @@ export async function POST(req: NextRequest) {
       snacks: []
     };
 
+    const originalItemMap = new Map<string, any>();
+    for (const category of categories) {
+      const items = groceryList[category] || [];
+      for (const item of items) {
+        const key = normalizeGroceryKey(item.name || item.item || '');
+        if (key) {
+          originalItemMap.set(`${category}:${key}`, item);
+        }
+      }
+    }
+
     for (const item of priceResponse.items) {
       if (groceryListWithPrices[item.category]) {
-        groceryListWithPrices[item.category].push(item);
+        const key = normalizeGroceryKey(item.name || item.item || '');
+        const original = originalItemMap.get(`${item.category}:${key}`);
+        groceryListWithPrices[item.category].push({
+          ...original,
+          ...item
+        });
       }
     }
 

@@ -1,6 +1,6 @@
 import type { NextConfig } from "next";
 
-const nextConfig: NextConfig = {
+const nextConfig = {
   // Disable strict linting for deployment
   eslint: {
     ignoreDuringBuilds: true,
@@ -16,6 +16,6 @@ const nextConfig: NextConfig = {
       },
     ],
   },
-};
+} as NextConfig;
 
 export default nextConfig;

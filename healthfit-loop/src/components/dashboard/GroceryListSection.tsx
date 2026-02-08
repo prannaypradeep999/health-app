@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import {
@@ -35,10 +35,13 @@ interface GroceryItemWithPrices {
   item?: string;
   name?: string;  // Legacy field
   quantity: string;
-  uses: string;
+  uses?: string;
   category?: string;
   storeOptions?: StoreOption[];
   estimatedCost?: number;  // Legacy field
+  usedInMeals?: { day: string; meal: string; dishName: string }[];
+  firstUseDay?: string;
+  perishability?: 'high' | 'medium' | 'low';
 }
 
 interface GroceryStore {
@@ -152,6 +155,8 @@ export function GroceryListSection({
 
   const [selectedStore, setSelectedStore] = useState<string>('all');
   const [selectedCategory, setSelectedCategory] = useState<string>('all');
+  const [viewMode, setViewMode] = useState<'all' | 'next3days' | 'perishable'>('all');
+  const [sortBy, setSortBy] = useState<'category' | 'day' | 'perishability'>('category');
 
   // Check if we have real prices (stores + successful price lookup)
   const hasRealPrices = !!(
@@ -207,7 +212,18 @@ export function GroceryListSection({
   const checkedItemsCount = Object.values(checkedItems).filter(Boolean).length;
 
   // Get all items flattened with category info
-  const getAllItems = (): (GroceryItemWithPrices & { category: string; index: number })[] => {
+  const dayOrder = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday'];
+  const formatDayLabel = (day?: string) => {
+    if (!day) return '';
+    return `${day.charAt(0).toUpperCase()}${day.slice(1)}`;
+  };
+  const getDayIndex = (day?: string) => {
+    if (!day) return 999;
+    const index = dayOrder.indexOf(day.toLowerCase());
+    return index === -1 ? 999 : index;
+  };
+
+  const allItems = useMemo((): (GroceryItemWithPrices & { category: string; index: number })[] => {
     const items: (GroceryItemWithPrices & { category: string; index: number })[] = [];
     availableCategories.forEach(category => {
       const categoryItems = groceryList[category as keyof GroceryList] as GroceryItemWithPrices[];
@@ -216,14 +232,34 @@ export function GroceryListSection({
       });
     });
     return items;
-  };
+  }, [availableCategories, groceryList]);
 
-  const allItems = getAllItems();
+  const next3Days = useMemo(() => {
+    const today = new Date();
+    const todayIndex = (today.getDay() + 6) % 7; // Monday = 0
+    return Array.from({ length: 3 }, (_, i) => dayOrder[(todayIndex + i) % 7]);
+  }, [dayOrder]);
 
-  // Filter by category
-  const filteredItems = selectedCategory === 'all'
-    ? allItems
-    : allItems.filter(item => item.category === selectedCategory);
+  const filteredItems = useMemo(() => {
+    let items = selectedCategory === 'all'
+      ? [...allItems]
+      : allItems.filter(item => item.category === selectedCategory);
+
+    if (viewMode === 'next3days') {
+      items = items.filter(item => item.firstUseDay && next3Days.includes(item.firstUseDay));
+    } else if (viewMode === 'perishable') {
+      items = items.filter(item => item.perishability === 'high');
+    }
+
+    if (sortBy === 'day') {
+      items.sort((a, b) => getDayIndex(a.firstUseDay) - getDayIndex(b.firstUseDay));
+    } else if (sortBy === 'perishability') {
+      const perishOrder: Record<string, number> = { high: 0, medium: 1, low: 2 };
+      items.sort((a, b) => (perishOrder[a.perishability || 'low'] ?? 3) - (perishOrder[b.perishability || 'low'] ?? 3));
+    }
+
+    return items;
+  }, [allItems, selectedCategory, viewMode, sortBy, next3Days]);
 
   // Get recommended store total
   const recommendedTotal = hasRealPrices && groceryList.storeTotals
@@ -240,7 +276,11 @@ export function GroceryListSection({
     filteredItems.forEach(item => {
       const itemName = item.item || item.name || 'Unknown item';
       const bestOption = item.storeOptions?.find(o => o.isRecommended);
-      text += `• ${itemName} (${item.quantity})`;
+      const firstUse = item.firstUseDay && item.firstUseDay !== 'unknown'
+        ? ` | first used: ${formatDayLabel(item.firstUseDay)}`
+        : '';
+      const perish = item.perishability ? ` | ${item.perishability} perishability` : '';
+      text += `• ${itemName} (${item.quantity})${firstUse}${perish}`;
       if (bestOption) {
         text += ` - $${bestOption.price.toFixed(2)} at ${bestOption.store}`;
       }
@@ -253,6 +293,26 @@ export function GroceryListSection({
 
     navigator.clipboard.writeText(text);
   };
+
+  const shoppingSuggestions = useMemo(() => {
+    const suggestions: string[] = [];
+    const highPerishables = allItems.filter(item => item.perishability === 'high');
+    const lateHighPerishables = highPerishables.filter(item => {
+      const index = getDayIndex(item.firstUseDay);
+      return index >= dayOrder.indexOf('thursday') && index <= dayOrder.indexOf('sunday');
+    });
+
+    if (lateHighPerishables.length > 0) {
+      const names = lateHighPerishables
+        .map(item => item.item || item.name || 'item')
+        .filter(Boolean);
+      suggestions.push(
+        `💡 Consider a mid-week shopping trip for: ${names.join(', ')}`
+      );
+    }
+
+    return suggestions;
+  }, [allItems, dayOrder]);
 
   return (
     <div className="bg-white border border-gray-200 rounded-2xl shadow-md overflow-hidden">
@@ -389,6 +449,65 @@ export function GroceryListSection({
         </div>
       </div>
 
+      {/* View + Sort Controls */}
+      <div className="px-4 sm:px-6 py-3 border-b border-gray-100 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+        <div className="flex flex-wrap gap-2">
+          <button
+            onClick={() => setViewMode('all')}
+            className={`px-3 py-1.5 rounded-full text-xs sm:text-sm font-medium transition-colors ${
+              viewMode === 'all' ? 'bg-green-600 text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+            }`}
+          >
+            All Items
+          </button>
+          <button
+            onClick={() => setViewMode('next3days')}
+            className={`px-3 py-1.5 rounded-full text-xs sm:text-sm font-medium transition-colors ${
+              viewMode === 'next3days' ? 'bg-green-600 text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+            }`}
+          >
+            Next 3 Days
+          </button>
+          <button
+            onClick={() => setViewMode('perishable')}
+            className={`px-3 py-1.5 rounded-full text-xs sm:text-sm font-medium transition-colors ${
+              viewMode === 'perishable' ? 'bg-green-600 text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+            }`}
+          >
+            🥩 Perishables First
+          </button>
+        </div>
+        <div className="flex items-center gap-2">
+          <span className="text-xs text-gray-500">Sort by</span>
+          <button
+            onClick={() => setSortBy('category')}
+            className={`px-2 py-1 rounded text-xs ${sortBy === 'category' ? 'bg-gray-900 text-white' : 'bg-gray-100 text-gray-600'}`}
+          >
+            Category
+          </button>
+          <button
+            onClick={() => setSortBy('day')}
+            className={`px-2 py-1 rounded text-xs ${sortBy === 'day' ? 'bg-gray-900 text-white' : 'bg-gray-100 text-gray-600'}`}
+          >
+            Day
+          </button>
+          <button
+            onClick={() => setSortBy('perishability')}
+            className={`px-2 py-1 rounded text-xs ${sortBy === 'perishability' ? 'bg-gray-900 text-white' : 'bg-gray-100 text-gray-600'}`}
+          >
+            Perishability
+          </button>
+        </div>
+      </div>
+
+      {shoppingSuggestions.length > 0 && (
+        <div className="px-4 sm:px-6 py-3 border-b border-amber-100 bg-amber-50">
+          {shoppingSuggestions.map((suggestion, index) => (
+            <p key={index} className="text-sm text-amber-800">{suggestion}</p>
+          ))}
+        </div>
+      )}
+
       {/* Items List */}
       <div className="p-4 sm:p-6 space-y-4 max-h-[500px] overflow-y-auto">
         {filteredItems.length > 0 ? (
@@ -397,6 +516,14 @@ export function GroceryListSection({
             const isChecked = checkedItems[itemKey] || false;
             const config = categoryConfigs[item.category as keyof typeof categoryConfigs];
             const itemName = item.item || item.name || 'Unknown item';
+            const usageLabel = item.uses || (
+              item.usedInMeals && item.usedInMeals.length > 0
+                ? item.usedInMeals
+                    .slice(0, 3)
+                    .map(usage => `${formatDayLabel(usage.day)} ${usage.meal}`)
+                    .join(', ')
+                : ''
+            );
 
             // Get store options if available
             const storeOptions: StoreOption[] = item.storeOptions || [];
@@ -440,12 +567,27 @@ export function GroceryListSection({
                         <Badge variant="outline" className="text-xs">
                           {item.quantity}
                         </Badge>
+                      {item.perishability === 'high' && (
+                        <Badge className="text-[10px] bg-red-100 text-red-700 border border-red-200">
+                          Use within 2-3 days
+                        </Badge>
+                      )}
+                      {item.perishability === 'medium' && (
+                        <Badge className="text-[10px] bg-yellow-100 text-yellow-700 border border-yellow-200">
+                          Use within 5-7 days
+                        </Badge>
+                      )}
                       </div>
-                      {item.uses && (
+                    {usageLabel && (
                         <p className={`text-xs mt-1 ${isChecked ? 'text-green-600' : 'text-gray-500'}`}>
-                          Used in: {item.uses}
+                        Used in: {usageLabel}
                         </p>
                       )}
+                    {item.firstUseDay && item.firstUseDay !== 'unknown' && (
+                      <p className={`text-xs mt-1 ${isChecked ? 'text-green-600' : 'text-gray-500'}`}>
+                        First used: {formatDayLabel(item.firstUseDay)}
+                      </p>
+                    )}
                     </div>
                   </div>
                 </div>

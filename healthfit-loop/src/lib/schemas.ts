@@ -32,10 +32,10 @@ export const SurveySchema = z.object({
   email: z.string().email("Invalid email format").optional().or(z.literal('')),
   firstName: z.string().optional().default(''),
   lastName: z.string().optional().default(''),
-  age: z.number().int().min(13, "Must be at least 13 years old").max(120, "Invalid age").optional(),
-  sex: z.enum(['male', 'female', 'nonbinary']).optional(),
-  height: z.number().int().min(36, "Height must be at least 36 inches").max(96, "Height must be less than 96 inches").optional(),
-  weight: z.number().int().min(50, "Weight must be at least 50 lbs").max(1000, "Weight must be less than 1000 lbs").optional(),
+  age: z.number().int().min(13, "Please enter a valid age").max(120, "Please enter a valid age"),
+  sex: z.enum(['male', 'female', 'nonbinary'], { required_error: "Please select your sex" }),
+  height: z.number().int().min(36, "Please enter height in inches (3-8 feet)").max(96, "Please enter height in inches (3-8 feet)"),
+  weight: z.number().int().min(50, "Please enter weight in pounds").max(700, "Please enter weight in pounds"),
 
   // Step 4: Address fields (needed for restaurant recommendations)
   streetAddress: z.string().optional().default(''),
@@ -45,13 +45,17 @@ export const SurveySchema = z.object({
   country: z.string().default("United States"),
 
   // Step 2: Health Goals (enhanced)
-  goal: z.enum(['WEIGHT_LOSS', 'MUSCLE_GAIN', 'ENDURANCE', 'GENERAL_WELLNESS']).optional(),
+  goal: z.enum(['WEIGHT_LOSS', 'MUSCLE_GAIN', 'ENDURANCE', 'GENERAL_WELLNESS'], {
+    required_error: "Please select your goal"
+  }),
   primaryGoal: PrimaryGoalEnum.optional(),
   goalChallenge: GoalChallengeEnum.optional(),
   fitnessLevel: FitnessLevelEnum.optional(),
   healthFocus: HealthFocusEnum.optional(),
   maintainFocus: MaintainFocusEnum.optional(),
-  activityLevel: z.enum(['SEDENTARY', 'LIGHTLY_ACTIVE', 'MODERATELY_ACTIVE', 'VERY_ACTIVE']).optional(),
+  activityLevel: z.enum(['SEDENTARY', 'LIGHTLY_ACTIVE', 'MODERATELY_ACTIVE', 'VERY_ACTIVE'], {
+    required_error: "Please select your activity level"
+  }),
   sportsInterests: z.string().default(""),
   fitnessTimeline: z.string().default(""),
   preferredActivities: z.array(z.string()).default([]),
@@ -66,28 +70,44 @@ export const SurveySchema = z.object({
       lunch: z.enum(['no-meal', 'home', 'restaurant']),
       dinner: z.enum(['no-meal', 'home', 'restaurant'])
     })
-  ).optional(),
+  ).default({}),
   distancePreference: z.enum(['close', 'medium', 'far']).default('medium'),
 
   // Step 4-5: Diet & Food Preferences
   dietPrefs: z.array(z.string()).default([]),
   preferredCuisines: z.array(z.string()).default([]),
   preferredFoods: z.array(z.string()).default([]),
+  customFoodInput: z.string().optional().default(''),
 
   // Step 7: Health Metrics (optional)
   uploadedFiles: z.array(z.string()).default([]),
   preferredNutrients: z.array(z.string()).default([]),
 
-  // Strict exclusions for allergies and dietary restrictions
+  // Extra personalization (optional)
+  fillerQuestions: z
+    .object({
+      cookingFrequency: z.string().optional(),
+      foodAllergies: z.array(z.string()).default([]),
+      eatingOutOccasions: z.string().optional(),
+      healthGoalPriority: z.string().optional(),
+      motivationLevel: z.string().optional()
+    })
+    .optional(),
+
+  // Foods to avoid (preferences, not allergies)
   strictExclusions: z.object({
     proteins: z.array(z.string()).default([]),
     dairy: z.array(z.string()).default([]),
     fruits: z.array(z.string()).default([]),
     vegetables: z.array(z.string()).default([]),
-    nuts: z.array(z.string()).default([]),
-    grains: z.array(z.string()).default([]),
     other: z.array(z.string()).default([])
-  }).optional(),
+  }).default({
+    proteins: [],
+    dairy: [],
+    fruits: [],
+    vegetables: [],
+    other: []
+  }),
 
   // Step 6: Workout Preferences
   workoutPreferences: z
@@ -100,7 +120,15 @@ export const SurveySchema = z.object({
       injuryConsiderations: z.array(z.string()).default([]),
       timePreferences: z.array(z.string()).default([]),
     })
-    .optional(),
+    .default({
+      preferredDuration: 45,
+      availableDays: [],
+      workoutTypes: [],
+      gymAccess: 'no_gym',
+      fitnessExperience: 'intermediate',
+      injuryConsiderations: [],
+      timePreferences: [],
+    }),
 
   // Step 7: Biomarkers (optional)
   biomarkers: z

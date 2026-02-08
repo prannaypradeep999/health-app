@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -24,11 +24,26 @@ import {
   X,
   CheckCircle,
 } from "@phosphor-icons/react";
+import { ArrowLeftRight } from "lucide-react";
 import MealLogModal from "./modals/MealLogModal";
 import { GroceryListSection } from './GroceryListSection';
 import { RestaurantListSection } from './RestaurantListSection';
+import { MealSwapDialog } from './MealSwapDialog';
+import { collectAllMeals, CollectedMeal } from '@/lib/utils/meal-utils';
 import Logo from '@/components/logo';
 import { getPlanDayIndex, getCurrentMealPeriod, getPlanDays, getDayStatus, isPlanExpired, getBrowserTimezone, type MealPeriod } from '@/lib/utils/date-utils';
+
+const getMealStorageKey = (mealPlanId?: string, surveyId?: string, weekNumber?: number) => {
+  if (mealPlanId) return `eatenMeals:${mealPlanId}`;
+  if (surveyId) return `eatenMeals:${surveyId}:${weekNumber || 1}`;
+  return null;
+};
+
+const getLoggedMealsStorageKey = (mealPlanId?: string, surveyId?: string, weekNumber?: number) => {
+  if (mealPlanId) return `loggedMeals:${mealPlanId}`;
+  if (surveyId) return `loggedMeals:${surveyId}:${weekNumber || 1}`;
+  return null;
+};
 
 interface MealPlanPageProps {
   onNavigate: (screen: string) => void;
@@ -37,9 +52,17 @@ interface MealPlanPageProps {
     workoutsGenerated: boolean;
     restaurantsDiscovered: boolean;
   };
+  isGuest?: boolean;
+  onShowAccountModal?: () => void;
+  nutritionTargets?: {
+    dailyCalories: number;
+    dailyProtein: number;
+    dailyCarbs: number;
+    dailyFat: number;
+  } | null;
 }
 
-export function MealPlanPage({ onNavigate, generationStatus }: MealPlanPageProps) {
+export function MealPlanPage({ onNavigate, generationStatus, nutritionTargets: nutritionTargetsProp }: MealPlanPageProps) {
   const [selectedDay, setSelectedDay] = useState('');
   const [mealData, setMealData] = useState<any>(null);
   const [loading, setLoading] = useState(true);
@@ -50,7 +73,15 @@ export function MealPlanPage({ onNavigate, generationStatus }: MealPlanPageProps
   const [loggedMeals, setLoggedMeals] = useState<any[]>([]);
   const [activeTab, setActiveTab] = useState<'meals' | 'grocery' | 'restaurants'>('meals');
   const [checkedGroceryItems, setCheckedGroceryItems] = useState<{[key: string]: boolean}>({});
-  const [selectedMealOptions, setSelectedMealOptions] = useState<{[key: string]: 'primary' | 'alternative'}>({});
+  const [selectedMealOptions, setSelectedMealOptions] = useState<{[key: string]: any}>({});
+
+  // Swap dialog state
+  const [swapDialogOpen, setSwapDialogOpen] = useState(false);
+  const [swapTarget, setSwapTarget] = useState<{
+    day: string;
+    mealType: string;
+    name: string;
+  } | null>(null);
 
   // Recipe modal state - lifted to parent to prevent reset on re-render
   const [activeRecipeModal, setActiveRecipeModal] = useState<{
@@ -78,6 +109,8 @@ export function MealPlanPage({ onNavigate, generationStatus }: MealPlanPageProps
   const surveyId = mealData?.mealPlan?.surveyId;
   const mealPlanId = mealData?.mealPlan?.id;
   const weekNumber = mealData?.mealPlan?.weekNumber || 1;
+  const mealStorageKey = getMealStorageKey(mealPlanId, surveyId, weekNumber);
+  const loggedMealsStorageKey = getLoggedMealsStorageKey(mealPlanId, surveyId, weekNumber);
 
   // Get logged meals for a specific meal type and day
   const getLoggedMealsForType = (mealType: string, day: string) => {
@@ -126,7 +159,37 @@ export function MealPlanPage({ onNavigate, generationStatus }: MealPlanPageProps
 
   // Get selected option for a specific meal
   const getSelectedOption = (day: string, mealType: string): 'primary' | 'alternative' => {
-    return selectedMealOptions[`${day}-${mealType}`] || 'primary';
+    const selection = selectedMealOptions[`${day}-${mealType}`];
+    if (selection?.isCustomSwap) {
+      return 'primary'; // Default for UI display, actual meal comes from getMealForSlot
+    }
+    return selection || 'primary';
+  };
+
+  // Get the meal to display for a given slot (handles both normal toggle and custom swaps)
+  const getMealForSlot = (day: string, mealType: string) => {
+    const key = `${day}-${mealType}`;
+    const selection = selectedMealOptions[key];
+
+    if (selection?.isCustomSwap) {
+      // Find the swapped meal from source
+      const sourceMeal = allMeals.find(m =>
+        m.day === selection.sourceDay &&
+        m.mealType === selection.sourceMealType &&
+        m.option === selection.sourceOption
+      );
+      return sourceMeal?.originalData;
+    }
+
+    // Default: use primary or alternative based on simple toggle
+    const dayData = mealData?.mealPlan?.planData?.days?.find((d: any) => d.day === day);
+    const mealSlot = dayData?.meals?.[mealType];
+
+    if (selection === 'alternative' && mealSlot?.alternative) {
+      return mealSlot.alternative;
+    }
+
+    return mealSlot?.primary;
   };
 
   // Toggle selected option for a specific meal
@@ -138,6 +201,60 @@ export function MealPlanPage({ onNavigate, generationStatus }: MealPlanPageProps
     }));
   };
 
+  // Collect all available meals for swap dialog
+  const allMeals = useMemo(() => {
+    if (!mealData?.mealPlan?.planData) return [];
+    return collectAllMeals(mealData.mealPlan.planData);
+  }, [mealData]);
+
+  // Open swap dialog
+  const openSwapDialog = (day: string, mealType: string, currentMealName: string) => {
+    setSwapTarget({ day, mealType, name: currentMealName });
+    setSwapDialogOpen(true);
+  };
+
+  // Handle swap
+  const handleSwap = async (selectedMeal: CollectedMeal) => {
+    if (!swapTarget) return;
+
+    // Update local state
+    const swapKey = `${swapTarget.day}-${swapTarget.mealType}`;
+    const newSelectedOptions = {
+      ...selectedMealOptions,
+      [swapKey]: {
+        sourceDay: selectedMeal.day,
+        sourceMealType: selectedMeal.mealType,
+        sourceOption: selectedMeal.option,
+        // This indicates a cross-meal swap, not just primary/alternative
+        isCustomSwap: true,
+      }
+    };
+    setSelectedMealOptions(newSelectedOptions);
+
+    // Persist to API
+    await persistSwapSelection(newSelectedOptions);
+
+    // Close dialog
+    setSwapDialogOpen(false);
+    setSwapTarget(null);
+  };
+
+  // Persist swaps to userContext
+  const persistSwapSelection = async (selections: any) => {
+    try {
+      await fetch('/api/ai/meals/update-preferences', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          mealPlanId: mealData?.mealPlan?.id,
+          selectedMealOptions: selections,
+        }),
+      });
+    } catch (error) {
+      console.error('Failed to persist swap selection:', error);
+    }
+  };
+
   useEffect(() => {
     if (generationStatus.mealsGenerated) {
       fetchMealData();
@@ -145,27 +262,31 @@ export function MealPlanPage({ onNavigate, generationStatus }: MealPlanPageProps
       setLoading(false);
     }
 
-    // Load persisted eaten meals from localStorage (same key as dashboard)
-    const savedEatenMeals = localStorage.getItem('eatenMeals');
-    if (savedEatenMeals) {
-      const parsed = JSON.parse(savedEatenMeals);
-      console.log('[MealPlan] Loaded eaten meals:', Object.keys(parsed).length);
-      setEatenMeals(parsed);
+    if (mealStorageKey) {
+      setEatenMeals({});
+      const savedEatenMeals = localStorage.getItem(mealStorageKey);
+      if (savedEatenMeals) {
+        const parsed = JSON.parse(savedEatenMeals);
+        console.log('[MealPlan] Loaded eaten meals:', Object.keys(parsed).length);
+        setEatenMeals(parsed);
+      }
     }
 
-    // Load persisted logged meals from localStorage
-    const savedLoggedMeals = localStorage.getItem('loggedMeals');
-    if (savedLoggedMeals) {
-      const parsed = JSON.parse(savedLoggedMeals);
-      console.log('[MealPlan] Loaded logged meals:', parsed.length);
-      setLoggedMeals(parsed);
+    if (loggedMealsStorageKey) {
+      setLoggedMeals([]);
+      const savedLoggedMeals = localStorage.getItem(loggedMealsStorageKey);
+      if (savedLoggedMeals) {
+        const parsed = JSON.parse(savedLoggedMeals);
+        console.log('[MealPlan] Loaded logged meals:', parsed.length);
+        setLoggedMeals(parsed);
+      }
     }
 
     setIsInitialized(true);
 
     // Listen for localStorage changes from other tabs/windows
     const handleStorageChange = (e: StorageEvent) => {
-      if (e.key === 'eatenMeals' && e.newValue) {
+      if (mealStorageKey && e.key === mealStorageKey && e.newValue) {
         console.log('[MealPlan] Updated from storage');
         setEatenMeals(JSON.parse(e.newValue));
       }
@@ -175,16 +296,18 @@ export function MealPlanPage({ onNavigate, generationStatus }: MealPlanPageProps
     const handleEatenMealsUpdate = (e: CustomEvent) => {
       console.log('[MealPlan] Update event received');
       // Only update if the new state is different and has content
-      if (e.detail && Object.keys(e.detail).length > 0) {
-        setEatenMeals(e.detail);
+      if (e.detail?.storageKey === mealStorageKey && e.detail?.data) {
+        if (Object.keys(e.detail.data).length > 0) {
+          setEatenMeals(e.detail.data);
+        }
       }
     };
 
     // Listen for logged meals updates from other components
     const handleLoggedMealsUpdate = (e: CustomEvent) => {
       console.log('[MealPlan] Logged meals update received');
-      if (e.detail) {
-        setLoggedMeals(e.detail);
+      if (e.detail?.storageKey === loggedMealsStorageKey && e.detail?.data) {
+        setLoggedMeals(e.detail.data);
       }
     };
 
@@ -197,7 +320,7 @@ export function MealPlanPage({ onNavigate, generationStatus }: MealPlanPageProps
       window.removeEventListener('eatenMealsUpdate', handleEatenMealsUpdate as EventListener);
       window.removeEventListener('loggedMealsUpdate', handleLoggedMealsUpdate as EventListener);
     };
-  }, [generationStatus.mealsGenerated]);
+  }, [generationStatus.mealsGenerated, mealStorageKey, loggedMealsStorageKey]);
 
   // Load existing feedback for current week's meals
   useEffect(() => {
@@ -260,7 +383,7 @@ export function MealPlanPage({ onNavigate, generationStatus }: MealPlanPageProps
       if (!surveyId) return;
 
       try {
-        const response = await fetch(`/api/meals/consume?surveyId=${surveyId}&weekNumber=${weekNumber}`);
+        const response = await fetch(`/api/meals/consume?surveyId=${surveyId}&weekNumber=${weekNumber}&mealPlanId=${mealPlanId || ''}`);
         if (response.ok) {
           const data = await response.json();
 
@@ -272,11 +395,16 @@ export function MealPlanPage({ onNavigate, generationStatus }: MealPlanPageProps
           });
 
           // Merge with localStorage (prefer DB state)
-          const localEatenMeals = JSON.parse(localStorage.getItem('eatenMeals') || '{}');
+          const localEatenMeals = mealStorageKey
+            ? JSON.parse(localStorage.getItem(mealStorageKey) || '{}')
+            : {};
           const merged = { ...localEatenMeals, ...dbEatenMeals };
 
           setEatenMeals(merged);
-          localStorage.setItem('eatenMeals', JSON.stringify(merged));
+          if (mealStorageKey) {
+            localStorage.setItem(mealStorageKey, JSON.stringify(merged));
+            localStorage.setItem('currentMealStorageKey', mealStorageKey);
+          }
 
           console.log('[MEAL-PLAN] Loaded meal consumption from DB:', data.stats);
         }
@@ -293,15 +421,17 @@ export function MealPlanPage({ onNavigate, generationStatus }: MealPlanPageProps
   // Save eaten meals to localStorage whenever it changes (same as dashboard)
   useEffect(() => {
     // Only save and dispatch if we're initialized and have some data
-    if (isInitialized && Object.keys(eatenMeals).length > 0) {
+    if (isInitialized && mealStorageKey && Object.keys(eatenMeals).length > 0) {
       console.log('[MealPlan] Saving eaten meals:', Object.keys(eatenMeals).length);
-      localStorage.setItem('eatenMeals', JSON.stringify(eatenMeals));
+      localStorage.setItem(mealStorageKey, JSON.stringify(eatenMeals));
+      localStorage.setItem('currentMealStorageKey', mealStorageKey);
 
-      // Dispatch custom event to notify other components in the same tab (like dashboard)
-      const event = new CustomEvent('eatenMealsUpdate', { detail: eatenMeals });
+      const event = new CustomEvent('eatenMealsUpdate', {
+        detail: { storageKey: mealStorageKey, data: eatenMeals }
+      });
       window.dispatchEvent(event);
     }
-  }, [eatenMeals, isInitialized]);
+  }, [eatenMeals, isInitialized, mealStorageKey]);
 
   const fetchMealData = async () => {
     try {
@@ -319,19 +449,31 @@ export function MealPlanPage({ onNavigate, generationStatus }: MealPlanPageProps
     }
   };
 
+  // Load persisted swaps when meal data loads
+  useEffect(() => {
+    if (mealData?.mealPlan?.userContext?.selectedMealOptions) {
+      setSelectedMealOptions(mealData.mealPlan.userContext.selectedMealOptions);
+    }
+  }, [mealData]);
+
   // Get current day's meals - 7-day structured format only
   const getCurrentMeals = () => {
     if (mealData && mealData.mealPlan && mealData.mealPlan.planData && mealData.mealPlan.planData.days) {
-      // Find the day object that matches our selected day
-      const dayData = mealData.mealPlan.planData.days.find((day: any) => day.day === selectedDay);
-
-      if (dayData && dayData.meals) {
-        return {
-          breakfast: dayData.meals.breakfast,
-          lunch: dayData.meals.lunch,
-          dinner: dayData.meals.dinner
-        };
-      }
+      // Use getMealForSlot to get the correct meal (handles swaps and selections)
+      return {
+        breakfast: {
+          primary: getMealForSlot(selectedDay, 'breakfast', 'primary'),
+          alternative: getMealForSlot(selectedDay, 'breakfast', 'alternative')
+        },
+        lunch: {
+          primary: getMealForSlot(selectedDay, 'lunch', 'primary'),
+          alternative: getMealForSlot(selectedDay, 'lunch', 'alternative')
+        },
+        dinner: {
+          primary: getMealForSlot(selectedDay, 'dinner', 'primary'),
+          alternative: getMealForSlot(selectedDay, 'dinner', 'alternative')
+        }
+      };
     }
 
     // No real meal data available
@@ -352,6 +494,42 @@ export function MealPlanPage({ onNavigate, generationStatus }: MealPlanPageProps
   };
 
   const currentMeals = getCurrentMeals();
+  const resolvedTargets = nutritionTargetsProp || nutritionTargets;
+  const mealTargets = (resolvedTargets as any)?.mealTargets || (mealData?.mealPlan?.planData as any)?.nutritionTargets?.mealTargets || null;
+  const dailySummaries = mealData?.mealPlan?.dailySummaries || null;
+
+  const getPlannedCaloriesForDay = (dayId: string) => {
+    const dayData = mealData?.mealPlan?.planData?.days?.find((day: any) => day.day === dayId);
+    if (!dayData?.meals) return 0;
+
+    let total = 0;
+    (['breakfast', 'lunch', 'dinner'] as const).forEach(mealType => {
+      const meal = dayData.meals?.[mealType];
+      if (!meal) return;
+      const selected = getSelectedOption(dayId, mealType);
+      const option = meal[selected] || meal.primary || meal.alternative;
+      if (option) {
+        total += option.calories ?? option.estimatedCalories ?? 0;
+      }
+    });
+
+    return total;
+  };
+
+  const getDaySummary = (dayId: string) => {
+    if (!Array.isArray(dailySummaries)) return null;
+    return dailySummaries.find((summary: any) => summary.day === dayId) || null;
+  };
+
+  const getMealTargetCalories = (mealType: string) => {
+    const target = mealTargets?.[mealType]?.calories;
+    return typeof target === 'number' ? target : null;
+  };
+
+  const isMealSkippedForDay = (dayId: string, mealType: string) => {
+    const dayData = mealData?.mealPlan?.planData?.days?.find((day: any) => day.day === dayId);
+    return dayData?.plannedMeals?.[mealType] === 'no-meal';
+  };
 
   // Calculate totals based on selected meals for current day
   const getTotalCalories = () => {
@@ -374,19 +552,13 @@ export function MealPlanPage({ onNavigate, generationStatus }: MealPlanPageProps
         const meal = dayData[mealType] || dayData.meals?.[mealType];
 
         // Check primary option
-        if (meal?.primary?.calories && isMealEaten(mealType, 0, 'primary')) {
-          total += meal.primary.calories;
-        }
-        if (meal?.primary?.estimatedCalories && isMealEaten(mealType, 0, 'primary')) {
-          total += meal.primary.estimatedCalories;
+        if (isMealEaten(mealType, 0, 'primary')) {
+          total += meal?.primary?.calories ?? meal?.primary?.estimatedCalories ?? 0;
         }
 
         // Check alternative option
-        if (meal?.alternative?.calories && isMealEaten(mealType, 0, 'alternative')) {
-          total += meal.alternative.calories;
-        }
-        if (meal?.alternative?.estimatedCalories && isMealEaten(mealType, 0, 'alternative')) {
-          total += meal.alternative.estimatedCalories;
+        if (isMealEaten(mealType, 0, 'alternative')) {
+          total += meal?.alternative?.calories ?? meal?.alternative?.estimatedCalories ?? 0;
         }
       });
     }
@@ -395,7 +567,7 @@ export function MealPlanPage({ onNavigate, generationStatus }: MealPlanPageProps
     loggedMeals
       .filter(meal => meal.day === selectedDay && meal.completed)
       .forEach(meal => {
-        total += meal.calories || 0;
+        total += meal.calories ?? 0;
       });
 
     return total;
@@ -509,7 +681,10 @@ export function MealPlanPage({ onNavigate, generationStatus }: MealPlanPageProps
     // Update localStorage immediately for fast UI
     setEatenMeals(prev => {
       const newState = { ...prev, [mealKey]: newEatenState };
-      localStorage.setItem('eatenMeals', JSON.stringify(newState));
+      if (mealStorageKey) {
+        localStorage.setItem(mealStorageKey, JSON.stringify(newState));
+        localStorage.setItem('currentMealStorageKey', mealStorageKey);
+      }
       return newState;
     });
 
@@ -543,7 +718,12 @@ export function MealPlanPage({ onNavigate, generationStatus }: MealPlanPageProps
     }
 
     // Dispatch event for other components
-    const event = new CustomEvent('eatenMealsUpdate', { detail: { ...eatenMeals, [mealKey]: newEatenState } });
+    const event = new CustomEvent('eatenMealsUpdate', {
+      detail: {
+        storageKey: mealStorageKey,
+        data: { ...eatenMeals, [mealKey]: newEatenState }
+      }
+    });
     window.dispatchEvent(event);
 
     // Show feedback prompt after marking as eaten (not unmarking)
@@ -582,10 +762,13 @@ export function MealPlanPage({ onNavigate, generationStatus }: MealPlanPageProps
 
     setLoggedMeals(prev => {
       const updated = [newMeal, ...prev];
-      // Persist to localStorage
-      localStorage.setItem('loggedMeals', JSON.stringify(updated));
-      // Dispatch event for other components
-      window.dispatchEvent(new CustomEvent('loggedMealsUpdate', { detail: updated }));
+      if (loggedMealsStorageKey) {
+        localStorage.setItem(loggedMealsStorageKey, JSON.stringify(updated));
+        localStorage.setItem('currentLoggedMealsStorageKey', loggedMealsStorageKey);
+      }
+      window.dispatchEvent(new CustomEvent('loggedMealsUpdate', {
+        detail: { storageKey: loggedMealsStorageKey, data: updated }
+      }));
       return updated;
     });
     setShowLogModal(false);
@@ -594,8 +777,13 @@ export function MealPlanPage({ onNavigate, generationStatus }: MealPlanPageProps
   const deleteMeal = (mealId: string) => {
     setLoggedMeals(prev => {
       const updated = prev.filter(m => m.id !== mealId);
-      localStorage.setItem('loggedMeals', JSON.stringify(updated));
-      window.dispatchEvent(new CustomEvent('loggedMealsUpdate', { detail: updated }));
+      if (loggedMealsStorageKey) {
+        localStorage.setItem(loggedMealsStorageKey, JSON.stringify(updated));
+        localStorage.setItem('currentLoggedMealsStorageKey', loggedMealsStorageKey);
+      }
+      window.dispatchEvent(new CustomEvent('loggedMealsUpdate', {
+        detail: { storageKey: loggedMealsStorageKey, data: updated }
+      }));
       return updated;
     });
   };
@@ -835,8 +1023,8 @@ export function MealPlanPage({ onNavigate, generationStatus }: MealPlanPageProps
 
     if (!meal || !meal.primary) return null;
 
-    // Get the currently selected meal option
-    const currentMeal = selectedOption === 'primary' ? meal.primary : meal.alternative;
+    // Get the currently selected meal option (supports both toggle and custom swaps)
+    const currentMeal = getMealForSlot(selectedDay, type) || (selectedOption === 'primary' ? meal.primary : meal.alternative);
     const hasAlternative = meal.alternative &&
       (meal.alternative.name || meal.alternative.dish) &&
       (meal.alternative.name !== "Alternative not available") &&
@@ -1037,12 +1225,28 @@ export function MealPlanPage({ onNavigate, generationStatus }: MealPlanPageProps
                   </div>
                 )}
                 {/* Nutrition information */}
-                {mealOption.calories && (
+                {(mealOption.calories || mealOption.estimatedCalories) && (
                   <div className="text-xs text-green-600 font-medium mt-1 space-y-1">
                     <p>
-                      {isRestaurant ? '~' : ''}{mealOption.calories} calories
+                      {isRestaurant ? '~' : ''}{mealOption.calories ?? mealOption.estimatedCalories} calories
                       {isRestaurant && <span className="text-gray-500 font-normal"> (estimate)</span>}
                     </p>
+                    {(() => {
+                      const targetCalories = getMealTargetCalories(type);
+                      const actualCalories = mealOption.calories ?? mealOption.estimatedCalories;
+                      if (!targetCalories || typeof actualCalories !== 'number') return null;
+                      const deviation = targetCalories > 0 ? Math.abs(actualCalories - targetCalories) / targetCalories * 100 : 0;
+                      const status =
+                        deviation <= 10 ? { label: 'On target', color: 'text-green-600' } :
+                        deviation <= 15 ? { label: 'Slightly off', color: 'text-orange-600' } :
+                        { label: 'Off target', color: 'text-red-600' };
+
+                      return (
+                        <p className={`${status.color}`}>
+                          target: {Math.round(targetCalories)} • {status.label}
+                        </p>
+                      );
+                    })()}
                     {(mealOption.protein || mealOption.carbs || mealOption.fat) && (
                       <p className="text-gray-600">
                         {mealOption.protein && `${Math.round(mealOption.protein)}g protein`}
@@ -1362,6 +1566,24 @@ export function MealPlanPage({ onNavigate, generationStatus }: MealPlanPageProps
             </div>
           )}
 
+          {/* Swap Indicator - show when meal is swapped from another slot */}
+          {selectedMealOptions[`${selectedDay}-${type}`]?.isCustomSwap && (
+            <div className="border-t border-purple-200 bg-gradient-to-r from-purple-50 to-indigo-50 px-4 sm:px-6 py-3">
+              <div className="flex items-center justify-center gap-2">
+                <div className="w-6 h-6 bg-purple-500 rounded-full flex items-center justify-center">
+                  <ArrowLeftRight className="w-3.5 h-3.5 text-white" />
+                </div>
+                <span className="text-xs font-medium text-purple-700 capitalize">
+                  {selectedMealOptions[`${selectedDay}-${type}`]?.sourceDay.slice(0, 3)} {selectedMealOptions[`${selectedDay}-${type}`]?.sourceMealType.slice(0, 1)}
+                </span>
+                <div className="w-1 h-1 bg-purple-400 rounded-full"></div>
+                <span className="text-xs bg-purple-100 text-purple-700 px-2 py-1 rounded-full font-medium">
+                  SWAPPED
+                </span>
+              </div>
+            </div>
+          )}
+
           {/* Toggle Switch - Only show if alternative exists */}
           {hasAlternative && (
             <div className="border-t border-gray-200 bg-gray-50 px-4 sm:px-6 py-3 sm:py-4">
@@ -1369,24 +1591,44 @@ export function MealPlanPage({ onNavigate, generationStatus }: MealPlanPageProps
                 <div className="text-sm text-gray-600">
                   Switch to: <span className="font-medium text-gray-900 block sm:inline">{selectedOption === 'primary' ? meal.alternative?.name || meal.alternative?.dish : meal.primary?.name || meal.primary?.dish}</span>
                 </div>
-                <Button
-                  onClick={toggleOption}
-                  className="bg-gradient-to-r from-purple-500 to-blue-500 hover:from-purple-600 hover:to-blue-600 text-white border-0 shadow-md transition-all duration-200 hover:scale-105 flex items-center gap-2"
-                  size="sm"
-                >
-                  <ArrowSquareOut className="w-4 h-4 mr-1" weight="regular" />
-                  Switch Option
-                </Button>
+                <div className="flex gap-2">
+                  <Button
+                    onClick={toggleOption}
+                    className="bg-gradient-to-r from-purple-500 to-blue-500 hover:from-purple-600 hover:to-blue-600 text-white border-0 shadow-md transition-all duration-200 hover:scale-105 flex items-center gap-2"
+                    size="sm"
+                  >
+                    <ArrowSquareOut className="w-4 h-4 mr-1" weight="regular" />
+                    Switch Option
+                  </Button>
+                  <button
+                    onClick={() => openSwapDialog(selectedDay, type, currentMeal?.name || currentMeal?.dish || 'Unnamed Meal')}
+                    className="bg-blue-50 hover:bg-blue-100 text-blue-600 px-3 py-2 rounded-lg transition-all flex items-center gap-2 text-sm font-medium hover:shadow-sm"
+                    title="Swap with any meal from the week"
+                  >
+                    <ArrowLeftRight className="w-4 h-4" />
+                    Swap
+                  </button>
+                </div>
               </div>
             </div>
           )}
 
           {/* No Alternative Available Message */}
           {!hasAlternative && (
-            <div className="border-t border-gray-200 bg-gray-50 px-6 py-3">
-              <p className="text-xs text-gray-500 italic text-center">
-                Only one option available for this meal
-              </p>
+            <div className="border-t border-gray-200 bg-gray-50 px-4 sm:px-6 py-3">
+              <div className="flex flex-col sm:flex-row items-center justify-between gap-2">
+                <p className="text-xs text-gray-500 italic text-center sm:text-left">
+                  Only one option available for this meal
+                </p>
+                <button
+                  onClick={() => openSwapDialog(selectedDay, type, currentMeal?.name || currentMeal?.dish || 'Unnamed Meal')}
+                  className="bg-blue-50 hover:bg-blue-100 text-blue-600 px-3 py-1.5 rounded-lg transition-all flex items-center gap-1.5 text-sm font-medium hover:shadow-sm"
+                  title="Swap with any meal from the week"
+                >
+                  <ArrowLeftRight className="w-4 h-4" />
+                  Swap
+                </button>
+              </div>
             </div>
           )}
         </div>
@@ -1765,8 +2007,58 @@ export function MealPlanPage({ onNavigate, generationStatus }: MealPlanPageProps
             </div>
           </div>
 
+          <div className="flex items-center justify-between text-sm text-gray-600 mb-2">
+            <div className="flex items-center gap-2">
+              <span className="font-medium text-gray-800">
+                {(() => {
+                  const daySummary = getDaySummary(selectedDay);
+                  const planned = daySummary?.planned ?? getPlannedCaloriesForDay(selectedDay);
+                  const target = typeof daySummary?.target === 'number' ? daySummary.target : resolvedTargets?.dailyCalories;
+                  return `${planned} / ${typeof target === 'number' ? Math.round(target) : '—'} cal`;
+                })()}
+              </span>
+              {(() => {
+                const daySummary = getDaySummary(selectedDay);
+                const planned = daySummary?.planned ?? getPlannedCaloriesForDay(selectedDay);
+                const target = typeof daySummary?.target === 'number' ? daySummary.target : resolvedTargets?.dailyCalories;
+                if (!target || target <= 0) return null;
+
+                const deviation = Math.abs(planned - target) / target * 100;
+                const status = daySummary?.status
+                  ? daySummary.status === 'on-target'
+                    ? { label: 'On track', color: 'text-green-600 bg-green-50 border-green-200' }
+                    : daySummary.status === 'warning'
+                      ? { label: 'Slightly off', color: 'text-orange-600 bg-orange-50 border-orange-200' }
+                      : daySummary.status === 'under'
+                        ? { label: 'Under target', color: 'text-orange-600 bg-orange-50 border-orange-200' }
+                        : { label: 'Over target', color: 'text-red-600 bg-red-50 border-red-200' }
+                  : deviation <= 10
+                    ? { label: 'On track', color: 'text-green-600 bg-green-50 border-green-200' }
+                    : deviation <= 15
+                      ? { label: 'Slightly off', color: 'text-orange-600 bg-orange-50 border-orange-200' }
+                      : { label: 'Off target', color: 'text-red-600 bg-red-50 border-red-200' };
+
+                return (
+                  <span className={`text-xs px-2 py-0.5 rounded-full border ${status.color}`}>
+                    {status.label}
+                  </span>
+                );
+              })()}
+            </div>
+            {(() => {
+              const daySummary = getDaySummary(selectedDay);
+              const target = typeof daySummary?.target === 'number' ? daySummary.target : resolvedTargets?.dailyCalories;
+              if (typeof target !== 'number') return null;
+              return (
+                <span className="text-xs text-gray-500">
+                  Target {Math.round(target)} cal
+                </span>
+              );
+            })()}
+          </div>
+
           {/* Enhanced Nutrition Tracking */}
-          {nutritionTargets && (
+          {resolvedTargets && (
             <div className="space-y-3">
               {/* Daily Progress Bars */}
               <div className="grid grid-cols-1 gap-3">
@@ -1775,17 +2067,17 @@ export function MealPlanPage({ onNavigate, generationStatus }: MealPlanPageProps
                   <div className="flex justify-between items-center text-xs">
                     <span className="text-gray-600">Calories</span>
                     <span className="text-gray-800 font-medium">
-                      {totalCalories}/{Math.round(nutritionTargets.dailyCalories/100)*100} cal
+                      {totalCalories}/{Math.round(resolvedTargets.dailyCalories/100)*100} cal
                     </span>
                   </div>
                   <div className="w-full bg-gray-200 rounded-full h-2">
                     <div
                       className={`h-2 rounded-full transition-all duration-300 ${
-                        totalCalories > nutritionTargets.dailyCalories * 1.1 ? 'bg-red-500' :
-                        totalCalories >= nutritionTargets.dailyCalories * 0.8 ? 'bg-green-500' :
+                        totalCalories > resolvedTargets.dailyCalories * 1.1 ? 'bg-red-500' :
+                        totalCalories >= resolvedTargets.dailyCalories * 0.8 ? 'bg-green-500' :
                         'bg-orange-500'
                       }`}
-                      style={{ width: `${Math.min((totalCalories / nutritionTargets.dailyCalories) * 100, 100)}%` }}
+                      style={{ width: `${Math.min((totalCalories / resolvedTargets.dailyCalories) * 100, 100)}%` }}
                     />
                   </div>
                 </div>
@@ -1795,15 +2087,15 @@ export function MealPlanPage({ onNavigate, generationStatus }: MealPlanPageProps
                   <div className="flex justify-between items-center text-xs">
                     <span className="text-gray-600">Protein</span>
                     <span className="text-gray-800 font-medium">
-                      {getTotalProtein()}g/~{Math.round(nutritionTargets.dailyProtein/10)*10}g
+                      {getTotalProtein()}g/~{Math.round(resolvedTargets.dailyProtein/10)*10}g
                     </span>
                   </div>
                   <div className="w-full bg-gray-200 rounded-full h-2">
                     <div
                       className={`h-2 rounded-full transition-all duration-300 ${
-                        getTotalProtein() >= nutritionTargets.dailyProtein * 0.8 ? 'bg-blue-500' : 'bg-orange-500'
+                        getTotalProtein() >= resolvedTargets.dailyProtein * 0.8 ? 'bg-blue-500' : 'bg-orange-500'
                       }`}
-                      style={{ width: `${Math.min((getTotalProtein() / nutritionTargets.dailyProtein) * 100, 100)}%` }}
+                      style={{ width: `${Math.min((getTotalProtein() / resolvedTargets.dailyProtein) * 100, 100)}%` }}
                     />
                   </div>
                 </div>
@@ -1838,6 +2130,12 @@ export function MealPlanPage({ onNavigate, generationStatus }: MealPlanPageProps
             {/* Primary and Alternative options */}
             {currentMeals.breakfast ? (
               <MealCard meal={currentMeals.breakfast} type="breakfast" />
+            ) : isMealSkippedForDay(selectedDay, 'breakfast') ? (
+              <div className="text-center py-6 bg-gray-50 border-2 border-dashed border-gray-300 rounded-lg">
+                <ForkKnife className="w-8 h-8 text-gray-300 mx-auto mb-2" />
+                <p className="text-gray-500 font-medium">No meal scheduled</p>
+                <p className="text-gray-400 text-sm">Skipped per your weekly plan</p>
+              </div>
             ) : (
               <div className="text-center py-6 bg-gray-50 border-2 border-dashed border-gray-300 rounded-lg">
                 <ForkKnife className="w-8 h-8 text-gray-400 mx-auto mb-2" />
@@ -1870,6 +2168,12 @@ export function MealPlanPage({ onNavigate, generationStatus }: MealPlanPageProps
             {/* Primary and Alternative options */}
             {currentMeals.lunch ? (
               <MealCard meal={currentMeals.lunch} type="lunch" />
+            ) : isMealSkippedForDay(selectedDay, 'lunch') ? (
+              <div className="text-center py-6 bg-gray-50 border-2 border-dashed border-gray-300 rounded-lg">
+                <ForkKnife className="w-8 h-8 text-gray-300 mx-auto mb-2" />
+                <p className="text-gray-500 font-medium">No meal scheduled</p>
+                <p className="text-gray-400 text-sm">Skipped per your weekly plan</p>
+              </div>
             ) : (
               <div className="text-center py-6 bg-gray-50 border-2 border-dashed border-gray-300 rounded-lg">
                 <ForkKnife className="w-8 h-8 text-gray-400 mx-auto mb-2" />
@@ -1902,6 +2206,12 @@ export function MealPlanPage({ onNavigate, generationStatus }: MealPlanPageProps
             {/* Primary and Alternative options */}
             {currentMeals.dinner ? (
               <MealCard meal={currentMeals.dinner} type="dinner" />
+            ) : isMealSkippedForDay(selectedDay, 'dinner') ? (
+              <div className="text-center py-6 bg-gray-50 border-2 border-dashed border-gray-300 rounded-lg">
+                <ForkKnife className="w-8 h-8 text-gray-300 mx-auto mb-2" />
+                <p className="text-gray-500 font-medium">No meal scheduled</p>
+                <p className="text-gray-400 text-sm">Skipped per your weekly plan</p>
+              </div>
             ) : (
               <div className="text-center py-6 bg-gray-50 border-2 border-dashed border-gray-300 rounded-lg">
                 <ForkKnife className="w-8 h-8 text-gray-400 mx-auto mb-2" />
@@ -2016,7 +2326,7 @@ export function MealPlanPage({ onNavigate, generationStatus }: MealPlanPageProps
               });
 
               // Helper to normalize ordering link keys to match what we can render
-              const normalizeOrderingLinks = (links: any) => {
+              const normalizeOrderingLinks = (links: any): Record<string, string | null> => {
                 if (!links) return {};
                 return {
                   doordash: links.doordash || links.doorDash || links.DoorDash || links.door_dash || null,
@@ -2032,7 +2342,7 @@ export function MealPlanPage({ onNavigate, generationStatus }: MealPlanPageProps
                 const normalizedLinks = normalizeOrderingLinks(restaurant.orderingLinks);
 
                 // Only count links that have values AND have a matching button (known platforms)
-                const knownPlatforms = ['doordash', 'ubereats', 'grubhub', 'direct'];
+                const knownPlatforms = ['doordash', 'ubereats', 'grubhub', 'direct'] as const;
                 const validLinksCount = knownPlatforms.filter(platform =>
                   normalizedLinks[platform] &&
                   String(normalizedLinks[platform]).trim() !== ''
@@ -2105,6 +2415,18 @@ export function MealPlanPage({ onNavigate, generationStatus }: MealPlanPageProps
           selectedDay={selectedDay}
         />
       )}
+
+      {/* Swap Dialog */}
+      <MealSwapDialog
+        isOpen={swapDialogOpen}
+        onClose={() => {
+          setSwapDialogOpen(false);
+          setSwapTarget(null);
+        }}
+        onSwap={handleSwap}
+        currentMeal={swapTarget || { day: '', mealType: '', name: '' }}
+        allMeals={allMeals}
+      />
     </div>
   );
 }

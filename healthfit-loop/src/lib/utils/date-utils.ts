@@ -4,15 +4,23 @@
  */
 
 /**
- * Get the start of the current week (Monday at 00:00:00 UTC)
+ * Get the start of the current week (Monday at 00:00:00 LOCAL time).
+ * Used for both meals and workouts to keep "Monday" consistent for users.
  */
 export function getStartOfWeek(date: Date = new Date()): Date {
   const d = new Date(date);
   const day = d.getDay();
   const diff = d.getDate() - day + (day === 0 ? -6 : 1); // Monday is start of week
   d.setDate(diff);
-  d.setUTCHours(0, 0, 0, 0);
+  d.setHours(0, 0, 0, 0);
   return d;
+}
+
+/**
+ * Format a date as YYYY-MM-DD for consistent storage/display.
+ */
+export function formatDateKey(date: Date): string {
+  return date.toISOString().split('T')[0];
 }
 
 /**

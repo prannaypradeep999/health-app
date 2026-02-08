@@ -4,6 +4,8 @@ import { prisma } from '@/lib/db';
 import { pexelsClient } from '@/lib/external/pexels-client';
 import { createWorkoutPlanPrompt, type WorkoutPlan, type WorkoutDay } from '@/lib/ai/prompts';
 import { withGPTRetry } from '@/lib/utils/retry';
+import { validateWorkoutPlan } from '@/lib/utils/workout-validator';
+import { getStartOfWeek } from '@/lib/utils/date-utils';
 
 export const runtime = 'nodejs';
 
@@ -89,8 +91,7 @@ export async function POST(req: NextRequest) {
     // Save to database
     try {
       console.log(`[DATABASE] 💾 Saving workout plan for survey: ${surveyData.id}`);
-      const weekOfDate = new Date();
-      weekOfDate.setHours(0, 0, 0, 0);
+      const weekOfDate = getStartOfWeek();
 
       const createdWorkoutPlan = await prisma.workoutPlan.create({
         data: {
@@ -170,7 +171,90 @@ async function generateWorkoutPlan(surveyData: any): Promise<WorkoutPlan> {
   try {
     const workoutPlan = JSON.parse(workoutContent) as WorkoutPlan;
     console.log(`[GPT-WORKOUT] ✅ Successfully generated ${workoutPlan.weeklyPlan.length} workout days`);
-    return workoutPlan;
+
+    const toNumber = (value: unknown): number | null => {
+      if (typeof value === 'number' && !Number.isNaN(value)) return value;
+      if (typeof value === 'string') {
+        const match = value.match(/\d+/);
+        return match ? Number(match[0]) : null;
+      }
+      return null;
+    };
+
+    const sanitizeWorkoutDay = (day: any): { sanitized: any; warnings: string[] } => {
+      const warnings: string[] = [];
+      const sanitized = { ...day };
+      const dayLabel = typeof day?.day === 'string' ? day.day : 'unknown';
+
+      if (day?.estimatedCalories !== undefined) {
+        const calories = toNumber(day.estimatedCalories);
+        if (calories !== null) {
+          if (calories < 50) {
+            warnings.push(`${dayLabel}: estimatedCalories ${calories} too low, setting to 50`);
+            sanitized.estimatedCalories = 50;
+          } else if (calories > 800) {
+            warnings.push(`${dayLabel}: estimatedCalories ${calories} too high, capping at 800`);
+            sanitized.estimatedCalories = 800;
+          } else {
+            sanitized.estimatedCalories = calories;
+          }
+        }
+      }
+
+      if (day?.estimatedTime !== undefined) {
+        const time = toNumber(day.estimatedTime);
+        if (time !== null) {
+          if (time < 10) {
+            warnings.push(`${dayLabel}: estimatedTime ${time} too low, setting to 10`);
+            sanitized.estimatedTime = '10 minutes';
+          } else if (time > 120) {
+            warnings.push(`${dayLabel}: estimatedTime ${time} too high, capping at 120`);
+            sanitized.estimatedTime = '120 minutes';
+          } else {
+            sanitized.estimatedTime = `${time} minutes`;
+          }
+        }
+      }
+
+      if (Array.isArray(day?.exercises) && day.exercises.length > 15) {
+        warnings.push(`${dayLabel}: ${day.exercises.length} exercises is too many, truncating to 12`);
+        sanitized.exercises = day.exercises.slice(0, 12);
+      }
+
+      return { sanitized, warnings };
+    };
+
+    const sanitizedWeeklyPlan = Array.isArray(workoutPlan.weeklyPlan)
+      ? workoutPlan.weeklyPlan.map(day => {
+          const { sanitized, warnings } = sanitizeWorkoutDay(day);
+          warnings.forEach(warn => console.warn(`[WORKOUT-SANITIZE] ${warn}`));
+          return sanitized;
+        })
+      : [];
+
+    const sanitizedWorkoutPlan = {
+      ...workoutPlan,
+      weeklyPlan: sanitizedWeeklyPlan
+    };
+
+    const validationResult = validateWorkoutPlan(sanitizedWorkoutPlan.weeklyPlan, {
+      preferredDuration: workoutPrefs.preferredDuration,
+      availableDays: workoutPrefs.availableDays,
+      fitnessExperience: workoutPrefs.fitnessExperience
+    });
+
+    console.log('[WORKOUT-GENERATION] Validation:', {
+      valid: validationResult.valid,
+      warnings: validationResult.warnings.length,
+      errors: validationResult.errors.length
+    });
+
+    if (!validationResult.valid) {
+      validationResult.errors.forEach(err => console.error(`  ❌ ${err}`));
+    }
+    validationResult.warnings.forEach(warn => console.warn(`  ⚠️ ${warn}`));
+
+    return sanitizedWorkoutPlan;
   } catch (parseError) {
     console.error('[GPT-WORKOUT] ❌ JSON parse error:', parseError);
     console.error('[GPT-WORKOUT] ❌ Raw content preview:', workoutContent?.substring(0, 200));

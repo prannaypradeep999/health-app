@@ -617,7 +617,8 @@ export function MealPlanningPreview({
               {(() => {
                 if (!data?.groceryList) return '0.00';
                 if (isEnrichedGroceryList(data.groceryList)) {
-                  const recommendedStoreTotal = data.groceryList.storeTotals?.find(st => st.store === data.groceryList.recommendedStore);
+                  const enrichedList = data.groceryList as EnrichedGroceryList;
+                  const recommendedStoreTotal = enrichedList.storeTotals?.find(st => st.store === enrichedList.recommendedStore);
                   return recommendedStoreTotal?.total.toFixed(2) || '0.00';
                 } else {
                   return data.groceryList.totalEstimatedCost?.toFixed(2) || '0.00';

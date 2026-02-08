@@ -87,14 +87,20 @@ export async function GET(req: Request) {
     const { searchParams } = new URL(req.url);
     const surveyId = searchParams.get('surveyId');
     const weekNumber = parseInt(searchParams.get('weekNumber') || '1');
+    const mealPlanId = searchParams.get('mealPlanId');
 
     if (!surveyId) {
       return NextResponse.json({ error: 'surveyId required' }, { status: 400 });
     }
 
     // Get ALL meal logs for this week (eaten and uneaten for UI state restoration)
+    const whereClause: any = { surveyId, weekNumber };
+    if (mealPlanId) {
+      whereClause.mealPlanId = mealPlanId;
+    }
+
     const allMealLogs = await prisma.mealConsumptionLog.findMany({
-      where: { surveyId, weekNumber },
+      where: whereClause,
       orderBy: { loggedAt: 'desc' }
     });
 
@@ -105,7 +111,7 @@ export async function GET(req: Request) {
       allMealLogs,
       eatenMeals,
       stats: {
-        totalCalories: eatenMeals.reduce((sum, m) => sum + (m.calories || 0), 0),
+        totalCalories: eatenMeals.reduce((sum, m) => sum + (m.calories ?? 0), 0),
         totalProtein: eatenMeals.reduce((sum, m) => sum + (m.protein || 0), 0),
         totalCarbs: eatenMeals.reduce((sum, m) => sum + (m.carbs || 0), 0),
         totalFat: eatenMeals.reduce((sum, m) => sum + (m.fat || 0), 0),

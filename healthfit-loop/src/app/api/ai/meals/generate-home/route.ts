@@ -2,9 +2,15 @@ import { NextRequest, NextResponse } from 'next/server';
 import { cookies } from 'next/headers';
 import { prisma } from '@/lib/db';
 import { calculateMacroTargets, UserProfile } from '@/lib/utils/nutrition';
+import { buildNutritionTargets } from '@/lib/utils/nutrition-targets';
+import { validateMealPlan } from '@/lib/utils/meal-plan-validator';
+import { validateIngredientSums } from '@/lib/utils/ingredient-validator';
+import { validateRestrictions } from '@/lib/utils/restriction-validator';
+import { buildFallbackGroceryList, enhanceGroceryListWithUsage } from '@/lib/utils/grocery-list';
 import { createHomeMealGenerationPrompt } from '@/lib/ai/prompts';
 import { pexelsClient } from '@/lib/external/pexels-client';
 import { withGPTRetry } from '@/lib/utils/retry';
+import { getStartOfWeek } from '@/lib/utils/date-utils';
 
 export const runtime = 'nodejs';
 
@@ -77,60 +83,182 @@ function mergeDaysWithRestaurantMeals(newHomeDays: any[], existingDays: any[]): 
   return mergedDays;
 }
 
-// Generate nutrition targets based on survey data
-function calculateNutritionTargets(surveyData: any): any {
-  if (!surveyData.age || !surveyData.sex || !surveyData.height || !surveyData.weight) {
-    // Return null to indicate incomplete data instead of hardcoded fallbacks
-    return null;
-  }
+// Build daily calorie summaries for UI/debugging
+function buildDailyCalorieSummaries(days: any[], dailyTarget: number) {
+  const summaries = days.map(day => {
+    const plannedMeals = day.plannedMeals || {};
+    const meals = day.meals || {};
 
-  const userProfile: UserProfile = {
-    age: surveyData.age,
-    sex: surveyData.sex,
-    height: surveyData.height,
-    weight: surveyData.weight,
-    activityLevel: surveyData.activityLevel || 'MODERATELY_ACTIVE',
-    goal: surveyData.goal || 'GENERAL_WELLNESS'
-  };
+    const getMealData = (mealType: 'breakfast' | 'lunch' | 'dinner') => {
+      const meal = meals[mealType];
+      const plannedType = plannedMeals[mealType];
 
-  const macroTargets = calculateMacroTargets(userProfile);
+      if (!meal || plannedType === 'no-meal') {
+        return { calories: 0, source: 'skipped' as const };
+      }
 
-  // Calculate meal targets (approximate distribution)
-  const breakfastPercent = 0.25;
-  const lunchPercent = 0.32;
-  const dinnerPercent = 0.38;
-  const snackPercent = 0.05;
+      const calories =
+        meal?.primary?.calories ??
+        meal?.primary?.estimatedCalories ??
+        meal?.calories ??
+        meal?.estimatedCalories ??
+        0;
+
+      const source =
+        meal?.source ||
+        meal?.primary?.source ||
+        (plannedType === 'restaurant' ? 'restaurant' : 'home');
+
+      return { calories, source: source as 'home' | 'restaurant' | 'skipped' };
+    };
+
+    const breakfast = getMealData('breakfast');
+    const lunch = getMealData('lunch');
+    const dinner = getMealData('dinner');
+    const planned = breakfast.calories + lunch.calories + dinner.calories;
+    const deviation = dailyTarget > 0 ? ((planned - dailyTarget) / dailyTarget) * 100 : 0;
+
+    const status =
+      Math.abs(deviation) <= 10 ? 'on-target' :
+      deviation < -15 ? 'under' :
+      deviation > 15 ? 'over' : 'warning';
+
+    return {
+      day: day.day,
+      target: dailyTarget,
+      planned,
+      breakdown: { breakfast, lunch, dinner },
+      deviation,
+      status
+    };
+  });
+
+  console.log('[DAILY-SUMMARY] Weekly calorie overview:');
+  summaries.forEach(summary => {
+    const icon = summary.status === 'on-target' ? '✓' : '⚠';
+    console.log(`  ${summary.day}: ${summary.planned} / ${summary.target} (${summary.deviation.toFixed(1)}%) ${icon} ${summary.status}`);
+  });
+
+  return summaries;
+}
+
+function hasHomeSlots(weeklySchedule: any): boolean {
+  if (!weeklySchedule || typeof weeklySchedule !== 'object') return true;
+  return Object.values(weeklySchedule).some((day: any) =>
+    day?.breakfast === 'home' || day?.lunch === 'home' || day?.dinner === 'home'
+  );
+}
+
+function hasRestaurantSlots(weeklySchedule: any): boolean {
+  if (!weeklySchedule || typeof weeklySchedule !== 'object') return false;
+  return Object.values(weeklySchedule).some((day: any) =>
+    day?.breakfast === 'restaurant' || day?.lunch === 'restaurant' || day?.dinner === 'restaurant'
+  );
+}
+
+// Adjust nutrition targets based on restaurant meal budget
+function adjustTargetsForRestaurantBudget(
+  weeklyTargets: any,
+  restaurantCalories: Array<{ day: string; mealType: string; calories: number }>
+): any {
+  if (!weeklyTargets || !weeklyTargets.days) return weeklyTargets;
+
+  const adjustedDays = { ...weeklyTargets.days };
+
+  // For each day, subtract restaurant calories from daily total and redistribute
+  restaurantCalories.forEach(({ day, mealType, calories }) => {
+    const dayKey = day.toLowerCase();
+    const dayTargets = adjustedDays[dayKey];
+
+    if (!dayTargets) return;
+
+    console.log(`[BUDGET-ADJUST] ${day} ${mealType}: reducing by ${calories} calories`);
+
+    // Calculate remaining calories for home meals
+    const remainingCalories = Math.max(0, weeklyTargets.dailyCalories - calories);
+
+    // Get home meal slots for this day (excluding the restaurant meal)
+    const homeMealSlots = [];
+    if (mealType !== 'breakfast' && dayTargets.breakfast?.source === 'home') homeMealSlots.push('breakfast');
+    if (mealType !== 'lunch' && dayTargets.lunch?.source === 'home') homeMealSlots.push('lunch');
+    if (mealType !== 'dinner' && dayTargets.dinner?.source === 'home') homeMealSlots.push('dinner');
+
+    if (homeMealSlots.length === 0) return; // No home meals to adjust
+
+    // Redistribute remaining calories across home meals
+    if (homeMealSlots.length === 1) {
+      // One home meal gets all remaining calories (capped at 1200)
+      const slot = homeMealSlots[0] as 'breakfast' | 'lunch' | 'dinner';
+      const newCalories = Math.min(remainingCalories, 1200);
+      const proportion = newCalories / weeklyTargets.dailyCalories;
+
+      adjustedDays[dayKey][slot] = {
+        ...dayTargets[slot],
+        calories: newCalories,
+        protein: Math.round(weeklyTargets.macros.protein * proportion),
+        carbs: Math.round(weeklyTargets.macros.carbs * proportion),
+        fat: Math.round(weeklyTargets.macros.fat * proportion)
+      };
+    } else if (homeMealSlots.length === 2) {
+      // Two home meals - distribute 40/60
+      const smallerMeal = Math.round(remainingCalories * 0.4);
+      const largerMeal = remainingCalories - smallerMeal;
+
+      homeMealSlots.forEach((slot, index) => {
+        const slotTyped = slot as 'breakfast' | 'lunch' | 'dinner';
+        const calories = index === 0 ? smallerMeal : largerMeal;
+        const proportion = calories / weeklyTargets.dailyCalories;
+
+        adjustedDays[dayKey][slotTyped] = {
+          ...dayTargets[slotTyped],
+          calories,
+          protein: Math.round(weeklyTargets.macros.protein * proportion),
+          carbs: Math.round(weeklyTargets.macros.carbs * proportion),
+          fat: Math.round(weeklyTargets.macros.fat * proportion)
+        };
+      });
+    }
+  });
 
   return {
-    dailyCalories: macroTargets.calories,
-    dailyProtein: macroTargets.protein,
-    dailyCarbs: macroTargets.carbs,
-    dailyFat: macroTargets.fat,
-    mealTargets: {
-      breakfast: {
-        calories: Math.round(macroTargets.calories * breakfastPercent),
-        protein: Math.round(macroTargets.protein * breakfastPercent),
-        carbs: Math.round(macroTargets.carbs * breakfastPercent),
-        fat: Math.round(macroTargets.fat * breakfastPercent)
-      },
-      lunch: {
-        calories: Math.round(macroTargets.calories * lunchPercent),
-        protein: Math.round(macroTargets.protein * lunchPercent),
-        carbs: Math.round(macroTargets.carbs * lunchPercent),
-        fat: Math.round(macroTargets.fat * lunchPercent)
-      },
-      dinner: {
-        calories: Math.round(macroTargets.calories * dinnerPercent),
-        protein: Math.round(macroTargets.protein * dinnerPercent),
-        carbs: Math.round(macroTargets.carbs * dinnerPercent),
-        fat: Math.round(macroTargets.fat * dinnerPercent)
-      },
-      snack: {
-        calories: Math.round(macroTargets.calories * snackPercent),
-        protein: Math.round(macroTargets.protein * snackPercent),
-        carbs: Math.round(macroTargets.carbs * snackPercent),
-        fat: Math.round(macroTargets.fat * snackPercent)
+    ...weeklyTargets,
+    days: adjustedDays
+  };
+}
+
+// Convert new nutrition targets to legacy format for backward compatibility
+function convertToLegacyTargets(weeklyTargets: any, day?: string): any {
+  if (!weeklyTargets) return null;
+
+  // If specific day requested, get that day's targets
+  if (day && weeklyTargets.days[day.toLowerCase()]) {
+    const dayTargets = weeklyTargets.days[day.toLowerCase()];
+    return {
+      dailyCalories: weeklyTargets.dailyCalories,
+      dailyProtein: weeklyTargets.macros.protein,
+      dailyCarbs: weeklyTargets.macros.carbs,
+      dailyFat: weeklyTargets.macros.fat,
+      mealTargets: {
+        breakfast: dayTargets.breakfast || { calories: 0, protein: 0, carbs: 0, fat: 0 },
+        lunch: dayTargets.lunch || { calories: 0, protein: 0, carbs: 0, fat: 0 },
+        dinner: dayTargets.dinner || { calories: 0, protein: 0, carbs: 0, fat: 0 },
+        snack: { calories: 0, protein: 0, carbs: 0, fat: 0 } // No snack support in new system yet
       }
+    };
+  }
+
+  // Default: return general targets with average meal distribution
+  const avgDay = Object.values(weeklyTargets.days)[0] as any;
+  return {
+    dailyCalories: weeklyTargets.dailyCalories,
+    dailyProtein: weeklyTargets.macros.protein,
+    dailyCarbs: weeklyTargets.macros.carbs,
+    dailyFat: weeklyTargets.macros.fat,
+    mealTargets: {
+      breakfast: avgDay?.breakfast || { calories: Math.round(weeklyTargets.dailyCalories * 0.25), protein: Math.round(weeklyTargets.macros.protein * 0.25), carbs: Math.round(weeklyTargets.macros.carbs * 0.25), fat: Math.round(weeklyTargets.macros.fat * 0.25) },
+      lunch: avgDay?.lunch || { calories: Math.round(weeklyTargets.dailyCalories * 0.35), protein: Math.round(weeklyTargets.macros.protein * 0.35), carbs: Math.round(weeklyTargets.macros.carbs * 0.35), fat: Math.round(weeklyTargets.macros.fat * 0.35) },
+      dinner: avgDay?.dinner || { calories: Math.round(weeklyTargets.dailyCalories * 0.40), protein: Math.round(weeklyTargets.macros.protein * 0.40), carbs: Math.round(weeklyTargets.macros.carbs * 0.40), fat: Math.round(weeklyTargets.macros.fat * 0.40) },
+      snack: { calories: 0, protein: 0, carbs: 0, fat: 0 }
     }
   };
 }
@@ -139,9 +267,11 @@ function calculateNutritionTargets(surveyData: any): any {
 async function generateHomeMealsForSchedule(
   homeMeals: Array<{day: string, mealType: string}>,
   surveyData: any,
-  nutritionTargets: any
+  nutritionTargets: any,
+  weeklyNutritionTargets?: any
 ): Promise<any> {
   const startTime = Date.now();
+  let restrictionViolations: any[] = [];
   console.log(`[HOME-MEALS-7DAY] 🏠 Generating ${homeMeals.length} home meals for 7-day schedule...`);
 
   try {
@@ -161,7 +291,8 @@ async function generateHomeMealsForSchedule(
       homeMeals,
       surveyData,
       nutritionTargets,
-      scheduleText
+      scheduleText,
+      weeklyNutritionTargets: weeklyNutritionTargets
     });
 
     // Replace the direct fetch with retry wrapper:
@@ -212,6 +343,128 @@ async function generateHomeMealsForSchedule(
         hasGroceryList: !!parsedResult.groceryList,
         totalEstimatedCost: parsedResult.totalEstimatedCost || 0
       });
+
+      // Validate meal plan against nutrition targets
+      if (parsedResult.homeMeals && weeklyNutritionTargets) {
+        const validationResult = validateMealPlan(
+          parsedResult.homeMeals,
+          weeklyNutritionTargets.days
+        );
+
+        console.log('[HOME-MEALS-7DAY] Validation:', {
+          valid: validationResult.valid,
+          warnings: validationResult.warnings.length,
+          errors: validationResult.errors.length
+        });
+
+        if (!validationResult.valid) {
+          console.warn('[HOME-MEALS-7DAY] ⚠️ Meal plan has validation errors:');
+          validationResult.errors.forEach(err => console.error(`  ❌ ${err}`));
+        }
+        validationResult.warnings.forEach(warn => console.warn(`  ⚠️ ${warn}`));
+
+        // DON'T block saving - just log for now. We'll tighten later.
+      }
+
+      if (parsedResult.homeMeals && Array.isArray(parsedResult.homeMeals)) {
+        let totalMealsValidated = 0;
+        let totalErrors = 0;
+        let totalWarnings = 0;
+
+        parsedResult.homeMeals.forEach((meal: any) => {
+          const day = meal.day || 'unknown-day';
+          const mealType = meal.mealType || 'unknown-meal';
+
+          if (meal.primary) {
+            const validation = validateIngredientSums(
+              `${day} ${mealType} (primary)`,
+              meal.primary
+            );
+            totalMealsValidated += 1;
+            totalErrors += validation.errors.length;
+            totalWarnings += validation.warnings.length;
+
+            validation.errors.forEach((e) => console.error(`[INGREDIENT-VALIDATOR] ❌ ${e}`));
+            validation.warnings.forEach((w) => console.warn(`[INGREDIENT-VALIDATOR] ⚠️ ${w}`));
+            if (validation.valid && validation.details) {
+              console.log(`[INGREDIENT-VALIDATOR] ✅ ${day} ${mealType} (primary): ${validation.details.ingredientCount} ingredients, sums match`);
+            }
+          }
+
+          if (meal.alternative) {
+            const validation = validateIngredientSums(
+              `${day} ${mealType} (alternative)`,
+              meal.alternative
+            );
+            totalMealsValidated += 1;
+            totalErrors += validation.errors.length;
+            totalWarnings += validation.warnings.length;
+
+            validation.errors.forEach((e) => console.error(`[INGREDIENT-VALIDATOR] ❌ ${e}`));
+            validation.warnings.forEach((w) => console.warn(`[INGREDIENT-VALIDATOR] ⚠️ ${w}`));
+            if (validation.valid && validation.details) {
+              console.log(`[INGREDIENT-VALIDATOR] ✅ ${day} ${mealType} (alternative): ${validation.details.ingredientCount} ingredients, sums match`);
+            }
+          }
+        });
+
+        console.log(`[INGREDIENT-VALIDATOR] Summary: validated ${totalMealsValidated} meals, ${totalErrors} errors, ${totalWarnings} warnings`);
+      }
+
+      if (parsedResult.homeMeals && Array.isArray(parsedResult.homeMeals)) {
+        if (parsedResult.groceryList) {
+          parsedResult.groceryList = enhanceGroceryListWithUsage(
+            parsedResult.groceryList,
+            parsedResult.homeMeals
+          );
+        } else {
+          parsedResult.groceryList = buildFallbackGroceryList(parsedResult.homeMeals);
+        }
+      }
+
+      const userRestrictions = {
+        dietPrefs: surveyData.dietPrefs || [],
+        strictExclusions: surveyData.strictExclusions || {},
+        foodAllergies: surveyData.foodAllergies || [],
+      };
+
+      const restrictionMeals: any[] = [];
+      (parsedResult.homeMeals || []).forEach((meal: any) => {
+        const day = meal.day || 'unknown';
+        const mealType = meal.mealType || 'unknown';
+        if (meal.primary) {
+          restrictionMeals.push({
+            ...meal.primary,
+            name: meal.primary.name || meal.primary.dish || meal.primary.description,
+            ingredients: meal.primary.ingredients || [],
+            day,
+            mealType,
+            option: 'primary'
+          });
+        }
+        if (meal.alternative) {
+          restrictionMeals.push({
+            ...meal.alternative,
+            name: meal.alternative.name || meal.alternative.dish || meal.alternative.description,
+            ingredients: meal.alternative.ingredients || [],
+            day,
+            mealType,
+            option: 'alternative'
+          });
+        }
+      });
+
+      const restrictionValidation = validateRestrictions(restrictionMeals, userRestrictions);
+      restrictionViolations = restrictionValidation.violations;
+
+      if (!restrictionValidation.valid) {
+        restrictionValidation.violations.forEach(v => {
+          console.error(`[RESTRICTION-VALIDATOR] ❌ ${v.day} ${v.mealType}: "${v.mealName}" violates ${v.restriction} (contains ${v.ingredient})`);
+        });
+        console.error(`[RESTRICTION-VALIDATOR] Found ${restrictionValidation.violations.length} restriction violations`);
+      } else {
+        console.log(`[RESTRICTION-VALIDATOR] ✅ All meals pass restriction checks`);
+      }
     } catch (parseError) {
       console.error('[HOME-MEALS-7DAY] JSON parse failed:', parseError);
       console.error('[HOME-MEALS-7DAY] Raw content (full):', content);
@@ -229,6 +482,7 @@ async function generateHomeMealsForSchedule(
 
     return {
       ...parsedResult,
+      restrictionViolations,
       metadata: {
         generationTime,
         totalHomeMeals: homeMeals.length,
@@ -359,7 +613,11 @@ export async function POST(req: NextRequest) {
 
   try {
     // Parse request data (may be empty)
-    let requestData: { backgroundGeneration?: boolean; mealPlanId?: string } = {};
+    let requestData: {
+      backgroundGeneration?: boolean;
+      mealPlanId?: string;
+      restaurantCalories?: Array<{ day: string; mealType: string; calories: number }>;
+    } = {};
     try {
       requestData = await req.json();
     } catch {
@@ -368,7 +626,8 @@ export async function POST(req: NextRequest) {
 
     console.log(`[HOME-GENERATION] 📋 Request data:`, {
       backgroundGeneration: requestData.backgroundGeneration,
-      mealPlanId: requestData.mealPlanId || 'none - will create new'
+      mealPlanId: requestData.mealPlanId || 'none - will create new',
+      restaurantCalories: requestData.restaurantCalories?.length || 0
     });
 
     const cookieStore = await cookies();
@@ -425,8 +684,17 @@ export async function POST(req: NextRequest) {
     const homeMealsSchedule = extractHomeMealsFromSchedule(surveyData.weeklyMealSchedule);
     console.log(`[HOME-GENERATION] 🏠 Found ${homeMealsSchedule.length} home meals in schedule`);
 
-    // Calculate nutrition targets
-    const nutritionTargets = calculateNutritionTargets(surveyData);
+    // Calculate nutrition targets using shared function
+    const weeklyNutritionTargets = buildNutritionTargets(surveyData);
+
+    // Adjust targets based on restaurant calories if provided
+    let adjustedTargets = weeklyNutritionTargets;
+    if (requestData.restaurantCalories && requestData.restaurantCalories.length > 0 && weeklyNutritionTargets) {
+      console.log(`[HOME-GENERATION] 🏪 Adjusting targets for ${requestData.restaurantCalories.length} restaurant meals...`);
+      adjustedTargets = adjustTargetsForRestaurantBudget(weeklyNutritionTargets, requestData.restaurantCalories);
+    }
+
+    const nutritionTargets = convertToLegacyTargets(adjustedTargets);
     if (!nutritionTargets) {
       console.error(`[HOME-GENERATION] ❌ Survey data incomplete - missing required fields (age, sex, height, weight)`);
       return NextResponse.json({
@@ -437,7 +705,7 @@ export async function POST(req: NextRequest) {
     console.log(`[HOME-GENERATION] 📊 Calculated nutrition targets: ${nutritionTargets.dailyCalories} calories/day`);
 
     // Generate home meals (now includes grocery list)
-    const homeMealPlan = await generateHomeMealsForSchedule(homeMealsSchedule, surveyData, nutritionTargets);
+    const homeMealPlan = await generateHomeMealsForSchedule(homeMealsSchedule, surveyData, nutritionTargets, adjustedTargets);
 
     // Enhance meals with Pexels images
     console.log(`[HOME-GENERATION] 🖼️ Enhancing meals with images...`);
@@ -450,8 +718,7 @@ export async function POST(req: NextRequest) {
     homeMealPlan.homeMeals = enhancedHomeMeals;
 
     // Create initial meal plan in database with just home meals
-    const weekOfDate = new Date();
-    weekOfDate.setHours(0, 0, 0, 0);
+    const weekOfDate = getStartOfWeek();
 
     // Organize home meals by day for better calendar structure
     const dayOrder = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday'];
@@ -487,6 +754,7 @@ export async function POST(req: NextRequest) {
       weeklySchedule: surveyData.weeklyMealSchedule,
       nutritionTargets,
       homeMeals: homeMealPlan.homeMeals || [],
+      restrictionViolations: homeMealPlan.restrictionViolations || [],
       groceryList: homeMealPlan.groceryList || null,
       totalEstimatedCost: homeMealPlan.totalEstimatedCost || 0,
       weeklyBudgetUsed: homeMealPlan.weeklyBudgetUsed || "0%",
@@ -530,7 +798,15 @@ export async function POST(req: NextRequest) {
         // Check if both home and restaurant meals are now present
         const hasRestaurantMeals = existingContext.restaurantMeals?.length > 0;
         const hasHomeMeals = initialMealPlan.homeMeals?.length > 0;
-        const newStatus = (hasRestaurantMeals && hasHomeMeals) ? 'complete' : 'partial';
+        const homeExpected = hasHomeSlots(initialMealPlan.weeklySchedule);
+        const restaurantExpected = hasRestaurantSlots(initialMealPlan.weeklySchedule);
+        const homeSatisfied = !homeExpected || hasHomeMeals;
+        const restaurantSatisfied = !restaurantExpected || hasRestaurantMeals;
+        const newStatus = (homeSatisfied && restaurantSatisfied) ? 'complete' : 'partial';
+
+        const dailySummaries = newStatus === 'complete'
+          ? buildDailyCalorieSummaries(mergedDays, initialMealPlan.nutritionTargets.dailyCalories)
+          : undefined;
 
         console.log(`[HOME-GENERATION] 📋 Merge summary:`, {
           homeMealsCount: initialMealPlan.homeMeals?.length || 0,
@@ -549,6 +825,11 @@ export async function POST(req: NextRequest) {
               restaurantMeals: existingContext.restaurantMeals || [],
               // Use merged days that include both home and restaurant meals
               days: mergedDays,
+              restrictionViolations: [
+                ...(existingContext.restrictionViolations || []),
+                ...(homeMealPlan.restrictionViolations || [])
+              ],
+              ...(dailySummaries ? { dailySummaries } : {}),
               // Update generator status
               generators: {
                 ...existingContext.generators,

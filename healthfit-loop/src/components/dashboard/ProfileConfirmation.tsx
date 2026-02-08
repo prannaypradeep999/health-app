@@ -229,6 +229,11 @@ export default function ProfileConfirmation({ surveyData, onComplete, onBack }: 
     setShowPlanningPreview(false);
   };
 
+  const handlePreviewApprove = async () => {
+    setShowPlanningPreview(false);
+    await handleGenerateMyPlan();
+  };
+
   // Handler functions for screen navigation
   const handleFoodNext = () => {
     setCurrentScreen('workout');

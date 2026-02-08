@@ -568,6 +568,38 @@ EXTRACTION RULES FOR MENU ITEMS:
 4. Estimate calories based on typical dish composition
 5. Rate healthiness (excellent/good/fair/poor) based on ingredients
 
+6. Apply dietary restrictions when extracting menu items:
+${(() => {
+  const restrictions = (surveyData.dietPrefs || []);
+  if (restrictions.length === 0) return '   - No dietary restrictions to apply';
+
+  let rules = '';
+  restrictions.forEach((pref: string) => {
+    if (pref === 'Vegetarian') {
+      rules += `   - VEGETARIAN: Exclude dishes with meat, poultry, fish, or gelatin\n`;
+    }
+    if (pref === 'Vegan') {
+      rules += `   - VEGAN: Exclude dishes with any animal products (meat, dairy, eggs, honey)\n`;
+    }
+    if (pref === 'Gluten-Free') {
+      rules += `   - GLUTEN-FREE: Exclude bread-based, pasta, or wheat dishes unless marked gluten-free\n`;
+    }
+    if (pref === 'Dairy-Free') {
+      rules += `   - DAIRY-FREE: Exclude dishes with cheese, cream sauces, or dairy ingredients\n`;
+    }
+    if (pref === 'Keto') {
+      rules += `   - KETO: Exclude high-carb dishes like rice bowls, pasta, or bread-heavy items\n`;
+    }
+    if (pref === 'Halal') {
+      rules += `   - HALAL: Exclude pork dishes and non-halal meat options\n`;
+    }
+    if (pref === 'Pescatarian') {
+      rules += `   - PESCATARIAN: Exclude meat and poultry dishes, but fish/seafood is allowed\n`;
+    }
+  });
+  return rules;
+})()}
+
 REQUIRED JSON FORMAT:
 {
   "menuItems": [

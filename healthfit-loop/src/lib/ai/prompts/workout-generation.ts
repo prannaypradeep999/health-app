@@ -8,6 +8,7 @@ export interface WorkoutPreferences {
   availableDays?: string[];
   preferredDuration?: number;
   injuryConsiderations?: string[];
+  timePreferences?: string[];
 }
 
 export interface WorkoutDay {
@@ -78,6 +79,20 @@ export interface WorkoutPlan {
   equipmentNeeded: string[];
 }
 
+const getWorkoutGoalContext = (goal: string): string => {
+  switch (goal) {
+    case 'WEIGHT_LOSS':
+      return 'Focus on calorie-burning exercises, HIIT, and cardio. Higher volume, shorter rest periods.';
+    case 'MUSCLE_GAIN':
+      return 'Focus on progressive overload and strength training. Lower reps, heavier weights, longer rest.';
+    case 'ENDURANCE':
+      return 'Focus on cardiovascular endurance, longer duration activities, and aerobic capacity.';
+    case 'GENERAL_WELLNESS':
+    default:
+      return 'Balanced approach with variety. Mix of cardio, strength, and flexibility.';
+  }
+};
+
 // Helper function to get current day info
 const getCurrentDayInfo = () => {
   const today = new Date();
@@ -118,7 +133,7 @@ TASK: Create a comprehensive fitness profile that captures this user's personali
 FORMAT: Write in 2nd person ("you") as if speaking directly to the user. Be specific, actionable, and motivating.
 
 INCLUDE:
-1. TRAINING PHILOSOPHY: Based on their goal (${surveyData.primaryGoal || surveyData.goal}) and fitness level (${surveyData.fitnessLevel || 'intermediate'})
+1. TRAINING PHILOSOPHY: Based on their goal (${surveyData.goal || surveyData.primaryGoal || 'GENERAL_WELLNESS'}) and fitness level (${surveyData.fitnessLevel || 'intermediate'})
 2. WORKOUT STRATEGY: How to structure training for their lifestyle and preferences
 3. PROGRESSION APPROACH: Realistic timeline based on their fitness timeline expectations
 4. MOTIVATION STYLE: What drives them based on sports interests and personality
@@ -166,18 +181,31 @@ USER PROFILE:
 - Name: ${surveyData.firstName || 'User'}
 - Age: ${surveyData.age}, Sex: ${surveyData.sex}
 - Height: ${surveyData.height} inches, Weight: ${surveyData.weight} lbs
-- Primary Goal: ${surveyData.primaryGoal || surveyData.goal}
+- Primary Goal (core): ${surveyData.goal}
+- Secondary Goal Detail: ${surveyData.primaryGoal || 'none provided'}
 - Health Focus: ${surveyData.healthFocus || 'general'}
 - Maintain Focus: ${surveyData.maintainFocus || 'Not specified'}
 - Current Fitness Level: ${surveyData.fitnessLevel || workoutPrefs.fitnessExperience || 'intermediate'}
 - Activity Level: ${surveyData.activityLevel}
 - Monthly Fitness Budget: ${surveyData.monthlyFitnessBudget || 50}
 
+GOAL-ALIGNED TRAINING FOCUS:
+- ${getWorkoutGoalContext(surveyData.goal)}
+
 WORKOUT PREFERENCES (CRITICAL - MUST FOLLOW):
-- Session Duration: ${workoutPrefs.preferredDuration || 45} minutes MAX
+- Preferred Session Duration: ${workoutPrefs.preferredDuration || 45} minutes
 - Available Days: ${workoutPrefs.availableDays?.join(', ') || 'flexible'} (${workoutPrefs.availableDays?.length || 5} days per week)
+- Time Preferences: ${(workoutPrefs.timePreferences || []).join(', ') || 'no preference provided'}
+- Monthly Fitness Budget: $${surveyData.monthlyFitnessBudget || 50}
 - Gym Access: ${workoutPrefs.gymAccess || 'no_gym'}
 - Preferred Workout Types: ${workoutPrefs.workoutTypes?.join(', ') || 'varied'}
+
+IMPORTANT CONSTRAINTS:
+1. Each workout MUST be completable in ${workoutPrefs.preferredDuration || 45} minutes or less (do not exceed by more than 10 minutes).
+2. ONLY schedule workouts on: ${workoutPrefs.availableDays?.join(', ') || 'flexible'}.
+3. All other days MUST be rest days or active recovery.
+4. If gymAccess is "no_gym", use ONLY bodyweight or minimal home equipment exercises.
+5. If budget is low (under $50/month), favor bodyweight/minimal equipment. If budget is higher, you may include gym-based options.
 
 ⚠️ EQUIPMENT CONSTRAINTS (STRICTLY ENFORCE):
 ${(() => {
@@ -202,14 +230,14 @@ ${(() => {
 })()}
 
 ⚠️ INJURY CONSIDERATIONS (MUST AVOID):
-${workoutPrefs.injuryConsiderations?.length > 0
-  ? workoutPrefs.injuryConsiderations.map(injury => `- AVOID exercises that stress: ${injury}`).join('\n')
+${(workoutPrefs.injuryConsiderations || []).length > 0
+  ? (workoutPrefs.injuryConsiderations || []).map((injury: string) => `- AVOID exercises that stress: ${injury}`).join('\n')
   : '- No injuries reported - full exercise selection available'}
 
 🎯 PREFERRED ACTIVITIES (MUST INCLUDE 1-2x PER WEEK):
 ${surveyData.preferredActivities?.length > 0
   ? `The user ENJOYS these activities and wants them in their routine:
-${surveyData.preferredActivities.map(activity => `- ${activity}`).join('\n')}
+${surveyData.preferredActivities.map((activity: string) => `- ${activity}`).join('\n')}
 YOU MUST incorporate at least 1-2 sessions per week featuring these preferred activities.
 For example, if they like "Sports (Basketball, Tennis, Soccer)", include sport-specific drills or a dedicated sports day.
 If they like "Mind-Body (Yoga, Pilates)", include a yoga/stretching session.`
@@ -263,17 +291,39 @@ REST PERIODS (Research-backed):
 
 ${(() => {
   // Goal-specific workout guidance
-  function getWorkoutGoalGuidance(surveyData, workoutPrefs) {
-    const { primaryGoal, fitnessLevel, healthFocus, maintainFocus } = surveyData;
+  function getWorkoutGoalGuidance(surveyData: any, workoutPrefs: any) {
+    const { goal, primaryGoal, fitnessLevel, healthFocus, maintainFocus } = surveyData;
+    const getGuidanceGoalKey = (goalValue?: string, fallback?: string): string | null => {
+      if (typeof goalValue === 'string') {
+        const lowerGoal = goalValue.toLowerCase();
+        if (['lose_weight', 'build_muscle', 'get_healthier', 'maintain'].includes(lowerGoal)) {
+          return lowerGoal;
+        }
+        switch (goalValue) {
+          case 'WEIGHT_LOSS':
+            return 'lose_weight';
+          case 'MUSCLE_GAIN':
+            return 'build_muscle';
+          case 'ENDURANCE':
+            return 'get_healthier';
+          case 'GENERAL_WELLNESS':
+            return null;
+          default:
+            return null;
+        }
+      }
+      return fallback || null;
+    };
+    const goalKey = getGuidanceGoalKey(goal, primaryGoal);
 
-    if (primaryGoal === 'lose_weight') {
+    if (goalKey === 'lose_weight') {
       return `WEIGHT LOSS FOCUS: Include HIIT elements, higher rep ranges, shorter rest periods.
               Emphasize compound movements for maximum calorie burn.
               Add optional cardio finishers to workouts.`;
     }
 
-    if (primaryGoal === 'build_muscle' && fitnessLevel) {
-      const levelGuide = {
+    if (goalKey === 'build_muscle' && fitnessLevel) {
+      const levelGuide: Record<string, string> = {
         'beginner': 'BEGINNER: Full body 3x/week, focus on form, lighter weights, 2-3 sets per exercise.',
         'intermediate': 'INTERMEDIATE: Upper/Lower or PPL split, progressive overload, 3-4 sets.',
         'advanced': 'ADVANCED: Advanced splits, periodization, intensity techniques, 4-5 sets.'
@@ -281,8 +331,8 @@ ${(() => {
       return levelGuide[fitnessLevel] || '';
     }
 
-    if (primaryGoal === 'get_healthier' && healthFocus) {
-      const healthGuide = {
+    if (goalKey === 'get_healthier' && healthFocus) {
+      const healthGuide: Record<string, string> = {
         'energy': 'ENERGY FOCUS: Morning workouts preferred, mix of cardio and strength.',
         'digestion': 'DIGESTION FOCUS: Include core work, walking, yoga elements. Avoid exercising right after meals.',
         'mental_clarity': 'MENTAL CLARITY: Include mind-body elements, outdoor options when possible.',
@@ -292,7 +342,7 @@ ${(() => {
       return healthGuide[healthFocus] || '';
     }
 
-    if (primaryGoal === 'maintain') {
+    if (goalKey === 'maintain') {
       let maintainGuide = 'MAINTENANCE FOCUS: Emphasize consistency and enjoyment over intensity. Mix of strength training and activities you enjoy. Focus on movement quality and habit formation.';
 
       if (maintainFocus) {
@@ -692,7 +742,7 @@ DAY DESCRIPTIONS (CRITICAL - MAKE ENGAGING):
 Each day's "description" field must be:
 - 2-3 sentences that get the user EXCITED about the workout
 - Personal and motivating - use "you" and "your"
-- Reference their specific goals (${surveyData.primaryGoal || surveyData.goal})
+- Reference their specific goals (${surveyData.goal || surveyData.primaryGoal || 'GENERAL_WELLNESS'})
 - Include a fun fact or benefit of that day's focus
 
 BAD example: "Today's workout focuses on legs."

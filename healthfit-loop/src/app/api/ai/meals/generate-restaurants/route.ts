@@ -8,7 +8,10 @@ import {
   createRestaurantSelectionPrompt
 } from '@/lib/ai/prompts';
 import { calculateMacroTargets, UserProfile } from '@/lib/utils/nutrition';
+import { buildNutritionTargets } from '@/lib/utils/nutrition-targets';
 import { withGPTRetry } from '@/lib/utils/retry';
+import { getStartOfWeek } from '@/lib/utils/date-utils';
+import { validateRestrictions } from '@/lib/utils/restriction-validator';
 
 export const runtime = 'nodejs';
 
@@ -23,9 +26,9 @@ export const runtime = 'nodejs';
  * - Improved validation and error handling
  */
 
-// Generate nutrition targets based on survey data
-function calculateNutritionTargets(surveyData: any): any {
-  if (!surveyData.age || !surveyData.sex || !surveyData.height || !surveyData.weight) {
+// Convert new nutrition targets to legacy format for backward compatibility
+function convertToLegacyTargets(weeklyTargets: any, day?: string): any {
+  if (!weeklyTargets) {
     // Provide defaults for missing data
     return {
       dailyCalories: 2000,
@@ -41,53 +44,35 @@ function calculateNutritionTargets(surveyData: any): any {
     };
   }
 
-  const userProfile: UserProfile = {
-    age: surveyData.age,
-    sex: surveyData.sex,
-    height: surveyData.height,
-    weight: surveyData.weight,
-    activityLevel: surveyData.activityLevel || 'MODERATELY_ACTIVE',
-    goal: surveyData.goal || 'GENERAL_WELLNESS'
-  };
-
-  const macroTargets = calculateMacroTargets(userProfile);
-
-  // Calculate meal targets (approximate distribution)
-  const breakfastPercent = 0.25;
-  const lunchPercent = 0.32;
-  const dinnerPercent = 0.38;
-  const snackPercent = 0.05;
-
-  return {
-    dailyCalories: macroTargets.calories,
-    dailyProtein: macroTargets.protein,
-    dailyCarbs: macroTargets.carbs,
-    dailyFat: macroTargets.fat,
-    mealTargets: {
-      breakfast: {
-        calories: Math.round(macroTargets.calories * breakfastPercent),
-        protein: Math.round(macroTargets.protein * breakfastPercent),
-        carbs: Math.round(macroTargets.carbs * breakfastPercent),
-        fat: Math.round(macroTargets.fat * breakfastPercent)
-      },
-      lunch: {
-        calories: Math.round(macroTargets.calories * lunchPercent),
-        protein: Math.round(macroTargets.protein * lunchPercent),
-        carbs: Math.round(macroTargets.carbs * lunchPercent),
-        fat: Math.round(macroTargets.fat * lunchPercent)
-      },
-      dinner: {
-        calories: Math.round(macroTargets.calories * dinnerPercent),
-        protein: Math.round(macroTargets.protein * dinnerPercent),
-        carbs: Math.round(macroTargets.carbs * dinnerPercent),
-        fat: Math.round(macroTargets.fat * dinnerPercent)
-      },
-      snack: {
-        calories: Math.round(macroTargets.calories * snackPercent),
-        protein: Math.round(macroTargets.protein * snackPercent),
-        carbs: Math.round(macroTargets.carbs * snackPercent),
-        fat: Math.round(macroTargets.fat * snackPercent)
+  // If specific day requested, get that day's targets
+  if (day && weeklyTargets.days[day.toLowerCase()]) {
+    const dayTargets = weeklyTargets.days[day.toLowerCase()];
+    return {
+      dailyCalories: weeklyTargets.dailyCalories,
+      dailyProtein: weeklyTargets.macros.protein,
+      dailyCarbs: weeklyTargets.macros.carbs,
+      dailyFat: weeklyTargets.macros.fat,
+      mealTargets: {
+        breakfast: dayTargets.breakfast || { calories: 0, protein: 0, carbs: 0, fat: 0 },
+        lunch: dayTargets.lunch || { calories: 0, protein: 0, carbs: 0, fat: 0 },
+        dinner: dayTargets.dinner || { calories: 0, protein: 0, carbs: 0, fat: 0 },
+        snack: { calories: 0, protein: 0, carbs: 0, fat: 0 } // No snack support in new system yet
       }
+    };
+  }
+
+  // Default: return general targets with average meal distribution
+  const avgDay = Object.values(weeklyTargets.days)[0] as any;
+  return {
+    dailyCalories: weeklyTargets.dailyCalories,
+    dailyProtein: weeklyTargets.macros.protein,
+    dailyCarbs: weeklyTargets.macros.carbs,
+    dailyFat: weeklyTargets.macros.fat,
+    mealTargets: {
+      breakfast: avgDay?.breakfast || { calories: Math.round(weeklyTargets.dailyCalories * 0.25), protein: Math.round(weeklyTargets.macros.protein * 0.25), carbs: Math.round(weeklyTargets.macros.carbs * 0.25), fat: Math.round(weeklyTargets.macros.fat * 0.25) },
+      lunch: avgDay?.lunch || { calories: Math.round(weeklyTargets.dailyCalories * 0.35), protein: Math.round(weeklyTargets.macros.protein * 0.35), carbs: Math.round(weeklyTargets.macros.carbs * 0.35), fat: Math.round(weeklyTargets.macros.fat * 0.35) },
+      dinner: avgDay?.dinner || { calories: Math.round(weeklyTargets.dailyCalories * 0.40), protein: Math.round(weeklyTargets.macros.protein * 0.40), carbs: Math.round(weeklyTargets.macros.carbs * 0.40), fat: Math.round(weeklyTargets.macros.fat * 0.40) },
+      snack: { calories: 0, protein: 0, carbs: 0, fat: 0 }
     }
   };
 }
@@ -490,6 +475,63 @@ async function selectRestaurantMealsForSchedule(
   }
 }
 
+// Validate restaurant meals against calorie targets
+function validateRestaurantMeals(
+  restaurantMeals: any[],
+  nutritionTargets: any
+) {
+  let warningCount = 0;
+  let errorCount = 0;
+
+  const mealTargets = nutritionTargets?.mealTargets || {};
+  const dailyTarget = nutritionTargets?.dailyCalories || 0;
+  const mealsByDay: Record<string, number[]> = {};
+
+  restaurantMeals.forEach((meal: any) => {
+    const day = meal.day || 'unknown';
+    const mealType = (meal.mealType || '').toLowerCase();
+    const actualCalories = meal.primary?.estimatedCalories ?? meal.primary?.calories ?? meal.estimatedCalories ?? meal.calories;
+    const targetCalories = mealTargets?.[mealType]?.calories || 0;
+
+    if (!mealsByDay[day]) mealsByDay[day] = [];
+    if (typeof actualCalories === 'number') mealsByDay[day].push(actualCalories);
+
+    if (actualCalories === null || actualCalories === undefined || Number.isNaN(actualCalories)) {
+      errorCount += 1;
+      console.error(`[RESTAURANT-VALIDATOR] ${day} ${mealType}: missing calories ❌ ERROR`);
+      return;
+    }
+
+    if (actualCalories < 200 || actualCalories > 1500) {
+      warningCount += 1;
+      console.warn(`[RESTAURANT-VALIDATOR] ${day} ${mealType}: ${actualCalories} cal (suspicious) ⚠️ WARNING`);
+    }
+
+    if (targetCalories > 0) {
+      const deviation = Math.abs(actualCalories - targetCalories) / targetCalories * 100;
+      if (deviation > 30) {
+        errorCount += 1;
+        console.error(`[RESTAURANT-VALIDATOR] ${day} ${mealType}: ${actualCalories} cal (target: ${targetCalories}, ${deviation.toFixed(1)}%) ⚠️ ERROR`);
+      } else if (deviation > 15) {
+        warningCount += 1;
+        console.warn(`[RESTAURANT-VALIDATOR] ${day} ${mealType}: ${actualCalories} cal (target: ${targetCalories}, ${deviation.toFixed(1)}%) ⚠️ WARNING`);
+      } else {
+        console.log(`[RESTAURANT-VALIDATOR] ${day} ${mealType}: ${actualCalories} cal (target: ${targetCalories}, ${deviation.toFixed(1)}%) ✓`);
+      }
+    }
+  });
+
+  Object.entries(mealsByDay).forEach(([day, calories]) => {
+    const dailyTotal = calories.reduce((sum, value) => sum + value, 0);
+    if (dailyTarget > 0 && dailyTotal / dailyTarget > 0.6) {
+      warningCount += 1;
+      console.warn(`[RESTAURANT-VALIDATOR] ${day}: restaurant meals use ${Math.round((dailyTotal / dailyTarget) * 100)}% of daily target ⚠️ WARNING`);
+    }
+  });
+
+  console.log(`[RESTAURANT-VALIDATOR] Validation complete: ${restaurantMeals.length} meals, ${warningCount} warning(s), ${errorCount} error(s)`);
+}
+
 export async function POST(req: NextRequest) {
   const startTime = Date.now();
   console.log(`[RESTAURANT-GENERATION] 🚀 Starting restaurant meal generation at ${new Date().toISOString()}`);
@@ -545,8 +587,9 @@ export async function POST(req: NextRequest) {
     
     console.log(`[RESTAURANT-GENERATION] ✅ Survey data found for ${surveyData.firstName}`);
 
-    // Calculate nutrition targets
-    const nutritionTargets = calculateNutritionTargets(surveyData);
+    // Calculate nutrition targets using shared function
+    const weeklyNutritionTargets = buildNutritionTargets(surveyData);
+    const nutritionTargets = convertToLegacyTargets(weeklyNutritionTargets);
     console.log(`[RESTAURANT-GENERATION] 📊 Calculated nutrition targets: ${nutritionTargets.dailyCalories} calories/day`);
 
     // Extract restaurant meals from schedule
@@ -597,10 +640,58 @@ export async function POST(req: NextRequest) {
     const mealSelectionStart = Date.now();
     const selectedRestaurantMeals = await selectRestaurantMealsForSchedule(restaurantMenuData, restaurantMealsSchedule, surveyData, nutritionTargets);
     const mealSelectionTime = Date.now() - mealSelectionStart;
+
+    // Validate restaurant meals (log only, do not block saving)
+    if (selectedRestaurantMeals.length > 0) {
+      validateRestaurantMeals(selectedRestaurantMeals, nutritionTargets);
+    }
+
+    const userRestrictions = {
+      dietPrefs: surveyData.dietPrefs || [],
+      strictExclusions: surveyData.strictExclusions || {},
+      foodAllergies: surveyData.foodAllergies || [],
+    };
+
+    const restrictionMeals: any[] = [];
+    selectedRestaurantMeals.forEach((meal: any) => {
+      const day = meal.day || 'unknown';
+      const mealType = meal.mealType || 'unknown';
+      if (meal.primary) {
+        restrictionMeals.push({
+          ...meal.primary,
+          name: meal.primary.dish || meal.primary.name || meal.primary.description,
+          ingredients: meal.primary.ingredients || [],
+          day,
+          mealType,
+          option: 'primary'
+        });
+      }
+      if (meal.alternative) {
+        restrictionMeals.push({
+          ...meal.alternative,
+          name: meal.alternative.dish || meal.alternative.name || meal.alternative.description,
+          ingredients: meal.alternative.ingredients || [],
+          day,
+          mealType,
+          option: 'alternative'
+        });
+      }
+    });
+
+    const restrictionValidation = validateRestrictions(restrictionMeals, userRestrictions);
+    const restrictionViolations = restrictionValidation.violations;
+
+    if (!restrictionValidation.valid) {
+      restrictionValidation.violations.forEach(v => {
+        console.error(`[RESTRICTION-VALIDATOR] ❌ ${v.day} ${v.mealType}: "${v.mealName}" violates ${v.restriction} (contains ${v.ingredient})`);
+      });
+      console.error(`[RESTRICTION-VALIDATOR] Found ${restrictionValidation.violations.length} restriction violations`);
+    } else {
+      console.log(`[RESTRICTION-VALIDATOR] ✅ All meals pass restriction checks`);
+    }
     
     // Update existing meal plan with restaurant data
-    const weekOfDate = new Date();
-    weekOfDate.setHours(0, 0, 0, 0);
+    const weekOfDate = getStartOfWeek();
     
     try {
       console.log('[RESTAURANT-GENERATION] 💾 Updating meal plan with restaurant data...');
@@ -665,6 +756,10 @@ export async function POST(req: NextRequest) {
           ...existingContext,
           days: updatedDays,
           restaurantMeals: selectedRestaurantMeals,
+          restrictionViolations: [
+            ...(existingContext.restrictionViolations || []),
+            ...(restrictionViolations || [])
+          ],
           generators: {
             ...existingContext.generators,
             restaurants: 'completed'
@@ -698,6 +793,7 @@ export async function POST(req: NextRequest) {
         const completePlan = {
           restaurantMeals: selectedRestaurantMeals,
           weeklySchedule: surveyData.weeklyMealSchedule,
+          restrictionViolations: restrictionViolations || [],
           metadata: {
             type: 'restaurant_meals_only',
             generationMethod: 'split_pipeline_phase2',

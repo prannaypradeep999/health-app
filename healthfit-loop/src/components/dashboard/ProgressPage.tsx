@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from "react";
+import React, { useState, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -32,6 +32,8 @@ import {
 interface ProgressPageProps {
   onNavigate: (screen: string) => void;
   user?: any;
+  isGuest?: boolean;
+  onShowAccountModal?: () => void;
 }
 
 export function ProgressPage({ onNavigate, user }: ProgressPageProps) {
@@ -41,17 +43,35 @@ export function ProgressPage({ onNavigate, user }: ProgressPageProps) {
   const [weightLogs, setWeightLogs] = useState<any[]>([]);
   const [loadingWeight, setLoadingWeight] = useState(false);
   const [savingWeight, setSavingWeight] = useState(false);
+  const [mealPlanData, setMealPlanData] = useState<any>(null);
+  const [nutritionTargets, setNutritionTargets] = useState<{
+    dailyCalories: number;
+    dailyProtein: number;
+    dailyCarbs: number;
+    dailyFat: number;
+  } | null>(null);
 
   // Get surveyId from user's active survey
   // activeSurvey contains the full survey object with id
   const surveyId = user?.activeSurvey?.id;
 
+  const getMealStorageKey = () => {
+    if (typeof window === 'undefined') return null;
+    return localStorage.getItem('currentMealStorageKey') || 'eatenMeals';
+  };
+
+  const getWorkoutStorageKey = () => {
+    if (typeof window === 'undefined') return null;
+    return localStorage.getItem('currentWorkoutStorageKey') || 'completedExercises';
+  };
+
   // Get real progress data from localStorage or show empty states
   const getProgressData = () => {
     try {
-      // Use CORRECT localStorage keys (same as MealPlanPage and WorkoutPlanPage)
-      const eatenMeals = JSON.parse(localStorage.getItem('eatenMeals') || '{}');
-      const completedExercises = JSON.parse(localStorage.getItem('completedExercises') || '{}');
+      const mealKey = getMealStorageKey();
+      const workoutKey = getWorkoutStorageKey();
+      const eatenMeals = mealKey ? JSON.parse(localStorage.getItem(mealKey) || '{}') : {};
+      const completedExercises = workoutKey ? JSON.parse(localStorage.getItem(workoutKey) || '{}') : {};
 
       // Count meals marked as eaten (eatenMeals is { "day-mealType-optionType-index": true })
       const totalMealsLogged = Object.values(eatenMeals).filter(v => v === true).length;
@@ -88,13 +108,36 @@ export function ProgressPage({ onNavigate, user }: ProgressPageProps) {
 
   const [progressData, setProgressData] = useState(getProgressData());
 
+  useEffect(() => {
+    const loadMealPlan = async () => {
+      try {
+        const response = await fetch('/api/ai/meals/current');
+        if (!response.ok) return;
+        const data = await response.json();
+        setMealPlanData(data.mealPlan || null);
+        setNutritionTargets(data.mealPlan?.nutritionTargets || null);
+      } catch (error) {
+        console.error('[PROGRESS] Failed to load meal plan:', error);
+      }
+    };
+
+    loadMealPlan();
+  }, []);
+
   // Update progressData when localStorage changes
   useEffect(() => {
     const updateProgress = () => setProgressData(getProgressData());
 
     // Listen for storage events (other tabs)
     const handleStorage = (e: StorageEvent) => {
-      if (e.key === 'eatenMeals' || e.key === 'completedExercises') {
+      const mealKey = getMealStorageKey();
+      const workoutKey = getWorkoutStorageKey();
+      if (
+        e.key === mealKey ||
+        e.key === workoutKey ||
+        e.key === 'currentMealStorageKey' ||
+        e.key === 'currentWorkoutStorageKey'
+      ) {
         updateProgress();
       }
     };
@@ -131,6 +174,68 @@ export function ProgressPage({ onNavigate, user }: ProgressPageProps) {
   const weightGoal = user?.activeSurvey?.goal === 'WEIGHT_LOSS' ? 10 :
                      user?.activeSurvey?.goal === 'MUSCLE_GAIN' ? -5 : 0; // negative = gain
 
+  const weeklyCalorieBreakdown = React.useMemo(() => {
+    const summaries = mealPlanData?.dailySummaries;
+    if (Array.isArray(summaries) && summaries.length > 0) {
+      return summaries.map((summary: any) => ({
+        day: summary.day || 'Day',
+        plannedCalories: summary.planned ?? 0,
+        targetCalories: summary.target ?? nutritionTargets?.dailyCalories ?? 0,
+        deviation: summary.deviation,
+        status: summary.status
+      }));
+    }
+
+    const days = mealPlanData?.planData?.days;
+    if (!days || !Array.isArray(days)) return [];
+
+    return days.map((day: any) => {
+      const meals = day.meals || {};
+      const plannedCalories = ['breakfast', 'lunch', 'dinner'].reduce((sum, mealType) => {
+        const meal = meals[mealType];
+        if (!meal) return sum;
+        const option = meal.primary || meal;
+        return sum + (option?.calories ?? option?.estimatedCalories ?? 0);
+      }, 0);
+
+      return {
+        day: day.day || day.dayName || day.date || 'Day',
+        plannedCalories,
+        targetCalories: nutritionTargets?.dailyCalories ?? 0
+      };
+    });
+  }, [mealPlanData, nutritionTargets]);
+
+  const weeklyCaloriesSummary = React.useMemo(() => {
+    if (!weeklyCalorieBreakdown.length) {
+      return {
+        total: 0,
+        average: 0,
+        avgDeviationPercent: 0
+      };
+    }
+
+    const total = weeklyCalorieBreakdown.reduce((sum, day) => sum + day.plannedCalories, 0);
+    const daysWithData = weeklyCalorieBreakdown.filter(day => day.plannedCalories > 0).length || 1;
+    const average = Math.round(total / daysWithData);
+    const avgDeviationPercent = Math.round(
+      weeklyCalorieBreakdown.reduce((sum, day: any) => {
+        if (typeof day.deviation === 'number') {
+          return sum + Math.abs(day.deviation);
+        }
+        const target = day.targetCalories ?? nutritionTargets?.dailyCalories ?? 0;
+        const deviation = target > 0 ? Math.abs(day.plannedCalories - target) / target * 100 : 0;
+        return sum + deviation;
+      }, 0) / weeklyCalorieBreakdown.length
+    );
+
+    return {
+      total,
+      average,
+      avgDeviationPercent
+    };
+  }, [weeklyCalorieBreakdown, nutritionTargets]);
+
   // Weekly stats - derive from localStorage progress data
   const weeklyStats = {
     workoutsCompleted: progressData.workoutsLogged || 0,
@@ -138,7 +243,9 @@ export function ProgressPage({ onNavigate, user }: ProgressPageProps) {
     mealPlanAdherence: progressData.mealsLogged > 0
       ? Math.min(100, Math.round((progressData.mealsLogged / 21) * 100))
       : 0,
-    avgCalories: 2000, // Placeholder - would need to calculate from meal consumption logs
+    avgCalories: weeklyCaloriesSummary.average,
+    weeklyTotalCalories: weeklyCaloriesSummary.total,
+    avgDeviationPercent: weeklyCaloriesSummary.avgDeviationPercent,
     avgCaloriesBurned: 300, // Placeholder - would need workout data
     avgActiveMinutes: 45, // Placeholder - would need workout data
     steps: 8500 // Placeholder - would need device integration
@@ -374,30 +481,95 @@ export function ProgressPage({ onNavigate, user }: ProgressPageProps) {
               <div className="text-sm text-gray-600">Meals logged</div>
             </div>
 
-            {/* Calories Burned - Coming Soon */}
-            <div className="p-4 bg-gradient-to-br from-orange-100 to-orange-50 rounded-xl relative">
-              <div className="absolute top-2 right-2">
-                <Badge className="bg-orange-200 text-orange-700 text-[10px]">Coming Soon</Badge>
-              </div>
+            {/* Average Calories */}
+            <div className="p-4 bg-gradient-to-br from-orange-100 to-orange-50 rounded-xl">
               <div className="flex items-center justify-between mb-2">
                 <Heartbeat className="w-5 h-5 text-orange-400" weight="regular" />
+                <Badge className="bg-white/50 text-orange-700 text-xs">
+                  avg/day
+                </Badge>
               </div>
-              <div className="text-2xl font-semibold text-gray-400">--</div>
-              <div className="text-sm text-gray-400">Calories burned</div>
+              <div className="text-2xl font-semibold text-gray-900">
+                {weeklyStats.avgCalories > 0 ? weeklyStats.avgCalories : '--'}
+              </div>
+              <div className="text-sm text-gray-600">Average calories</div>
             </div>
 
-            {/* Active Minutes - Coming Soon */}
-            <div className="p-4 bg-gradient-to-br from-blue-100 to-blue-50 rounded-xl relative">
-              <div className="absolute top-2 right-2">
-                <Badge className="bg-blue-200 text-blue-700 text-[10px]">Coming Soon</Badge>
-              </div>
+            {/* Weekly Total Calories */}
+            <div className="p-4 bg-gradient-to-br from-blue-100 to-blue-50 rounded-xl">
               <div className="flex items-center justify-between mb-2">
                 <ChartBar className="w-5 h-5 text-blue-400" weight="regular" />
+                <Badge className="bg-white/50 text-blue-700 text-xs">
+                  total
+                </Badge>
               </div>
-              <div className="text-2xl font-semibold text-gray-400">--</div>
-              <div className="text-sm text-gray-400">Active minutes</div>
+              <div className="text-2xl font-semibold text-gray-900">
+                {weeklyStats.weeklyTotalCalories > 0 ? weeklyStats.weeklyTotalCalories : '--'}
+              </div>
+              <div className="text-sm text-gray-600">Weekly calories</div>
             </div>
           </div>
+        </div>
+
+        {/* Weekly Calorie Breakdown */}
+        <div className="bg-white border border-gray-200 rounded-2xl p-8 shadow-md">
+          <h3 className="text-xl font-bold text-gray-900 mb-6">Weekly Calories</h3>
+          {weeklyCalorieBreakdown.length > 0 ? (
+            <div className="space-y-3">
+              {weeklyCalorieBreakdown.map((day) => {
+                const target = (day as any).targetCalories ?? nutritionTargets?.dailyCalories ?? 0;
+                const actual = day.plannedCalories;
+                const deviation = typeof (day as any).deviation === 'number'
+                  ? Math.abs((day as any).deviation)
+                  : target > 0 ? Math.abs(actual - target) / target * 100 : 0;
+                const statusColor = (day as any).status
+                  ? (day as any).status === 'on-target'
+                    ? 'text-green-600'
+                    : (day as any).status === 'warning' || (day as any).status === 'under'
+                      ? 'text-orange-600'
+                      : 'text-red-600'
+                  : deviation <= 10
+                    ? 'text-green-600'
+                    : deviation <= 15
+                      ? 'text-orange-600'
+                      : 'text-red-600';
+                const statusIcon = (day as any).status
+                  ? ((day as any).status === 'on-target' ? '✓' : '⚠')
+                  : (deviation <= 10 ? '✓' : '⚠');
+
+                return (
+                  <div key={day.day} className="flex items-center justify-between text-sm">
+                    <span className="capitalize text-gray-700">{day.day}</span>
+                    <div className="flex items-center gap-2">
+                      <span className="text-gray-600">{actual} / {target > 0 ? Math.round(target) : '—'} cal</span>
+                      <span className={`text-xs font-medium ${statusColor}`}>
+                        {statusIcon}
+                      </span>
+                    </div>
+                  </div>
+                );
+              })}
+              <div className="mt-4 pt-4 border-t border-gray-200 text-sm text-gray-600">
+                <div className="flex items-center justify-between">
+                  <span>Total this week</span>
+                  <span className="font-medium text-gray-800">{weeklyCaloriesSummary.total} cal</span>
+                </div>
+                <div className="flex items-center justify-between">
+                  <span>Average per day</span>
+                  <span className="font-medium text-gray-800">{weeklyCaloriesSummary.average} cal</span>
+                </div>
+                <div className="flex items-center justify-between">
+                  <span>Avg deviation</span>
+                  <span className="font-medium text-gray-800">{weeklyCaloriesSummary.avgDeviationPercent}%</span>
+                </div>
+              </div>
+            </div>
+          ) : (
+            <div className="text-center p-6 bg-gray-50 rounded-xl border border-gray-200">
+              <div className="text-gray-600 font-medium">No calorie data yet</div>
+              <div className="text-gray-500 text-sm">Your plan is still loading or not generated.</div>
+            </div>
+          )}
         </div>
 
 

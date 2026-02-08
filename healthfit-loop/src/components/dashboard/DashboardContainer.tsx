@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { DashboardHome } from './DashboardHome';
 import { MealPlanPage } from './MealPlanPage';
 import { WorkoutPlanPage } from './WorkoutPlanPage';
@@ -8,7 +8,6 @@ import { ProgressPage } from './ProgressPage';
 import { AccountPage } from './AccountPage';
 import { LoadingPage } from './LoadingPage';
 import { MealPlanningPreview } from './MealPlanningPreview';
-import { calculateMacroTargets } from '@/lib/utils/nutrition';
 import AccountCreationModal from './modals/AccountCreationModal';
 import { ForkKnife, Spinner } from '@phosphor-icons/react';
 import { motion } from 'framer-motion';
@@ -47,6 +46,7 @@ interface GenerationStatus {
 }
 
 export function DashboardContainer({ initialScreen = 'dashboard' }: DashboardContainerProps) {
+  const MAX_DASHBOARD_POLL_ATTEMPTS = 60;
   const [currentScreen, setCurrentScreen] = useState<Screen>(initialScreen);
   const [surveyData, setSurveyData] = useState<SurveyData | null>(null);
   const [generationStatus, setGenerationStatus] = useState<GenerationStatus>({
@@ -66,6 +66,12 @@ export function DashboardContainer({ initialScreen = 'dashboard' }: DashboardCon
   const [isEarlyArrival, setIsEarlyArrival] = useState(false);
   const [isWaitingForFreshData, setIsWaitingForFreshData] = useState(false);
   const [mealData, setMealData] = useState<any>(null);
+  const [mealPlanTargets, setMealPlanTargets] = useState<any>(null);
+  const [mealWeekStatus, setMealWeekStatus] = useState<{ isCurrentWeek: boolean; weekOf?: string; currentWeek?: string } | null>(null);
+  const [workoutWeekStatus, setWorkoutWeekStatus] = useState<{ isCurrentWeek: boolean; weekOf?: string; currentWeek?: string } | null>(null);
+  const [pollErrorDashboard, setPollErrorDashboard] = useState(false);
+  const generationPollAttemptsRef = useRef(0);
+  const freshPollAttemptsRef = useRef(0);
 
   useEffect(() => {
     fetchSurveyData();
@@ -86,6 +92,12 @@ export function DashboardContainer({ initialScreen = 'dashboard' }: DashboardCon
       // Don't clean up URL yet - we need to know we're waiting
       // Start aggressive polling for fresh data
       const pollForFreshData = async () => {
+        if (freshPollAttemptsRef.current >= MAX_DASHBOARD_POLL_ATTEMPTS) {
+          setPollErrorDashboard(true);
+          setIsWaitingForFreshData(false);
+          return;
+        }
+        freshPollAttemptsRef.current += 1;
         console.log('[DashboardContainer] Polling for fresh meal plan data...');
 
         try {
@@ -108,6 +120,15 @@ export function DashboardContainer({ initialScreen = 'dashboard' }: DashboardCon
               console.log('[DashboardContainer] ✅ Fresh meal plan received!');
               setIsWaitingForFreshData(false);
               setMealData(data);
+              setMealPlanTargets(data.mealPlan?.nutritionTargets || null);
+              freshPollAttemptsRef.current = 0;
+              if (typeof data.isCurrentWeek === 'boolean') {
+                setMealWeekStatus({
+                  isCurrentWeek: data.isCurrentWeek,
+                  weekOf: data.weekOf,
+                  currentWeek: data.currentWeek
+                });
+              }
               // Now clean up URL
               window.history.replaceState({}, '', window.location.pathname);
               return;
@@ -145,11 +166,17 @@ export function DashboardContainer({ initialScreen = 'dashboard' }: DashboardCon
                       !generationStatus.workoutsGenerated ||
                       (generationStatus.homeMealsGenerated && !generationStatus.restaurantMealsGenerated);
 
-    if (shouldPoll) {
+    if (shouldPoll && !pollErrorDashboard) {
       // More frequent polling if restaurants are still being discovered
       const pollFrequency = generationStatus.homeMealsGenerated && !generationStatus.restaurantMealsGenerated ? 3000 : 5000;
 
       const pollInterval = setInterval(() => {
+        if (generationPollAttemptsRef.current >= MAX_DASHBOARD_POLL_ATTEMPTS) {
+          setPollErrorDashboard(true);
+          clearInterval(pollInterval);
+          return;
+        }
+        generationPollAttemptsRef.current += 1;
         console.log('Polling for generation status...', {
           meals: generationStatus.mealsGenerated,
           workouts: generationStatus.workoutsGenerated,
@@ -161,7 +188,13 @@ export function DashboardContainer({ initialScreen = 'dashboard' }: DashboardCon
 
       return () => clearInterval(pollInterval);
     }
-  }, [generationStatus.mealsGenerated, generationStatus.workoutsGenerated, generationStatus.homeMealsGenerated, generationStatus.restaurantMealsGenerated]);
+  }, [generationStatus.mealsGenerated, generationStatus.workoutsGenerated, generationStatus.homeMealsGenerated, generationStatus.restaurantMealsGenerated, pollErrorDashboard]);
+
+  useEffect(() => {
+    if (generationStatus.mealsGenerated && generationStatus.workoutsGenerated) {
+      generationPollAttemptsRef.current = 0;
+    }
+  }, [generationStatus.mealsGenerated, generationStatus.workoutsGenerated]);
 
   const fetchSurveyData = async () => {
     try {
@@ -232,6 +265,14 @@ export function DashboardContainer({ initialScreen = 'dashboard' }: DashboardCon
       if (mealsGenerated) {
         try {
           const mealsData = await mealsResponse.json();
+          setMealPlanTargets(mealsData.mealPlan?.nutritionTargets || null);
+          if (typeof mealsData.isCurrentWeek === 'boolean') {
+            setMealWeekStatus({
+              isCurrentWeek: mealsData.isCurrentWeek,
+              weekOf: mealsData.weekOf,
+              currentWeek: mealsData.currentWeek
+            });
+          }
           const mealPlan = mealsData.mealPlan?.planData;
 
           // Check for 7-day structured format first
@@ -242,8 +283,8 @@ export function DashboardContainer({ initialScreen = 'dashboard' }: DashboardCon
             let homeCount = 0;
             let restaurantCount = 0;
 
-            mealPlan.days.forEach(day => {
-              Object.values(day.meals || {}).forEach(meal => {
+            mealPlan.days.forEach((day: any) => {
+              Object.values(day.meals || {}).forEach((meal: any) => {
                 if (meal) {
                   if (meal.source === 'home') homeCount++;
                   if (meal.source === 'restaurant') restaurantCount++;
@@ -258,11 +299,11 @@ export function DashboardContainer({ initialScreen = 'dashboard' }: DashboardCon
 
           } else if (mealPlan?.weeklyPlan && Array.isArray(mealPlan.weeklyPlan)) {
             // Legacy format - check for home meals in the weekly plan
-            const homeMeals = mealPlan.weeklyPlan.filter(meal => meal.source === 'home');
+            const homeMeals = mealPlan.weeklyPlan.filter((meal: any) => meal.source === 'home');
             homeMealsGenerated = homeMeals.length > 0;
 
             // Check for restaurant meals in legacy format
-            const restaurantMeals = mealPlan.weeklyPlan.filter(meal => meal.source === 'restaurant');
+            const restaurantMeals = mealPlan.weeklyPlan.filter((meal: any) => meal.source === 'restaurant');
             restaurantMealsGenerated = restaurantMeals.length > 0;
           }
 
@@ -294,6 +335,21 @@ export function DashboardContainer({ initialScreen = 'dashboard' }: DashboardCon
         }
       }
 
+      if (workoutsGenerated) {
+        try {
+          const workoutsData = await workoutsResponse.json();
+          if (typeof workoutsData.isCurrentWeek === 'boolean') {
+            setWorkoutWeekStatus({
+              isCurrentWeek: workoutsData.isCurrentWeek,
+              weekOf: workoutsData.weekOf,
+              currentWeek: workoutsData.currentWeek
+            });
+          }
+        } catch (parseError) {
+          console.error('Failed to parse workouts data:', parseError);
+        }
+      }
+
       console.log(`Generation status: meals=${mealsGenerated}, workouts=${workoutsGenerated}, home=${homeMealsGenerated}, restaurants=${restaurantMealsGenerated}`);
 
       setGenerationStatus({
@@ -310,15 +366,19 @@ export function DashboardContainer({ initialScreen = 'dashboard' }: DashboardCon
     }
   };
 
-  const handleNavigate = async (screen: Screen) => {
+  const handleNavigate = (screen: string) => {
+    if (!['dashboard', 'meal-plan', 'workout-plan', 'progress', 'account'].includes(screen)) {
+      return;
+    }
+    const nextScreen = screen as Screen;
     // Don't navigate if already on the same screen
-    if (currentScreen === screen) return;
+    if (currentScreen === nextScreen) return;
 
     setNavigating(true);
 
     // Small delay to show loading state, then switch
     setTimeout(() => {
-      setCurrentScreen(screen);
+      setCurrentScreen(nextScreen);
       setNavigating(false);
     }, 100);
   };
@@ -388,16 +448,6 @@ export function DashboardContainer({ initialScreen = 'dashboard' }: DashboardCon
     );
   }
 
-  // Calculate nutrition targets from real survey data
-  const nutritionTargets = calculateMacroTargets({
-    age: surveyData.age,
-    sex: surveyData.sex,
-    height: surveyData.height,
-    weight: surveyData.weight,
-    activityLevel: surveyData.activityLevel,
-    goal: surveyData.goal
-  });
-
   const userData = {
     name: `${surveyData.firstName} ${surveyData.lastName}`,
     email: surveyData.email,
@@ -405,8 +455,13 @@ export function DashboardContainer({ initialScreen = 'dashboard' }: DashboardCon
     zipCode: surveyData.zipCode,
     goal: surveyData.goal,
     activityLevel: surveyData.activityLevel,
-    calorieTarget: nutritionTargets.calories,
-    macroTargets: nutritionTargets,
+    calorieTarget: mealPlanTargets?.dailyCalories ?? null,
+    macroTargets: mealPlanTargets ? {
+      calories: mealPlanTargets.dailyCalories,
+      protein: mealPlanTargets.dailyProtein,
+      carbs: mealPlanTargets.dailyCarbs,
+      fat: mealPlanTargets.dailyFat
+    } : null,
     activeSurvey: surveyData
   };
 
@@ -423,6 +478,7 @@ export function DashboardContainer({ initialScreen = 'dashboard' }: DashboardCon
             user={userData}
             onNavigate={handleNavigate}
             generationStatus={generationStatus}
+            nutritionTargets={mealPlanTargets}
             isGuest={surveyData?.isGuest}
             onShowAccountModal={() => setShowAccountModal(true)}
           />
@@ -432,6 +488,7 @@ export function DashboardContainer({ initialScreen = 'dashboard' }: DashboardCon
           <MealPlanPage
             onNavigate={handleNavigate}
             generationStatus={generationStatus}
+            nutritionTargets={mealPlanTargets}
             isGuest={surveyData?.isGuest}
             onShowAccountModal={() => setShowAccountModal(true)}
           />
@@ -476,6 +533,36 @@ export function DashboardContainer({ initialScreen = 'dashboard' }: DashboardCon
 
   return (
     <>
+      {pollErrorDashboard && (
+        <motion.div
+          initial={{ opacity: 0, y: -10 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.35, ease: [0.25, 0.46, 0.45, 0.94] }}
+          className="bg-red-50 border-b border-red-100 px-4 py-3"
+        >
+          <div className="flex items-center justify-center gap-2 text-red-800 text-sm">
+            Having trouble loading your plan. Please refresh or check back soon.
+          </div>
+        </motion.div>
+      )}
+      {(() => {
+        const hasStaleMeal = mealWeekStatus && mealWeekStatus.isCurrentWeek === false;
+        const hasStaleWorkout = workoutWeekStatus && workoutWeekStatus.isCurrentWeek === false;
+        if (!hasStaleMeal && !hasStaleWorkout) return null;
+        const weekOfLabel = mealWeekStatus?.weekOf || workoutWeekStatus?.weekOf || 'a previous week';
+        return (
+          <motion.div
+            initial={{ opacity: 0, y: -10 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.35, ease: [0.25, 0.46, 0.45, 0.94] }}
+            className="bg-blue-50 border-b border-blue-100 px-4 py-3"
+          >
+            <div className="flex items-center justify-center gap-2 text-blue-800 text-sm">
+              Your plan is from week of {weekOfLabel}. New plans coming soon.
+            </div>
+          </motion.div>
+        );
+      })()}
       {/* Early Arrival Progress Banner */}
       {isEarlyArrival && (!generationStatus.mealsGenerated || !generationStatus.workoutsGenerated) && (
         <motion.div

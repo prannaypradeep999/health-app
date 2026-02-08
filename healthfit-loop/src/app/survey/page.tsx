@@ -15,41 +15,53 @@ import { motion, AnimatePresence } from 'framer-motion';
 import Logo from '@/components/logo';
 import ProfileConfirmation from '@/components/dashboard/ProfileConfirmation';
 import LoadingJourney from '@/components/dashboard/LoadingJourney';
-import { calculateMacroTargets, UserProfile } from '@/lib/utils/nutrition';
+import { checkPreferenceConflicts, type PreferenceConflict } from '@/lib/utils/preference-conflict-checker';
 
 interface QuickProfileSummaryProps {
   surveyData: any;
   onContinue: () => void;
 }
 
+const normalizeDietPrefs = (prefs: string[] = []) =>
+  prefs.filter(pref => pref !== 'none');
+
 function QuickProfileSummary({ surveyData, onContinue }: QuickProfileSummaryProps) {
-  // All data comes from surveyData - NO API CALLS, INSTANT RENDER
+  const [nutritionTargets, setNutritionTargets] = useState<{
+    dailyCalories: number;
+    dailyProtein: number;
+    dailyCarbs: number;
+    dailyFat: number;
+  } | null>(null);
 
-  // Calculate macro targets instantly (same function used everywhere)
-  const macroTargets = React.useMemo(() => {
-    if (!surveyData?.age || !surveyData?.weight || !surveyData?.height) {
-      return null; // Return null instead of hardcoded fallback
-    }
-
-    const userProfile: UserProfile = {
-      age: surveyData.age,
-      sex: surveyData.sex || 'male',
-      height: surveyData.height,
-      weight: surveyData.weight,
-      activityLevel: surveyData.activityLevel || 'MODERATELY_ACTIVE',
-      goal: surveyData.goal || 'GENERAL_WELLNESS'
+  useEffect(() => {
+    let isActive = true;
+    const loadTargets = async () => {
+      try {
+        const response = await fetch('/api/ai/meals/current');
+        if (!response.ok) return;
+        const data = await response.json();
+        if (isActive) {
+          setNutritionTargets(data.mealPlan?.nutritionTargets || null);
+        }
+      } catch {
+        // Ignore - show fallback UI
+      }
     };
+    loadTargets();
+    return () => {
+      isActive = false;
+    };
+  }, []);
 
-    const calculated = calculateMacroTargets(userProfile);
-
-    // Round to nearest 10 for cleaner display
+  const displayTargets = React.useMemo(() => {
+    if (!nutritionTargets) return null;
     return {
-      calories: Math.round(calculated.calories / 10) * 10,
-      protein: Math.round(calculated.protein / 10) * 10,
-      carbs: Math.round(calculated.carbs / 10) * 10,
-      fat: Math.round(calculated.fat / 10) * 10
+      calories: Math.round(nutritionTargets.dailyCalories / 10) * 10,
+      protein: Math.round(nutritionTargets.dailyProtein / 10) * 10,
+      carbs: Math.round(nutritionTargets.dailyCarbs / 10) * 10,
+      fat: Math.round(nutritionTargets.dailyFat / 10) * 10
     };
-  }, [surveyData]);
+  }, [nutritionTargets]);
 
   const goalLabels: Record<string, string> = {
     'lose_weight': 'Lose Weight',
@@ -81,7 +93,7 @@ function QuickProfileSummary({ surveyData, onContinue }: QuickProfileSummaryProp
     'intuitive': 'Intuitive eating/training'
   };
 
-  const goal = surveyData.primaryGoal || surveyData.goal;
+  const goal = surveyData.goal || surveyData.primaryGoal;
   const challenge = surveyData.goalChallenge;
   const focus = surveyData.healthFocus || surveyData.maintainFocus || surveyData.fitnessLevel;
 
@@ -100,28 +112,28 @@ function QuickProfileSummary({ surveyData, onContinue }: QuickProfileSummaryProp
           <p className="text-gray-600">Here's your personalized plan overview:</p>
         </div>
 
-        {/* Daily Targets - INSTANT calculated from survey data */}
+        {/* Daily Targets - from meal plan API */}
         <div className="bg-gradient-to-r from-red-50 to-orange-50 rounded-xl p-4 mb-4 border border-red-100">
           <div className="flex items-center gap-2 mb-3">
             <Flame size={18} weight="fill" className="text-red-600" />
             <span className="text-sm font-semibold text-red-800">Your Daily Targets</span>
           </div>
-          {macroTargets ? (
+          {displayTargets ? (
             <div className="grid grid-cols-4 gap-2">
               <div className="text-center">
-                <div className="text-lg font-bold text-gray-900">{macroTargets.calories.toLocaleString()}</div>
+                <div className="text-lg font-bold text-gray-900">{displayTargets.calories.toLocaleString()}</div>
                 <div className="text-xs text-gray-500">calories</div>
               </div>
               <div className="text-center">
-                <div className="text-lg font-bold text-blue-700">{macroTargets.protein}g</div>
+                <div className="text-lg font-bold text-blue-700">{displayTargets.protein}g</div>
                 <div className="text-xs text-blue-600">protein</div>
               </div>
               <div className="text-center">
-                <div className="text-lg font-bold text-amber-700">{macroTargets.carbs}g</div>
+                <div className="text-lg font-bold text-amber-700">{displayTargets.carbs}g</div>
                 <div className="text-xs text-amber-600">carbs</div>
               </div>
               <div className="text-center">
-                <div className="text-lg font-bold text-green-700">{macroTargets.fat}g</div>
+                <div className="text-lg font-bold text-green-700">{displayTargets.fat}g</div>
                 <div className="text-xs text-green-600">fat</div>
               </div>
             </div>
@@ -227,6 +239,11 @@ interface SurveyData {
   zipCode: string;
   country: string;
   goal: string;
+  primaryGoal?: string;
+  goalChallenge?: string;
+  fitnessLevel?: string;
+  healthFocus?: string;
+  maintainFocus?: string;
   activityLevel: string;
   sportsInterests: string;
   fitnessTimeline: string;
@@ -237,6 +254,7 @@ interface SurveyData {
   dietPrefs: string[];
   preferredCuisines: string[];
   preferredFoods: string[];
+  preferredActivities?: string[];
   customFoodInput: string;
   uploadedFiles: string[];
   preferredNutrients: string[];
@@ -245,8 +263,6 @@ interface SurveyData {
     dairy: string[];
     fruits: string[];
     vegetables: string[];
-    nuts: string[];
-    grains: string[];
     other: string[];
   };
   biomarkers: {
@@ -263,10 +279,11 @@ interface SurveyData {
     injuryConsiderations: string[];
     timePreferences: string[];
   };
+  additionalGoalsNotes?: string;
   fillerQuestions: {
     cookingFrequency: string;
     foodAllergies: string[];
-    eatingOutOccasions: string[];
+    eatingOutOccasions: string;
     healthGoalPriority: string;
     motivationLevel: string;
   };
@@ -622,6 +639,10 @@ interface OnboardingStepsProps {
 
 function OnboardingSteps({ onComplete, onBack }: OnboardingStepsProps) {
   const [currentStep, setCurrentStep] = useState(1);
+  const [stepErrors, setStepErrors] = useState<string[]>([]);
+  const [showAllergyConfirmation, setShowAllergyConfirmation] = useState(false);
+  const [preferenceConflicts, setPreferenceConflicts] = useState<PreferenceConflict[]>([]);
+  const [otherDietType, setOtherDietType] = useState('');
 
   // Template selection state
   const [selectedTemplate, setSelectedTemplate] = useState<string | null>(null);
@@ -636,14 +657,13 @@ function OnboardingSteps({ onComplete, onBack }: OnboardingStepsProps) {
     'Berries', 'Bananas', 'Apples', 'Oranges', 'Brown Rice', 'Whole Wheat Bread', 'Almonds'
   ];
 
-  // Strict exclusion categories for allergies
+  // Foods to avoid (preferences, not allergies)
   const exclusionCategories = {
-    proteins: ['All Proteins (Vegetarian)', 'Shellfish (shrimp, crab, lobster)', 'Fish', 'Pork', 'Beef', 'Poultry (chicken, turkey)', 'Eggs'],
-    dairy: ['Milk', 'Cheese', 'Yogurt', 'Butter', 'Cream', 'Whey'],
-    fruits: ['Strawberries', 'Citrus (orange, lemon, lime)', 'Stone fruits (peach, plum)', 'Tropical (mango, pineapple, kiwi)', 'Berries'],
-    vegetables: ['Nightshades (tomatoes, peppers, eggplant)', 'Alliums (onion, garlic, leeks)', 'Cruciferous (broccoli, cabbage, cauliflower)', 'Celery', 'Mushrooms'],
-    nuts: ['Peanuts', 'Tree nuts (almonds, walnuts, cashews, pecans)', 'Sesame seeds', 'Coconut', 'Pine nuts'],
-    grains: ['Wheat/Gluten', 'Soy', 'Corn', 'Oats', 'Rice']
+    proteins: ['Chicken', 'Beef', 'Pork', 'Lamb', 'Fish', 'Shellfish', 'Tofu'],
+    dairy: ['Milk', 'Cheese', 'Yogurt'],
+    vegetables: ['Broccoli', 'Spinach', 'Mushrooms', 'Onions'],
+    fruits: ['Apples', 'Bananas', 'Grapes', 'Mango'],
+    other: ['Spicy food', 'Raw fish', 'Cilantro']
   };
 
   const [formData, setFormData] = useState<SurveyData>({
@@ -697,8 +717,6 @@ function OnboardingSteps({ onComplete, onBack }: OnboardingStepsProps) {
       dairy: [],
       fruits: [],
       vegetables: [],
-      nuts: [],
-      grains: [],
       other: []
     },
     biomarkers: {},
@@ -714,7 +732,7 @@ function OnboardingSteps({ onComplete, onBack }: OnboardingStepsProps) {
     fillerQuestions: {
       cookingFrequency: '',
       foodAllergies: [],
-      eatingOutOccasions: [],
+      eatingOutOccasions: '',
       healthGoalPriority: '',
       motivationLevel: ''
     },
@@ -829,6 +847,18 @@ function OnboardingSteps({ onComplete, onBack }: OnboardingStepsProps) {
     'British', 'Fusion', 'Vegan'
   ];
 
+  const commonAllergies = [
+    { label: 'Peanuts', value: 'peanuts' },
+    { label: 'Tree nuts', value: 'tree nuts' },
+    { label: 'Dairy', value: 'dairy' },
+    { label: 'Eggs', value: 'eggs' },
+    { label: 'Wheat/Gluten', value: 'wheat/gluten' },
+    { label: 'Soy', value: 'soy' },
+    { label: 'Fish', value: 'fish' },
+    { label: 'Shellfish', value: 'shellfish' },
+    { label: 'Sesame', value: 'sesame' }
+  ];
+
 
   const foodOptionsByCategory = {
     'Proteins': ['Chicken', 'Salmon', 'Tuna', 'Beef', 'Pork', 'Turkey', 'Eggs', 'Tofu', 'Tempeh', 'Beans', 'Lentils', 'Greek Yogurt'],
@@ -842,6 +872,31 @@ function OnboardingSteps({ onComplete, onBack }: OnboardingStepsProps) {
   const updateFormData = (field: string, value: any) => {
     setFormData(prev => ({ ...prev, [field]: value }));
   };
+
+  const updateFillerQuestions = (field: keyof SurveyData['fillerQuestions'], value: any) => {
+    setFormData(prev => ({
+      ...prev,
+      fillerQuestions: {
+        ...prev.fillerQuestions,
+        [field]: value
+      }
+    }));
+  };
+
+  const toggleAllergy = (value: string) => {
+    const current = formData.fillerQuestions?.foodAllergies || [];
+    const normalized = value.toLowerCase();
+    const updated = current.includes(normalized)
+      ? current.filter(item => item !== normalized)
+      : [...current, normalized];
+    updateFillerQuestions('foodAllergies', updated);
+  };
+
+  const getNormalizedFillerQuestions = () => ({
+    ...formData.fillerQuestions,
+    cookingFrequency: formData.fillerQuestions?.cookingFrequency || 'few_times_week',
+    foodAllergies: formData.fillerQuestions?.foodAllergies || []
+  });
 
   // Template selection handler
   const handleTemplateSelect = (templateId: string) => {
@@ -936,13 +991,99 @@ function OnboardingSteps({ onComplete, onBack }: OnboardingStepsProps) {
 
   const setSubOptionValue = (value: string) => {
     const primaryGoal = formData.primaryGoal;
-    const field = subOptions[primaryGoal]?.field;
+    const field = primaryGoal ? subOptions[primaryGoal as keyof typeof subOptions]?.field : undefined;
     if (field) {
       updateFormData(field, value);
     }
   };
 
-  const handleNext = async () => {
+  const validateStep = (step: number): { valid: boolean; errors: string[] } => {
+    const errors: string[] = [];
+
+    switch (step) {
+      case 1: {
+        const age = Number(formData.age);
+        if (!age || age < 13 || age > 120) {
+          errors.push("Please enter a valid age (13-120)");
+        }
+        break;
+      }
+      case 2: {
+        if (!formData.goal) {
+          errors.push("Please select your primary goal");
+        }
+        break;
+      }
+      case 3: {
+        const height = Number(formData.height);
+        const weight = Number(formData.weight);
+        if (!formData.sex) {
+          errors.push("Please select your sex");
+        }
+        if (!height || height < 36 || height > 96) {
+          errors.push("Please enter your height");
+        }
+        if (!weight || weight < 50 || weight > 700) {
+          errors.push("Please enter your weight");
+        }
+        break;
+      }
+      case 4: {
+        if (!formData.activityLevel) {
+          errors.push("Please select your activity level");
+        }
+        break;
+      }
+      case 5: {
+        if (!formData.weeklyMealSchedule || Object.keys(formData.weeklyMealSchedule).length === 0) {
+          errors.push("Please set up your weekly meal schedule");
+        }
+        break;
+      }
+      case 7: {
+        if (preferenceConflicts.some(conflict => conflict.severity === 'error')) {
+          errors.push('Please resolve the conflicting preferences shown above');
+        }
+        break;
+      }
+      case 8: {
+        if (!formData.workoutPreferences?.preferredDuration) {
+          errors.push("Please select your preferred workout duration");
+        }
+        if (!formData.workoutPreferences?.availableDays || formData.workoutPreferences.availableDays.length === 0) {
+          errors.push("Please select at least one workout day");
+        }
+        break;
+      }
+      default:
+        break;
+    }
+
+    return { valid: errors.length === 0, errors };
+  };
+
+  const getAllergySelectionCount = () => {
+    const strictSelections = Object.values(formData.strictExclusions || {}).flat().length;
+    const listedAllergies = formData.fillerQuestions?.foodAllergies?.length || 0;
+    return strictSelections + listedAllergies;
+  };
+
+  useEffect(() => {
+    const conflicts = checkPreferenceConflicts(
+      formData.preferredFoods || [],
+      formData.dietPrefs || [],
+      formData.strictExclusions || {},
+      formData.fillerQuestions?.foodAllergies || []
+    );
+    setPreferenceConflicts(conflicts);
+  }, [
+    formData.preferredFoods,
+    formData.dietPrefs,
+    formData.strictExclusions,
+    formData.fillerQuestions?.foodAllergies
+  ]);
+
+  const proceedToNext = async () => {
     // Start meal generation after step 7 (food preferences completed)
     if (currentStep === 7) {
 
@@ -969,13 +1110,15 @@ function OnboardingSteps({ onComplete, onBack }: OnboardingStepsProps) {
           fitnessTimeline: formData.fitnessTimeline || '',
           monthlyFoodBudget: Number(formData.monthlyFoodBudget) || 200,
           monthlyFitnessBudget: Number(formData.monthlyFitnessBudget) || 50,
-          dietPrefs: formData.dietPrefs || [],
+          dietPrefs: normalizeDietPrefs(formData.dietPrefs || []),
           weeklyMealSchedule: formData.weeklyMealSchedule,
           distancePreference: formData.distancePreference || 'medium',
           preferredCuisines: formData.preferredCuisines || [],
           preferredFoods: formData.preferredFoods,
+          customFoodInput: formData.customFoodInput,
           uploadedFiles: formData.uploadedFiles,
           preferredNutrients: formData.preferredNutrients,
+          fillerQuestions: getNormalizedFillerQuestions(),
           workoutPreferences: formData.workoutPreferences,
           biomarkers: formData.biomarkers,
           source: formData.source,
@@ -1032,13 +1175,15 @@ function OnboardingSteps({ onComplete, onBack }: OnboardingStepsProps) {
           fitnessTimeline: formData.fitnessTimeline || '',
           monthlyFoodBudget: Number(formData.monthlyFoodBudget) || 200,
           monthlyFitnessBudget: Number(formData.monthlyFitnessBudget) || 50,
-          dietPrefs: formData.dietPrefs || [],
+          dietPrefs: normalizeDietPrefs(formData.dietPrefs || []),
           weeklyMealSchedule: formData.weeklyMealSchedule,
           distancePreference: formData.distancePreference || 'medium',
           preferredCuisines: formData.preferredCuisines || [],
           preferredFoods: formData.preferredFoods,
+          customFoodInput: formData.customFoodInput,
           uploadedFiles: formData.uploadedFiles,
           preferredNutrients: formData.preferredNutrients,
+          fillerQuestions: getNormalizedFillerQuestions(),
           workoutPreferences: formData.workoutPreferences,
           biomarkers: formData.biomarkers,
           source: formData.source,
@@ -1077,11 +1222,29 @@ function OnboardingSteps({ onComplete, onBack }: OnboardingStepsProps) {
     }
   };
 
+  const handleNext = async () => {
+    const validation = validateStep(currentStep);
+    if (!validation.valid) {
+      setStepErrors(validation.errors);
+      return;
+    }
+
+    if (currentStep === 7 && getAllergySelectionCount() === 0) {
+      setStepErrors([]);
+      setShowAllergyConfirmation(true);
+      return;
+    }
+
+    setStepErrors([]);
+    await proceedToNext();
+  };
+
   const handlePrevious = () => {
     if (currentStep === 1) {
       onBack();
     } else {
       setCurrentStep(currentStep - 1);
+      setStepErrors([]);
     }
   };
 
@@ -1104,61 +1267,6 @@ function OnboardingSteps({ onComplete, onBack }: OnboardingStepsProps) {
 
   const toggleExclusion = (category: string, item: string) => {
     const currentExclusions = formData.strictExclusions[category as keyof typeof formData.strictExclusions] || [];
-
-    if (category === 'proteins' && item === 'All Proteins (Vegetarian)') {
-      // Special handling for "All Proteins" - toggles all animal proteins
-      const allAnimalProteins = ['Shellfish (shrimp, crab, lobster)', 'Fish', 'Pork', 'Beef', 'Poultry (chicken, turkey)', 'Eggs'];
-      const hasAllProteins = allAnimalProteins.every(protein => currentExclusions.includes(protein));
-
-      let updated;
-      if (hasAllProteins) {
-        // Remove all proteins and the "All Proteins" item
-        updated = currentExclusions.filter(i => !allAnimalProteins.includes(i) && i !== 'All Proteins (Vegetarian)');
-      } else {
-        // Add all proteins and the "All Proteins" item
-        const newProteins = [...new Set([...currentExclusions, 'All Proteins (Vegetarian)', ...allAnimalProteins])];
-        updated = newProteins;
-      }
-
-      setFormData(prev => ({
-        ...prev,
-        strictExclusions: {
-          ...prev.strictExclusions,
-          [category]: updated
-        }
-      }));
-      return;
-    }
-
-    // Handle individual protein items - if selecting/deselecting individual proteins, update "All Proteins" accordingly
-    if (category === 'proteins' && item !== 'All Proteins (Vegetarian)') {
-      const allAnimalProteins = ['Shellfish (shrimp, crab, lobster)', 'Fish', 'Pork', 'Beef', 'Poultry (chicken, turkey)', 'Eggs'];
-      const isRemoving = currentExclusions.includes(item);
-
-      let updated = isRemoving
-        ? currentExclusions.filter(i => i !== item)
-        : [...currentExclusions, item];
-
-      // Check if all animal proteins are now selected
-      const hasAllAnimalProteins = allAnimalProteins.every(protein => updated.includes(protein));
-
-      if (hasAllAnimalProteins && !updated.includes('All Proteins (Vegetarian)')) {
-        updated = [...updated, 'All Proteins (Vegetarian)'];
-      } else if (!hasAllAnimalProteins && updated.includes('All Proteins (Vegetarian)')) {
-        updated = updated.filter(i => i !== 'All Proteins (Vegetarian)');
-      }
-
-      setFormData(prev => ({
-        ...prev,
-        strictExclusions: {
-          ...prev.strictExclusions,
-          [category]: updated
-        }
-      }));
-      return;
-    }
-
-    // Default behavior for non-protein categories
     const updated = currentExclusions.includes(item)
       ? currentExclusions.filter(i => i !== item)
       : [...currentExclusions, item];
@@ -1174,52 +1282,27 @@ function OnboardingSteps({ onComplete, onBack }: OnboardingStepsProps) {
 
   const toggleDietPreference = (dietPref: string) => {
     const currentDietPrefs = formData.dietPrefs || [];
-    const isRemoving = currentDietPrefs.includes(dietPref);
-
-    // Update diet preferences
-    const updatedDietPrefs = isRemoving
-      ? currentDietPrefs.filter(d => d !== dietPref)
-      : [...currentDietPrefs, dietPref];
-
-    let updatedExclusions = { ...formData.strictExclusions };
-
-    // Handle protein exclusions based on diet preferences
-    if (dietPref === 'Vegetarian' || dietPref === 'Vegan') {
-      const allAnimalProteins = ['Shellfish (shrimp, crab, lobster)', 'Fish', 'Pork', 'Beef', 'Poultry (chicken, turkey)', 'Eggs'];
-
-      if (isRemoving) {
-        // Removing vegetarian/vegan - remove all animal protein exclusions
-        updatedExclusions.proteins = updatedExclusions.proteins.filter(
-          p => !allAnimalProteins.includes(p) && p !== 'All Proteins (Vegetarian)'
-        );
-      } else {
-        // Adding vegetarian/vegan - add all animal protein exclusions
-        const newProteins = [...new Set([...updatedExclusions.proteins, 'All Proteins (Vegetarian)', ...allAnimalProteins])];
-        updatedExclusions.proteins = newProteins;
-      }
+    if (dietPref === 'none') {
+      updateFormData('dietPrefs', ['none']);
+      return;
     }
 
-    if (dietPref === 'Vegan') {
-      const allDairyProducts = ['Milk', 'Cheese', 'Yogurt', 'Butter', 'Cream', 'Whey'];
+    const updatedDietPrefs = currentDietPrefs.includes(dietPref)
+      ? currentDietPrefs.filter(d => d !== dietPref && d !== 'none')
+      : [...currentDietPrefs.filter(d => d !== 'none'), dietPref];
 
-      if (isRemoving) {
-        // Removing vegan - remove dairy exclusions
-        updatedExclusions.dairy = updatedExclusions.dairy.filter(d => !allDairyProducts.includes(d));
-        // Also remove eggs since it's both protein and vegan exclusion
-        updatedExclusions.proteins = updatedExclusions.proteins.filter(p => p !== 'Eggs');
-      } else {
-        // Adding vegan - add dairy exclusions and eggs
-        const newDairy = [...new Set([...updatedExclusions.dairy, ...allDairyProducts])];
-        updatedExclusions.dairy = newDairy;
-        // Eggs handled by vegetarian logic above
-      }
+    updateFormData('dietPrefs', updatedDietPrefs);
+  };
+
+  const addOtherDietType = () => {
+    const cleaned = otherDietType.trim();
+    if (!cleaned) return;
+    const entry = `other:${cleaned}`;
+    const currentDietPrefs = formData.dietPrefs || [];
+    if (!currentDietPrefs.includes(entry)) {
+      updateFormData('dietPrefs', [...currentDietPrefs.filter(d => d !== 'none'), entry]);
     }
-
-    setFormData(prev => ({
-      ...prev,
-      dietPrefs: updatedDietPrefs,
-      strictExclusions: updatedExclusions
-    }));
+    setOtherDietType('');
   };
 
   const renderStep = () => {
@@ -1264,7 +1347,9 @@ function OnboardingSteps({ onComplete, onBack }: OnboardingStepsProps) {
                 </div>
               </div>
               <div>
-                <Label className="text-gray-700 mb-2 block">Age</Label>
+                <Label className="text-gray-700 mb-2 block">
+                  Age <span className="text-red-500">*</span>
+                </Label>
                 <Input
                   type="number"
                   value={formData.age}
@@ -1289,7 +1374,9 @@ function OnboardingSteps({ onComplete, onBack }: OnboardingStepsProps) {
             <div>
               {/* Primary Goal Selection */}
               <div className="space-y-4">
-                <Label className="text-neutral-700 mb-4 block text-lg font-medium">Choose your primary goal</Label>
+                <Label className="text-neutral-700 mb-4 block text-lg font-medium">
+                  Choose your primary goal <span className="text-red-500">*</span>
+                </Label>
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   {primaryGoals.map((goal) => (
                     <button
@@ -1370,7 +1457,9 @@ function OnboardingSteps({ onComplete, onBack }: OnboardingStepsProps) {
 
             <div className="space-y-6">
               <div>
-                <Label className="text-gray-700 mb-3 block">Sex</Label>
+                <Label className="text-gray-700 mb-3 block">
+                  Sex <span className="text-red-500">*</span>
+                </Label>
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-3 md:gap-4 max-w-2xl">
                   <label className="flex items-center p-4 bg-gray-50 rounded-lg border border-gray-200 cursor-pointer hover:bg-gray-100 transition-colors">
                     <input
@@ -1410,7 +1499,9 @@ function OnboardingSteps({ onComplete, onBack }: OnboardingStepsProps) {
 
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-6 max-w-lg">
                 <div>
-                  <Label className="text-gray-700 mb-2 block">Weight (lbs)</Label>
+                  <Label className="text-gray-700 mb-2 block">
+                    Weight (lbs) <span className="text-red-500">*</span>
+                  </Label>
                   <Input
                     type="number"
                     value={formData.weight}
@@ -1420,8 +1511,10 @@ function OnboardingSteps({ onComplete, onBack }: OnboardingStepsProps) {
                   />
                 </div>
                 <div>
-                  <Label className="text-gray-700 mb-2 block">Height</Label>
-                <div className="flex gap-3">
+                  <Label className="text-gray-700 mb-2 block">
+                    Height <span className="text-red-500">*</span>
+                  </Label>
+                  <div className="flex gap-3">
                   <div className="flex-1">
                     <Input
                       type="number"
@@ -1491,7 +1584,9 @@ function OnboardingSteps({ onComplete, onBack }: OnboardingStepsProps) {
 
             {/* Activity Level */}
             <div className="space-y-4">
-              <Label className="text-neutral-700 mb-4 block text-lg font-medium">How active are you?</Label>
+              <Label className="text-neutral-700 mb-4 block text-lg font-medium">
+                How active are you? <span className="text-red-500">*</span>
+              </Label>
               <RadioGroup value={formData.activityLevel} onValueChange={(value) => updateFormData("activityLevel", value)}>
                 <div className="space-y-3">
                   {activityLevels.map((option) => (
@@ -1541,7 +1636,7 @@ function OnboardingSteps({ onComplete, onBack }: OnboardingStepsProps) {
                       key={activity}
                       onClick={() => toggleArrayItem("preferredActivities", activity)}
                       className={`p-4 text-sm text-left rounded-lg border transition-all duration-200 ${
-                        formData.preferredActivities.includes(activity)
+                        (formData.preferredActivities || []).includes(activity)
                           ? 'border-blue-500 bg-blue-50 text-blue-900'
                           : 'border-gray-200 bg-white text-gray-700 hover:border-gray-300 hover:bg-gray-50'
                       }`}
@@ -1613,7 +1708,9 @@ function OnboardingSteps({ onComplete, onBack }: OnboardingStepsProps) {
             <div>
               {!selectedTemplate ? (
                 <>
-                  <Label className="text-neutral-700 mb-4 block">What does your typical week look like?</Label>
+                  <Label className="text-neutral-700 mb-4 block">
+                    What does your typical week look like? <span className="text-red-500">*</span>
+                  </Label>
                   <p className="text-sm text-neutral-600 mb-4">Choose a template that matches your lifestyle, then customize if needed.</p>
 
                   {/* Template Selection Grid */}
@@ -1919,7 +2016,15 @@ function OnboardingSteps({ onComplete, onBack }: OnboardingStepsProps) {
           </div>
         );
 
-      case 7:
+      case 7: {
+        const selectedAllergies = formData.fillerQuestions?.foodAllergies || [];
+        const commonAllergyValues = commonAllergies.map(allergy => allergy.value);
+        const customAllergiesValue = selectedAllergies
+          .filter(allergy => !commonAllergyValues.includes(allergy))
+          .join(', ');
+        const isNoRestrictionsSelected = formData.dietPrefs.length === 0 || formData.dietPrefs.includes('none');
+        const hasBlockingConflicts = preferenceConflicts.some(conflict => conflict.severity === 'error');
+
         return (
           <div className="space-y-6">
             <div className="text-center mb-8">
@@ -1927,6 +2032,21 @@ function OnboardingSteps({ onComplete, onBack }: OnboardingStepsProps) {
               <h2 className="text-2xl font-medium text-gray-900 mb-2">Food Preferences</h2>
               <p className="text-gray-600">Select foods you enjoy - more options will appear as you choose</p>
             </div>
+            {preferenceConflicts.length > 0 && (
+              <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4">
+                <h4 className="font-medium text-yellow-800 mb-2">⚠️ Conflicting Preferences</h4>
+                <ul className="text-sm text-yellow-700 space-y-1">
+                  {preferenceConflicts.map((conflict, i) => (
+                    <li key={i}>• {conflict.reason}</li>
+                  ))}
+                </ul>
+                <p className="text-sm text-yellow-600 mt-2">
+                  {hasBlockingConflicts
+                    ? 'Please resolve the error conflicts before continuing.'
+                    : 'These are warnings only. You can continue if this is intentional.'}
+                </p>
+              </div>
+            )}
 
             {/* Selected Foods Section */}
             {formData.preferredFoods.length > 0 && (
@@ -2005,121 +2125,196 @@ function OnboardingSteps({ onComplete, onBack }: OnboardingStepsProps) {
               <p className="text-xs text-gray-500 mt-2">Press Enter or click Add to include your custom food</p>
             </div>
 
-            {/* Diet Preferences */}
+            {/* Cooking Frequency */}
             <div className="border-t pt-6">
-              <Label className="text-neutral-700 mb-3 block">Any dietary preferences or restrictions?</Label>
-              <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+              <Label className="text-gray-700 mb-2 block">
+                How often do you cook at home?
+              </Label>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 {[
-                  'Vegetarian', 'Vegan', 'Gluten-Free', 'Dairy-Free',
-                  'Keto', 'Paleo', 'Low-Carb', 'Mediterranean',
-                  'Intermittent Fasting', 'Low-Sodium', 'Pescatarian', 'Halal'
-                ].map((dietPref) => (
+                  { value: 'daily', label: 'Daily', desc: 'I cook most meals' },
+                  { value: 'few_times_week', label: 'A few times a week', desc: '3-5 meals per week' },
+                  { value: 'weekly', label: 'Once or twice a week', desc: '1-2 meals per week' },
+                  { value: 'rarely', label: 'Rarely', desc: 'I prefer quick/simple meals' },
+                  { value: 'never', label: 'Never', desc: "I don't cook at home" },
+                ].map((option) => (
                   <button
-                    key={dietPref}
-                    onClick={() => {
-                      // Use special handling for Vegetarian/Vegan to auto-update protein exclusions
-                      if (dietPref === 'Vegetarian' || dietPref === 'Vegan') {
-                        toggleDietPreference(dietPref);
-                      } else {
-                        toggleArrayItem("dietPrefs", dietPref);
-                      }
-                    }}
-                    className={`px-3 py-2 text-sm rounded-lg border transition-all duration-200 transform hover:scale-105 focus:outline-none focus:ring-2 focus:ring-red-500 focus:ring-offset-2 text-center min-h-[44px] flex items-center justify-center ${
-                      formData.dietPrefs.includes(dietPref)
-                        ? "bg-red-600 text-white border-red-600"
-                        : "border-gray-300 bg-white text-gray-900 hover:border-gray-400 hover:bg-gray-50"
+                    key={option.value}
+                    type="button"
+                    onClick={() => updateFillerQuestions('cookingFrequency', option.value)}
+                    className={`p-4 rounded-xl border text-left transition-all duration-200 ${
+                      formData.fillerQuestions?.cookingFrequency === option.value
+                        ? 'bg-green-50 border-green-300'
+                        : 'bg-white border-gray-200 hover:bg-gray-50'
                     }`}
                   >
-                    {dietPref}
-                    {(dietPref === 'Vegetarian' || dietPref === 'Vegan') && (
-                      <span className="ml-1 text-xs">🌱</span>
-                    )}
+                    <div className="font-medium text-gray-900">{option.label}</div>
+                    <div className="text-sm text-gray-500">{option.desc}</div>
                   </button>
                 ))}
               </div>
             </div>
 
-            {/* Strict Exclusions / Allergies Section */}
-            <div className="border-t pt-6 mt-6">
-              <div className="bg-red-50 border-2 border-red-200 rounded-xl p-4 mb-6">
-                <div className="flex items-start gap-3">
-                  <Shield className="w-6 h-6 text-red-600 flex-shrink-0 mt-0.5" />
-                  <div>
-                    <h3 className="font-bold text-red-800 text-lg">⚠️ Allergy & Strict Exclusions</h3>
-                    <p className="text-red-700 text-sm mt-1">
-                      Items selected here will <strong>NEVER</strong> appear in your meal recommendations.
-                      Use this for allergies, intolerances, or foods you absolutely cannot eat.
-                    </p>
-                    <p className="text-green-700 text-xs mt-2 bg-green-50 px-2 py-1 rounded">
-                      💡 <strong>Smart Sync:</strong> Selecting Vegetarian/Vegan above automatically excludes all animal proteins here!
-                    </p>
-                  </div>
+            {/* SECTION 1: Diet Type */}
+            <div className="border-t pt-6">
+              <h3 className="text-lg font-semibold text-gray-900">Your Diet Type</h3>
+              <p className="text-sm text-gray-600 mt-1">
+                Select any dietary patterns you follow. We will ensure all meals fit these requirements.
+              </p>
+              <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 mt-4">
+                {[
+                  { value: 'none', label: 'No restrictions', desc: 'I eat everything' },
+                  { value: 'vegetarian', label: 'Vegetarian', desc: 'No meat or fish' },
+                  { value: 'vegan', label: 'Vegan', desc: 'No animal products' },
+                  { value: 'pescatarian', label: 'Pescatarian', desc: 'Fish but no meat' },
+                  { value: 'keto', label: 'Keto / Low-carb', desc: 'High fat, low carb' },
+                  { value: 'paleo', label: 'Paleo', desc: 'Whole foods, no grains' },
+                  { value: 'mediterranean', label: 'Mediterranean', desc: 'Plant-based, healthy fats' },
+                  { value: 'halal', label: 'Halal', desc: 'Islamic dietary laws' },
+                  { value: 'kosher', label: 'Kosher', desc: 'Jewish dietary laws' }
+                ].map((diet) => {
+                  const isSelected = diet.value === 'none'
+                    ? isNoRestrictionsSelected
+                    : formData.dietPrefs.includes(diet.value);
+                  return (
+                    <button
+                      key={diet.value}
+                      type="button"
+                      onClick={() => toggleDietPreference(diet.value)}
+                      className={`p-3 rounded-xl border text-left transition-all duration-200 ${
+                        isSelected
+                          ? 'bg-green-50 border-green-300'
+                          : 'bg-white border-gray-200 hover:bg-gray-50'
+                      }`}
+                    >
+                      <div className="font-medium text-gray-900">{diet.label}</div>
+                      <div className="text-xs text-gray-500">{diet.desc}</div>
+                    </button>
+                  );
+                })}
+              </div>
+              <div className="mt-4">
+                <Label className="text-sm text-gray-600">Other diet type (optional)</Label>
+                <div className="flex gap-2 mt-2">
+                  <Input
+                    value={otherDietType}
+                    onChange={(e) => setOtherDietType(e.target.value)}
+                    placeholder="e.g., low-sodium, Jain, dairy-free"
+                    className="flex-1 border-gray-300 focus:border-green-500 bg-white text-gray-900 placeholder:text-gray-500"
+                  />
+                  <Button
+                    type="button"
+                    onClick={addOtherDietType}
+                    className="bg-green-600 hover:bg-green-700 text-white px-4"
+                    disabled={!otherDietType.trim()}
+                  >
+                    Add
+                  </Button>
                 </div>
               </div>
+            </div>
 
-              {Object.entries(exclusionCategories).map(([category, items]) => (
-                <div key={category} className="mb-6">
-                  <Label className="text-neutral-700 mb-3 block text-base font-semibold capitalize">
-                    {category === 'nuts' ? 'Nuts & Seeds' : category}
-                  </Label>
-                  <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
-                    {items.map((item) => {
-                      const isSelected = formData.strictExclusions[category as keyof typeof formData.strictExclusions]?.includes(item);
-                      return (
-                        <button
-                          key={item}
-                          onClick={() => toggleExclusion(category, item)}
-                          className={`px-3 py-2 text-sm rounded-lg border transition-all duration-200 text-left ${
-                            item === 'All Proteins (Vegetarian)'
-                              ? isSelected
-                                ? "bg-green-600 text-white border-green-600 shadow-md"
-                                : "border-green-300 bg-green-50 text-green-800 hover:border-green-400 hover:bg-green-100 font-medium"
-                              : isSelected
-                              ? "bg-red-600 text-white border-red-600"
-                              : "border-gray-300 bg-white text-gray-700 hover:border-red-300 hover:bg-red-50"
-                          }`}
-                        >
-                          {isSelected && <span className="mr-1">{item === 'All Proteins (Vegetarian)' ? '🌱' : '❌'}</span>}
-                          {item}
-                          {item === 'All Proteins (Vegetarian)' && !isSelected && <span className="ml-1">🌱</span>}
-                        </button>
-                      );
-                    })}
-                  </div>
+            {/* SECTION 2: Foods to Avoid */}
+            <div className="space-y-6 border-t pt-6">
+              <h3 className="text-lg font-semibold text-gray-900">Foods to Avoid</h3>
+
+              {/* Part A: Allergies */}
+              <div className="bg-red-50 border border-red-100 rounded-xl p-4">
+                <h4 className="font-medium text-red-800 flex items-center gap-2">
+                  🚨 Food Allergies
+                  <span className="text-xs font-normal">(Safety-critical)</span>
+                </h4>
+                <p className="text-sm text-red-700 mb-3">
+                  Meals will NEVER contain these ingredients.
+                </p>
+                <div className="flex flex-wrap gap-2">
+                  {commonAllergies.map((allergy) => {
+                    const isSelected = selectedAllergies.includes(allergy.value);
+                    return (
+                      <button
+                        key={allergy.value}
+                        type="button"
+                        onClick={() => toggleAllergy(allergy.value)}
+                        className={`px-3 py-2 rounded-lg border text-sm transition-all duration-200 ${
+                          isSelected
+                            ? 'bg-red-200 text-red-800 border-red-300'
+                            : 'bg-white border-gray-200 text-gray-700'
+                        }`}
+                      >
+                        {allergy.label}
+                      </button>
+                    );
+                  })}
                 </div>
-              ))}
-
-              {/* Custom exclusions input */}
-              <div className="mt-4">
-                <Label className="text-neutral-700 mb-2 block">Other allergies or exclusions (comma-separated):</Label>
                 <Input
-                  value={formData.strictExclusions.other?.join(', ') || ''}
+                  className="mt-3"
+                  placeholder="Other allergies (comma-separated)"
+                  value={customAllergiesValue}
                   onChange={(e) => {
-                    const items = e.target.value.split(',').map(s => s.trim()).filter(s => s.length > 0);
-                    setFormData(prev => ({
-                      ...prev,
-                      strictExclusions: {
-                        ...prev.strictExclusions,
-                        other: items
-                      }
-                    }));
+                    const customAllergies = e.target.value
+                      .split(',')
+                      .map(a => a.trim().toLowerCase())
+                      .filter(Boolean);
+                    const commonSelected = selectedAllergies.filter(allergy => commonAllergyValues.includes(allergy));
+                    updateFillerQuestions('foodAllergies', Array.from(new Set([...commonSelected, ...customAllergies])));
                   }}
-                  placeholder="e.g., MSG, sulfites, red dye 40..."
-                  className="border-red-200 focus:border-red-500 bg-white text-gray-900 placeholder:text-gray-400"
                 />
               </div>
 
-              {/* Summary of exclusions */}
-              {Object.values(formData.strictExclusions).flat().length > 0 && (
-                <div className="mt-4 p-3 bg-red-100 border border-red-200 rounded-lg">
-                  <p className="text-sm font-medium text-red-800">
-                    🚫 Excluding {Object.values(formData.strictExclusions).flat().length} item(s) from all meals
-                  </p>
+              {/* Part B: Dislikes */}
+              <div className="bg-gray-50 border border-gray-100 rounded-xl p-4">
+                <h4 className="font-medium text-gray-800">Foods You Dislike</h4>
+                <p className="text-sm text-gray-600 mb-3">
+                  We will minimize these in your meals (not a strict exclusion).
+                </p>
+                <div className="space-y-3">
+                  {Object.entries(exclusionCategories).map(([category, items]) => (
+                    <div key={category}>
+                      <div className="text-sm font-medium text-gray-700 mb-1 capitalize">{category}</div>
+                      <div className="flex flex-wrap gap-2">
+                        {items.map((item) => {
+                          const isSelected = formData.strictExclusions[category as keyof typeof formData.strictExclusions]?.includes(item);
+                          return (
+                            <button
+                              key={item}
+                              onClick={() => toggleExclusion(category, item)}
+                              className={`px-2 py-1 rounded text-sm ${
+                                isSelected
+                                  ? 'bg-gray-300 text-gray-800'
+                                  : 'bg-white border-gray-200 text-gray-600 border'
+                              }`}
+                            >
+                              {item}
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  ))}
                 </div>
-              )}
+                <div className="mt-4">
+                  <Label className="text-sm text-gray-600">Other foods to avoid (comma-separated)</Label>
+                  <Input
+                    value={formData.strictExclusions.other?.join(', ') || ''}
+                    onChange={(e) => {
+                      const items = e.target.value.split(',').map(s => s.trim()).filter(s => s.length > 0);
+                      setFormData(prev => ({
+                        ...prev,
+                        strictExclusions: {
+                          ...prev.strictExclusions,
+                          other: items
+                        }
+                      }));
+                    }}
+                    placeholder="e.g., cilantro, olives, mushrooms..."
+                    className="border-gray-300 focus:border-gray-400 bg-white text-gray-900 placeholder:text-gray-500"
+                  />
+                </div>
+              </div>
             </div>
           </div>
         );
+      }
 
       case 8:
         return (
@@ -2144,7 +2339,9 @@ function OnboardingSteps({ onComplete, onBack }: OnboardingStepsProps) {
               <p className="text-gray-600">Let's design your fitness routine</p>
             </div>
             <div>
-              <Label className="text-neutral-700 mb-4 block">Workout duration: {formData.workoutPreferences.preferredDuration} minutes</Label>
+              <Label className="text-neutral-700 mb-4 block">
+                Workout duration: {formData.workoutPreferences.preferredDuration} minutes <span className="text-red-500">*</span>
+              </Label>
               <Slider
                 value={[formData.workoutPreferences.preferredDuration]}
                 onValueChange={(value) => updateFormData("workoutPreferences", { ...formData.workoutPreferences, preferredDuration: value[0] })}
@@ -2155,7 +2352,9 @@ function OnboardingSteps({ onComplete, onBack }: OnboardingStepsProps) {
               />
             </div>
             <div>
-              <Label className="text-neutral-700 mb-4 block">Preferred days for workouts</Label>
+              <Label className="text-neutral-700 mb-4 block">
+                Preferred days for workouts <span className="text-red-500">*</span>
+              </Label>
 
               {/* Flexible Options */}
               <div className="mb-4 space-y-3">
@@ -2404,8 +2603,48 @@ function OnboardingSteps({ onComplete, onBack }: OnboardingStepsProps) {
         </div>
 
         <Card className="p-4 sm:p-6 lg:p-8 mb-6 border border-gray-200 bg-white">
+          <p className="text-sm text-gray-500 mb-4">
+            <span className="text-red-500">*</span> Required fields
+          </p>
+          {stepErrors.length > 0 && (
+            <div className="bg-red-50 border border-red-200 rounded-lg p-4 mb-6">
+              <ul className="text-red-600 text-sm space-y-1">
+                {stepErrors.map((error, i) => (
+                  <li key={i}>• {error}</li>
+                ))}
+              </ul>
+            </div>
+          )}
           {renderStep()}
         </Card>
+
+        {showAllergyConfirmation && (
+          <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
+            <div className="bg-white rounded-2xl p-6 sm:p-8 max-w-md w-full shadow-xl">
+              <h3 className="text-lg font-semibold text-gray-900 mb-2">Confirm allergies</h3>
+              <p className="text-sm text-gray-600 mb-4">
+                You haven't listed any food allergies or strict exclusions. If you have allergies, please add them so we can keep your meals safe.
+              </p>
+              <div className="flex gap-3">
+                <button
+                  onClick={() => setShowAllergyConfirmation(false)}
+                  className="flex-1 px-4 py-3 rounded-xl border border-gray-300 text-gray-700 hover:bg-gray-50 font-medium"
+                >
+                  Add Allergies
+                </button>
+                <button
+                  onClick={async () => {
+                    setShowAllergyConfirmation(false);
+                    await proceedToNext();
+                  }}
+                  className="flex-1 px-4 py-3 rounded-xl bg-red-600 hover:bg-red-700 text-white font-medium"
+                >
+                  I have no allergies
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
 
         <div className="flex gap-3 sm:gap-4 pt-4 border-t border-gray-100">
           <Button
@@ -2579,6 +2818,12 @@ function SurveyContent() {
     setSubmitting(true);
 
     try {
+      const normalizedFillerQuestions = {
+        ...data.fillerQuestions,
+        cookingFrequency: data.fillerQuestions?.cookingFrequency || 'few_times_week',
+        foodAllergies: data.fillerQuestions?.foodAllergies || []
+      };
+
       const biomarkers: Record<string, number> = {};
       if (data.biomarkers.cholesterol) biomarkers.cholesterol = data.biomarkers.cholesterol;
       if (data.biomarkers.vitaminD) biomarkers.vitaminD = data.biomarkers.vitaminD;
@@ -2608,12 +2853,13 @@ function SurveyContent() {
           monthlyFitnessBudget: Number(data.monthlyFitnessBudget),
           weeklyMealSchedule: data.weeklyMealSchedule,
           distancePreference: data.distancePreference,
-          dietPrefs: data.dietPrefs,
+          dietPrefs: normalizeDietPrefs(data.dietPrefs || []),
           preferredCuisines: data.preferredCuisines,
           preferredFoods: data.preferredFoods,
           customFoodInput: data.customFoodInput,
           uploadedFiles: data.uploadedFiles,
           preferredNutrients: data.preferredNutrients,
+          fillerQuestions: normalizedFillerQuestions,
           biomarkers,
           step: 'final'
         })

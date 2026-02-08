@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { cookies } from 'next/headers';
 import { prisma } from '@/lib/db';
+import { formatDateKey, getStartOfWeek } from '@/lib/utils/date-utils';
 
 export async function GET() {
   try {
@@ -83,16 +84,23 @@ export async function GET() {
       );
     }
 
+    const currentWeekStart = getStartOfWeek();
+    const workoutWeekOf = workoutPlan.weekOf.toISOString().split('T')[0];
+    const isCurrentWeek = formatDateKey(currentWeekStart) === formatDateKey(workoutPlan.weekOf);
+
     return NextResponse.json({
       success: true,
       workoutPlan: {
         id: workoutPlan.id,
-        weekOf: workoutPlan.weekOf.toISOString().split('T')[0],
+        weekOf: workoutWeekOf,
         startDate: workoutPlan.generatedAt.toISOString(),
         status: workoutPlan.status,
         planData: workoutPlan.planData,
         generatedAt: workoutPlan.generatedAt
-      }
+      },
+      isCurrentWeek,
+      weekOf: workoutWeekOf,
+      currentWeek: formatDateKey(currentWeekStart)
     });
 
   } catch (error) {
