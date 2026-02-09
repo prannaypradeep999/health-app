@@ -1002,6 +1002,22 @@ function OnboardingSteps({ onComplete, onBack }: OnboardingStepsProps) {
 
     switch (step) {
       case 1: {
+        // Email validation
+        if (!formData.email || !formData.email.trim()) {
+          errors.push("Please enter your email address");
+        } else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(formData.email.trim())) {
+          errors.push("Please enter a valid email address");
+        }
+
+        // Name validation
+        if (!formData.firstName || !formData.firstName.trim()) {
+          errors.push("Please enter your first name");
+        }
+        if (!formData.lastName || !formData.lastName.trim()) {
+          errors.push("Please enter your last name");
+        }
+
+        // Age validation
         const age = Number(formData.age);
         if (!age || age < 13 || age > 120) {
           errors.push("Please enter a valid age (13-120)");
@@ -1037,6 +1053,19 @@ function OnboardingSteps({ onComplete, onBack }: OnboardingStepsProps) {
       case 5: {
         if (!formData.weeklyMealSchedule || Object.keys(formData.weeklyMealSchedule).length === 0) {
           errors.push("Please set up your weekly meal schedule");
+        }
+        break;
+      }
+      case 6: {
+        // Address validation
+        if (!formData.city || !formData.city.trim()) {
+          errors.push("Please enter your city");
+        }
+        if (!formData.state || !formData.state.trim()) {
+          errors.push("Please enter your state");
+        }
+        if (!formData.zipCode || !formData.zipCode.trim()) {
+          errors.push("Please enter your ZIP code");
         }
         break;
       }
@@ -1435,7 +1464,7 @@ function OnboardingSteps({ onComplete, onBack }: OnboardingStepsProps) {
                     <div className="p-4 bg-blue-50 border border-blue-200 rounded-lg flex items-start gap-3 animate-in fade-in duration-300">
                       <Sparkle size={18} className="text-blue-600 mt-0.5 flex-shrink-0" />
                       <div>
-                        <p className="text-sm font-medium text-blue-900 mb-1">💡 Did you know?</p>
+                        <p className="text-sm font-medium text-blue-900 mb-1">Did you know?</p>
                         <p className="text-sm text-blue-800">{subOptions[formData.primaryGoal].funFact}</p>
                       </div>
                     </div>
@@ -1852,7 +1881,7 @@ function OnboardingSteps({ onComplete, onBack }: OnboardingStepsProps) {
               )}
 
               <div className="mt-3 text-xs text-neutral-500">
-                💡 Tip: We'll suggest home recipes for "Home" meals and find great local restaurants for "Restaurant" meals
+                Tip: We'll suggest home recipes for "Home" meals and find great local restaurants for "Restaurant" meals
               </div>
             </div>
 
@@ -2034,7 +2063,7 @@ function OnboardingSteps({ onComplete, onBack }: OnboardingStepsProps) {
             </div>
             {preferenceConflicts.length > 0 && (
               <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4">
-                <h4 className="font-medium text-yellow-800 mb-2">⚠️ Conflicting Preferences</h4>
+                <h4 className="font-medium text-yellow-800 mb-2">Conflicting Preferences</h4>
                 <ul className="text-sm text-yellow-700 space-y-1">
                   {preferenceConflicts.map((conflict, i) => (
                     <li key={i}>• {conflict.reason}</li>
@@ -2219,14 +2248,19 @@ function OnboardingSteps({ onComplete, onBack }: OnboardingStepsProps) {
               <h3 className="text-lg font-semibold text-gray-900">Foods to Avoid</h3>
 
               {/* Part A: Allergies */}
-              <div className="bg-red-50 border border-red-100 rounded-xl p-4">
-                <h4 className="font-medium text-red-800 flex items-center gap-2">
-                  🚨 Food Allergies
-                  <span className="text-xs font-normal">(Safety-critical)</span>
-                </h4>
-                <p className="text-sm text-red-700 mb-3">
-                  Meals will NEVER contain these ingredients.
-                </p>
+              <div className="bg-red-100 border-4 border-red-300 rounded-xl p-6 shadow-lg">
+                <div className="bg-red-200 border-2 border-red-400 rounded-lg p-4 mb-4">
+                  <h4 className="font-bold text-red-900 text-lg flex items-center gap-3 mb-2">
+                    CRITICAL FOOD ALLERGIES
+                    <span className="text-xs font-medium bg-red-600 text-white px-2 py-1 rounded-full">SAFETY CRITICAL</span>
+                  </h4>
+                  <p className="text-red-800 font-semibold mb-1">
+                    These foods will NEVER appear in your meal plan
+                  </p>
+                  <p className="text-red-700 text-sm">
+                    Only select items that could cause serious health reactions. This is different from foods you simply don't like.
+                  </p>
+                </div>
                 <div className="flex flex-wrap gap-2">
                   {commonAllergies.map((allergy) => {
                     const isSelected = selectedAllergies.includes(allergy.value);
@@ -2262,11 +2296,15 @@ function OnboardingSteps({ onComplete, onBack }: OnboardingStepsProps) {
               </div>
 
               {/* Part B: Dislikes */}
-              <div className="bg-gray-50 border border-gray-100 rounded-xl p-4">
-                <h4 className="font-medium text-gray-800">Foods You Dislike</h4>
-                <p className="text-sm text-gray-600 mb-3">
-                  We will minimize these in your meals (not a strict exclusion).
-                </p>
+              <div className="bg-gray-50 border border-gray-200 rounded-xl p-4">
+                <h4 className="font-medium text-gray-800 flex items-center gap-2">
+                  Foods I'd Rather Avoid
+                  <span className="text-xs font-normal text-gray-500">(Preferences only)</span>
+                </h4>
+                <div className="text-sm text-gray-600 mb-3 space-y-1">
+                  <p>These foods will be minimized but may occasionally appear in your plan</p>
+                  <p className="text-xs text-gray-500">This is NOT the same as food allergies - these are just personal preferences</p>
+                </div>
                 <div className="space-y-3">
                   {Object.entries(exclusionCategories).map(([category, items]) => (
                     <div key={category}>

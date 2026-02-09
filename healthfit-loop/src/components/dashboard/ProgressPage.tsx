@@ -1,6 +1,10 @@
 'use client';
 
+// Utility function to round nutrition values to nearest 10
+const roundToNearest10 = (value: number) => Math.round(value / 10) * 10;
+
 import React, { useState, useEffect } from "react";
+import { ChatSearchBar } from "@/components/chat/ChatSearchBar";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -189,22 +193,47 @@ export function ProgressPage({ onNavigate, user }: ProgressPageProps) {
     const days = mealPlanData?.planData?.days;
     if (!days || !Array.isArray(days)) return [];
 
+    // Get eaten meals from localStorage to filter only consumed calories
+    const mealKey = getMealStorageKey();
+    const eatenMeals = mealKey ? JSON.parse(localStorage.getItem(mealKey) || '{}') : {};
+
     return days.map((day: any) => {
+      const dayName = day.day || day.dayName || day.date || 'Day';
       const meals = day.meals || {};
-      const plannedCalories = ['breakfast', 'lunch', 'dinner'].reduce((sum, mealType) => {
+
+      // Only count calories for meals that are actually marked as eaten
+      const consumedCalories = ['breakfast', 'lunch', 'dinner'].reduce((sum, mealType) => {
         const meal = meals[mealType];
         if (!meal) return sum;
-        const option = meal.primary || meal;
-        return sum + (option?.calories ?? option?.estimatedCalories ?? 0);
+
+        let calories = 0;
+
+        // Check primary option
+        const primaryKey = `${dayName.toLowerCase()}-${mealType}-primary-0`;
+        if (eatenMeals[primaryKey]) {
+          const primaryOption = meal.primary || meal;
+          calories += primaryOption?.calories ?? primaryOption?.estimatedCalories ?? 0;
+        }
+
+        // Check alternative option
+        const alternativeKey = `${dayName.toLowerCase()}-${mealType}-alternative-0`;
+        if (eatenMeals[alternativeKey]) {
+          const alternativeOption = meal.alternative;
+          if (alternativeOption) {
+            calories += alternativeOption?.calories ?? alternativeOption?.estimatedCalories ?? 0;
+          }
+        }
+
+        return sum + calories;
       }, 0);
 
       return {
-        day: day.day || day.dayName || day.date || 'Day',
-        plannedCalories,
+        day: dayName,
+        plannedCalories: consumedCalories, // Now this represents CONSUMED calories, not planned
         targetCalories: nutritionTargets?.dailyCalories ?? 0
       };
     });
-  }, [mealPlanData, nutritionTargets]);
+  }, [mealPlanData, nutritionTargets, progressData]);
 
   const weeklyCaloriesSummary = React.useMemo(() => {
     if (!weeklyCalorieBreakdown.length) {
@@ -407,6 +436,9 @@ export function ProgressPage({ onNavigate, user }: ProgressPageProps) {
         </div>
       </div>
 
+      {/* Chat Search Bar */}
+      <ChatSearchBar />
+
       <div className="max-w-4xl mx-auto px-6 py-8 space-y-8">
         {/* Long-term Goal Progress */}
         <div className="bg-white border border-gray-200 rounded-2xl p-6 shadow-md">
@@ -490,7 +522,7 @@ export function ProgressPage({ onNavigate, user }: ProgressPageProps) {
                 </Badge>
               </div>
               <div className="text-2xl font-semibold text-gray-900">
-                {weeklyStats.avgCalories > 0 ? weeklyStats.avgCalories : '--'}
+                {weeklyStats.avgCalories > 0 ? Math.round(weeklyStats.avgCalories) : '--'}
               </div>
               <div className="text-sm text-gray-600">Average calories</div>
             </div>
@@ -504,7 +536,7 @@ export function ProgressPage({ onNavigate, user }: ProgressPageProps) {
                 </Badge>
               </div>
               <div className="text-2xl font-semibold text-gray-900">
-                {weeklyStats.weeklyTotalCalories > 0 ? weeklyStats.weeklyTotalCalories : '--'}
+                {weeklyStats.weeklyTotalCalories > 0 ? roundToNearest10(weeklyStats.weeklyTotalCalories) : '--'}
               </div>
               <div className="text-sm text-gray-600">Weekly calories</div>
             </div>
@@ -541,7 +573,7 @@ export function ProgressPage({ onNavigate, user }: ProgressPageProps) {
                   <div key={day.day} className="flex items-center justify-between text-sm">
                     <span className="capitalize text-gray-700">{day.day}</span>
                     <div className="flex items-center gap-2">
-                      <span className="text-gray-600">{actual} / {target > 0 ? Math.round(target) : '—'} cal</span>
+                      <span className="text-gray-600">{Math.round(actual)} / {target > 0 ? roundToNearest10(target) : '—'} cal</span>
                       <span className={`text-xs font-medium ${statusColor}`}>
                         {statusIcon}
                       </span>
@@ -552,11 +584,11 @@ export function ProgressPage({ onNavigate, user }: ProgressPageProps) {
               <div className="mt-4 pt-4 border-t border-gray-200 text-sm text-gray-600">
                 <div className="flex items-center justify-between">
                   <span>Total this week</span>
-                  <span className="font-medium text-gray-800">{weeklyCaloriesSummary.total} cal</span>
+                  <span className="font-medium text-gray-800">{roundToNearest10(weeklyCaloriesSummary.total)} cal</span>
                 </div>
                 <div className="flex items-center justify-between">
                   <span>Average per day</span>
-                  <span className="font-medium text-gray-800">{weeklyCaloriesSummary.average} cal</span>
+                  <span className="font-medium text-gray-800">{roundToNearest10(weeklyCaloriesSummary.average)} cal</span>
                 </div>
                 <div className="flex items-center justify-between">
                   <span>Avg deviation</span>

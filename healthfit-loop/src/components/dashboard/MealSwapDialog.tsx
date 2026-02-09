@@ -1,5 +1,8 @@
 'use client';
 
+// Utility function to round nutrition values to nearest 10
+const roundToNearest10 = (value: number) => Math.round(value / 10) * 10;
+
 import { useState, useMemo } from 'react';
 import { X, Home, UtensilsCrossed, Filter, ArrowLeftRight } from 'lucide-react';
 
@@ -222,7 +225,7 @@ export function MealSwapDialog({
                     {selectedMeal.name}
                   </p>
                   <p className="text-xs text-gray-500">
-                    {selectedMeal.calories} cal • {selectedMeal.source === 'restaurant' ? selectedMeal.restaurantName : 'Home'}
+                    {roundToNearest10(selectedMeal.calories)} cal • {selectedMeal.source === 'restaurant' ? selectedMeal.restaurantName : 'Home'}
                   </p>
                 </div>
               </div>
@@ -321,7 +324,7 @@ function MealPreviewCard({
         {/* Calories prominently displayed */}
         <div className="flex items-center justify-between mb-2">
           <div className="bg-green-100 text-green-700 px-3 py-1.5 rounded-lg">
-            <span className="text-sm font-bold">{meal.calories}</span>
+            <span className="text-sm font-bold">{roundToNearest10(meal.calories)}</span>
             <span className="text-xs ml-1">cal</span>
           </div>
 
@@ -336,13 +339,13 @@ function MealPreviewCard({
         {/* Compact Macros */}
         <div className="flex gap-1">
           <span className="text-xs bg-gray-100 text-gray-600 px-2 py-1 rounded">
-            P {meal.protein}g
+            P {roundToNearest10(meal.protein)}g
           </span>
           <span className="text-xs bg-gray-100 text-gray-600 px-2 py-1 rounded">
-            C {meal.carbs}g
+            C {roundToNearest10(meal.carbs)}g
           </span>
           <span className="text-xs bg-gray-100 text-gray-600 px-2 py-1 rounded">
-            F {meal.fat}g
+            F {roundToNearest10(meal.fat)}g
           </span>
         </div>
       </div>

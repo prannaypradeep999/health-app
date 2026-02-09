@@ -3,7 +3,6 @@
 import React, { useState, useEffect } from 'react';
 import FoodProfileScreen from './FoodProfileScreen';
 import WorkoutProfileScreen from './WorkoutProfileScreen';
-import { MealPlanningPreview } from './MealPlanningPreview';
 import { Loader2 } from 'lucide-react';
 
 interface ProfileConfirmationProps {
@@ -31,9 +30,6 @@ export default function ProfileConfirmation({ surveyData, onComplete, onBack }: 
   const [isLoading, setIsLoading] = useState(true);
   const [isGenerating, setIsGenerating] = useState(false);
   const [currentScreen, setCurrentScreen] = useState<'food' | 'workout'>('food');
-  const [showPlanningPreview, setShowPlanningPreview] = useState(false);
-  const [previewData, setPreviewData] = useState<any>(null);
-  const [loadingPreview, setLoadingPreview] = useState(false);
 
   // Generate profiles on component mount
   useEffect(() => {
@@ -225,14 +221,6 @@ export default function ProfileConfirmation({ surveyData, onComplete, onBack }: 
     console.log('[ProfileConfirmation] Generation was already triggered during survey - proceeding to dashboard');
   };
 
-  const handlePreviewClose = () => {
-    setShowPlanningPreview(false);
-  };
-
-  const handlePreviewApprove = async () => {
-    setShowPlanningPreview(false);
-    await handleGenerateMyPlan();
-  };
 
   // Handler functions for screen navigation
   const handleFoodNext = () => {
@@ -315,16 +303,5 @@ export default function ProfileConfirmation({ surveyData, onComplete, onBack }: 
     );
   }
 
-  return (
-    <>
-      {/* MealPlanningPreview Modal */}
-      <MealPlanningPreview
-        isOpen={showPlanningPreview}
-        onClose={handlePreviewClose}
-        onApprove={handlePreviewApprove}
-        data={previewData}
-        loading={loadingPreview}
-      />
-    </>
-  );
+  return null;
 }

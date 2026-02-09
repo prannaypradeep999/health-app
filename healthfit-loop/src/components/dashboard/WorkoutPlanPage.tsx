@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect } from "react";
+import { ChatSearchBar } from "@/components/chat/ChatSearchBar";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -855,6 +856,9 @@ export function WorkoutPlanPage({ onNavigate, generationStatus }: WorkoutPlanPag
           </div>
         </div>
 
+        {/* Chat Search Bar */}
+        <ChatSearchBar />
+
         <div className="p-4 sm:p-6">
           <Card className="border-0 shadow-subtle bg-white">
             <CardContent className="p-6 sm:p-8">
@@ -954,6 +958,9 @@ export function WorkoutPlanPage({ onNavigate, generationStatus }: WorkoutPlanPag
         </div>
       </div>
 
+      {/* Chat Search Bar */}
+      <ChatSearchBar />
+
       <div className="p-4 sm:p-6">
         {/* Week Navigation */}
         <div className="mb-6">
@@ -1024,7 +1031,7 @@ export function WorkoutPlanPage({ onNavigate, generationStatus }: WorkoutPlanPag
                 Progress: {currentDayCompleted.size}/{currentWorkout.exercises.length} completed
               </span>
               <span className="text-orange-600 font-medium">
-                ~{currentWorkout.calories} calories
+                ~{Math.round(currentWorkout.calories)} calories
               </span>
             </div>
           )}
@@ -1095,7 +1102,7 @@ export function WorkoutPlanPage({ onNavigate, generationStatus }: WorkoutPlanPag
                       </div>
                       <div className="flex items-center space-x-2 ml-2">
                         <span className="text-orange-600 font-medium text-sm">
-                          ~{workout.calories} cal
+                          ~{Math.round(workout.calories)} cal
                         </span>
                         <button
                           onClick={() => deleteWorkout(workout.id)}

@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect, useMemo } from "react";
+import { ChatSearchBar } from "@/components/chat/ChatSearchBar";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -32,6 +33,9 @@ import { MealSwapDialog } from './MealSwapDialog';
 import { collectAllMeals, CollectedMeal } from '@/lib/utils/meal-utils';
 import Logo from '@/components/logo';
 import { getPlanDayIndex, getCurrentMealPeriod, getPlanDays, getDayStatus, isPlanExpired, getBrowserTimezone, type MealPeriod } from '@/lib/utils/date-utils';
+
+// Utility function to round nutrition values to nearest 10
+const roundToNearest10 = (value: number) => Math.round(value / 10) * 10;
 
 const getMealStorageKey = (mealPlanId?: string, surveyId?: string, weekNumber?: number) => {
   if (mealPlanId) return `eatenMeals:${mealPlanId}`;
@@ -132,10 +136,10 @@ export function MealPlanPage({ onNavigate, generationStatus, nutritionTargets: n
             <p className="text-sm text-gray-600 mb-2">{meal.description}</p>
           )}
           <div className="flex items-center space-x-4 text-xs text-gray-500">
-            <span className="font-medium text-amber-700">{meal.calories} cal</span>
-            <span>{meal.protein}g protein</span>
-            <span>{meal.carbs}g carbs</span>
-            <span>{meal.fat}g fat</span>
+            <span className="font-medium text-amber-700">{Math.round(meal.calories)} cal</span>
+            <span>{Math.round(meal.protein)}g protein</span>
+            <span>{Math.round(meal.carbs)}g carbs</span>
+            <span>{Math.round(meal.fat)}g fat</span>
             <span>{meal.time}</span>
           </div>
           {meal.notes && (
@@ -387,22 +391,15 @@ export function MealPlanPage({ onNavigate, generationStatus, nutritionTargets: n
         if (response.ok) {
           const data = await response.json();
 
-          // Build eatenMeals state from database records
-          const dbEatenMeals: Record<string, boolean> = {};
-          data.allMealLogs?.forEach((log: any) => {
-            const key = `${log.day}-${log.mealType}-${log.optionType || 'primary'}-0`;
-            dbEatenMeals[key] = log.wasEaten;
-          });
-
-          // Merge with localStorage (prefer DB state)
+          // Only use localStorage state - completely ignore auto-populated database records
+          // This fixes phantom calories from database records with wasEaten: true
           const localEatenMeals = mealStorageKey
             ? JSON.parse(localStorage.getItem(mealStorageKey) || '{}')
             : {};
-          const merged = { ...localEatenMeals, ...dbEatenMeals };
 
-          setEatenMeals(merged);
+          setEatenMeals(localEatenMeals);
           if (mealStorageKey) {
-            localStorage.setItem(mealStorageKey, JSON.stringify(merged));
+            localStorage.setItem(mealStorageKey, JSON.stringify(localEatenMeals));
             localStorage.setItem('currentMealStorageKey', mealStorageKey);
           }
 
@@ -521,6 +518,39 @@ export function MealPlanPage({ onNavigate, generationStatus, nutritionTargets: n
     return dailySummaries.find((summary: any) => summary.day === dayId) || null;
   };
 
+  const getConsumedCaloriesForDay = (dayId: string) => {
+    const dayData = mealData?.mealPlan?.planData?.days?.find((day: any) => day.day === dayId);
+    if (!dayData?.meals) return 0;
+
+    let total = 0;
+    (['breakfast', 'lunch', 'dinner'] as const).forEach(mealType => {
+      const meal = dayData.meals?.[mealType];
+      if (!meal) return;
+
+      const selected = getSelectedOption(dayId, mealType);
+
+      // Check if primary option is eaten
+      const primaryKey = `${dayId}-${mealType}-primary-0`;
+      if (eatenMeals[primaryKey]) {
+        const primaryOption = meal.primary || meal;
+        if (primaryOption) {
+          total += primaryOption.calories ?? primaryOption.estimatedCalories ?? 0;
+        }
+      }
+
+      // Check if alternative option is eaten
+      const alternativeKey = `${dayId}-${mealType}-alternative-0`;
+      if (eatenMeals[alternativeKey]) {
+        const alternativeOption = meal.alternative;
+        if (alternativeOption) {
+          total += alternativeOption.calories ?? alternativeOption.estimatedCalories ?? 0;
+        }
+      }
+    });
+
+    return total;
+  };
+
   const getMealTargetCalories = (mealType: string) => {
     const target = mealTargets?.[mealType]?.calories;
     return typeof target === 'number' ? target : null;
@@ -536,8 +566,8 @@ export function MealPlanPage({ onNavigate, generationStatus, nutritionTargets: n
     let total = 0;
 
     // Try both data structures (weeklyPlan and days)
+    const selectedDayInfo = days.find(d => d.id === selectedDay);
     let dayData = mealData?.mealPlan?.planData?.weeklyPlan?.find((day: any) => {
-      const selectedDayInfo = days.find(d => d.id === selectedDay);
       return day.day === selectedDayInfo?.dayNumber;
     });
 
@@ -844,7 +874,6 @@ export function MealPlanPage({ onNavigate, generationStatus, nutritionTargets: n
     }
   };
 
-  const totalCalories = getTotalCalories();
 
   // Star Rating Component
   const StarRating = ({
@@ -1342,7 +1371,7 @@ export function MealPlanPage({ onNavigate, generationStatus, nutritionTargets: n
                     variant="outline"
                     className="text-xs flex-shrink-0 bg-green-50 text-green-700 border-green-200"
                   >
-                    {mealOption.calories} cal
+                    {Math.round(mealOption.calories)} cal
                   </Badge>
                 )}
               </div>
@@ -1910,6 +1939,9 @@ export function MealPlanPage({ onNavigate, generationStatus, nutritionTargets: n
         </div>
       </div>
 
+      {/* Chat Search Bar */}
+      <ChatSearchBar />
+
       {/* Tab Navigation */}
       <div className="bg-white border-b border-gray-200 px-4 sm:px-6">
         <div className="flex space-x-1 overflow-x-auto">
@@ -2011,32 +2043,22 @@ export function MealPlanPage({ onNavigate, generationStatus, nutritionTargets: n
             <div className="flex items-center gap-2">
               <span className="font-medium text-gray-800">
                 {(() => {
-                  const daySummary = getDaySummary(selectedDay);
-                  const planned = daySummary?.planned ?? getPlannedCaloriesForDay(selectedDay);
-                  const target = typeof daySummary?.target === 'number' ? daySummary.target : resolvedTargets?.dailyCalories;
-                  return `${planned} / ${typeof target === 'number' ? Math.round(target) : '—'} cal`;
+                  const consumed = getConsumedCaloriesForDay(selectedDay);
+                  const target = resolvedTargets?.dailyCalories;
+                  return `${consumed} / ${typeof target === 'number' ? Math.round(target / 10) * 10 : '—'} cal`;
                 })()}
               </span>
               {(() => {
-                const daySummary = getDaySummary(selectedDay);
-                const planned = daySummary?.planned ?? getPlannedCaloriesForDay(selectedDay);
-                const target = typeof daySummary?.target === 'number' ? daySummary.target : resolvedTargets?.dailyCalories;
+                const consumed = getConsumedCaloriesForDay(selectedDay);
+                const target = resolvedTargets?.dailyCalories;
                 if (!target || target <= 0) return null;
 
-                const deviation = Math.abs(planned - target) / target * 100;
-                const status = daySummary?.status
-                  ? daySummary.status === 'on-target'
-                    ? { label: 'On track', color: 'text-green-600 bg-green-50 border-green-200' }
-                    : daySummary.status === 'warning'
-                      ? { label: 'Slightly off', color: 'text-orange-600 bg-orange-50 border-orange-200' }
-                      : daySummary.status === 'under'
-                        ? { label: 'Under target', color: 'text-orange-600 bg-orange-50 border-orange-200' }
-                        : { label: 'Over target', color: 'text-red-600 bg-red-50 border-red-200' }
-                  : deviation <= 10
-                    ? { label: 'On track', color: 'text-green-600 bg-green-50 border-green-200' }
-                    : deviation <= 15
-                      ? { label: 'Slightly off', color: 'text-orange-600 bg-orange-50 border-orange-200' }
-                      : { label: 'Off target', color: 'text-red-600 bg-red-50 border-red-200' };
+                const deviation = Math.abs(consumed - target) / target * 100;
+                const status = deviation <= 10
+                  ? { label: 'On track', color: 'text-green-600 bg-green-50 border-green-200' }
+                  : deviation <= 15
+                    ? { label: 'Slightly off', color: 'text-orange-600 bg-orange-50 border-orange-200' }
+                    : { label: 'Off target', color: 'text-red-600 bg-red-50 border-red-200' };
 
                 return (
                   <span className={`text-xs px-2 py-0.5 rounded-full border ${status.color}`}>
@@ -2046,12 +2068,11 @@ export function MealPlanPage({ onNavigate, generationStatus, nutritionTargets: n
               })()}
             </div>
             {(() => {
-              const daySummary = getDaySummary(selectedDay);
-              const target = typeof daySummary?.target === 'number' ? daySummary.target : resolvedTargets?.dailyCalories;
+              const target = resolvedTargets?.dailyCalories;
               if (typeof target !== 'number') return null;
               return (
                 <span className="text-xs text-gray-500">
-                  Target {Math.round(target)} cal
+                  Target {Math.round(target / 10) * 10} cal
                 </span>
               );
             })()}
@@ -2067,17 +2088,17 @@ export function MealPlanPage({ onNavigate, generationStatus, nutritionTargets: n
                   <div className="flex justify-between items-center text-xs">
                     <span className="text-gray-600">Calories</span>
                     <span className="text-gray-800 font-medium">
-                      {totalCalories}/{Math.round(resolvedTargets.dailyCalories/100)*100} cal
+                      {roundToNearest10(getTotalCalories())}/{roundToNearest10(resolvedTargets.dailyCalories)} cal
                     </span>
                   </div>
                   <div className="w-full bg-gray-200 rounded-full h-2">
                     <div
                       className={`h-2 rounded-full transition-all duration-300 ${
-                        totalCalories > resolvedTargets.dailyCalories * 1.1 ? 'bg-red-500' :
-                        totalCalories >= resolvedTargets.dailyCalories * 0.8 ? 'bg-green-500' :
+                        getTotalCalories() > resolvedTargets.dailyCalories * 1.1 ? 'bg-red-500' :
+                        getTotalCalories() >= resolvedTargets.dailyCalories * 0.8 ? 'bg-green-500' :
                         'bg-orange-500'
                       }`}
-                      style={{ width: `${Math.min((totalCalories / resolvedTargets.dailyCalories) * 100, 100)}%` }}
+                      style={{ width: `${Math.min((getTotalCalories() / resolvedTargets.dailyCalories) * 100, 100)}%` }}
                     />
                   </div>
                 </div>

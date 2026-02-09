@@ -581,15 +581,15 @@ export function LoadingJourney({ surveyData, onComplete, onSkipToDashboard }: Lo
                 <div className="text-xs text-gray-500">calories</div>
               </div>
               <div className="text-center p-3 bg-blue-50 rounded-xl">
-                <div className="text-lg sm:text-xl font-bold text-blue-700">{displayTargets.protein}g</div>
+                <div className="text-lg sm:text-xl font-bold text-blue-700">{Math.round(displayTargets.protein)}g</div>
                 <div className="text-xs text-blue-600">protein</div>
               </div>
               <div className="text-center p-3 bg-amber-50 rounded-xl">
-                <div className="text-lg sm:text-xl font-bold text-amber-700">{displayTargets.carbs}g</div>
+                <div className="text-lg sm:text-xl font-bold text-amber-700">{Math.round(displayTargets.carbs)}g</div>
                 <div className="text-xs text-amber-600">carbs</div>
               </div>
               <div className="text-center p-3 bg-green-50 rounded-xl">
-                <div className="text-lg sm:text-xl font-bold text-green-700">{displayTargets.fat}g</div>
+                <div className="text-lg sm:text-xl font-bold text-green-700">{Math.round(displayTargets.fat)}g</div>
                 <div className="text-xs text-green-600">fat</div>
               </div>
             </div>

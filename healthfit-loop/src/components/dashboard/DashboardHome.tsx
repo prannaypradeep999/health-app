@@ -1,6 +1,7 @@
 'use client';
 
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useMemo } from "react";
+import { ChatSearchBar } from "@/components/chat/ChatSearchBar";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Progress } from "@/components/ui/progress";
@@ -33,6 +34,9 @@ import {
   Minus
 } from "@phosphor-icons/react";
 import { motion } from "framer-motion";
+
+// Utility function to round nutrition values to nearest 10
+const roundToNearest10 = (value: number) => Math.round(value / 10) * 10;
 
 const getMealStorageKey = (mealPlanId?: string, surveyId?: string, weekNumber?: number) => {
   if (mealPlanId) return `eatenMeals:${mealPlanId}`;
@@ -383,7 +387,7 @@ export function DashboardHome({ user, onNavigate, generationStatus, nutritionTar
             {meal.isSkipped ? '' :
              meal.isLoading ? 'Loading...' :
              meal.hideCalories ? '' :
-             meal.restaurant ? `~${meal.calories} cal (est.)` : `${meal.calories} cal`}
+             meal.restaurant ? `~${roundToNearest10(meal.calories)} cal (est.)` : `${roundToNearest10(meal.calories)} cal`}
           </p>
         </div>
         <div className="flex items-center space-x-2">
@@ -433,7 +437,7 @@ export function DashboardHome({ user, onNavigate, generationStatus, nutritionTar
     }
     return {
       text: meal.name,
-      subtext: `${meal.calories} cal`,
+      subtext: `${roundToNearest10(meal.calories)} cal`,
       showCheckbox: true
     };
   };
@@ -677,10 +681,28 @@ export function DashboardHome({ user, onNavigate, generationStatus, nutritionTar
 
   const fetchConsumptionData = async () => {
     try {
-      const response = await fetch('/api/meals/consume');
+      const surveyId = mealData?.mealPlan?.surveyId;
+      const weekNumber = mealData?.mealPlan?.weekNumber || 1;
+      const mealPlanId = mealData?.mealPlan?.id;
+
+      if (!surveyId) return;
+
+      const response = await fetch(`/api/meals/consume?surveyId=${surveyId}&weekNumber=${weekNumber}&mealPlanId=${mealPlanId || ''}`);
       if (response.ok) {
         const data = await response.json();
         setConsumedMeals(data);
+
+        // Only use localStorage state - completely ignore auto-populated database records
+        // This fixes phantom calories from database records with wasEaten: true
+        const localEatenMeals = mealStorageKey
+          ? JSON.parse(localStorage.getItem(mealStorageKey) || '{}')
+          : {};
+
+        setEatenMeals(localEatenMeals);
+        if (mealStorageKey) {
+          localStorage.setItem(mealStorageKey, JSON.stringify(localEatenMeals));
+          localStorage.setItem('currentMealStorageKey', mealStorageKey);
+        }
       }
     } catch (error) {
       console.error('Failed to fetch consumption data:', error);
@@ -1258,11 +1280,11 @@ export function DashboardHome({ user, onNavigate, generationStatus, nutritionTar
   // Use rounded targets for consistency across sections
   const displayTargets = roundedTargets;
 
-  // Use real eaten calories from checkbox tracking
-  const caloriesEaten = getTotalCaloriesEaten();
-  const proteinEaten = getTotalProteinEaten();
-  const carbsEaten = getTotalCarbsEaten();
-  const fatEaten = getTotalFatEaten();
+  // Use real eaten calories from checkbox tracking - with proper memoization
+  const caloriesEaten = useMemo(() => getTotalCaloriesEaten(), [eatenMeals, loggedMeals]);
+  const proteinEaten = useMemo(() => getTotalProteinEaten(), [eatenMeals, loggedMeals]);
+  const carbsEaten = useMemo(() => getTotalCarbsEaten(), [eatenMeals, loggedMeals]);
+  const fatEaten = useMemo(() => getTotalFatEaten(), [eatenMeals, loggedMeals]);
 
   // Get snack recommendations for skipped meals
   const snackRecommendation = getSkippedMealsAndSnackRecommendation();
@@ -1332,6 +1354,9 @@ export function DashboardHome({ user, onNavigate, generationStatus, nutritionTar
           <p className="text-sm sm:text-base text-gray-600">Ready to crush your health goals today? Let's make it happen!</p>
         </div>
 
+        {/* Chat Search Bar */}
+        <ChatSearchBar />
+
         {/* Guest Banner */}
         {isGuest && !bannerDismissed && (
           <GuestBanner
@@ -1358,19 +1383,19 @@ export function DashboardHome({ user, onNavigate, generationStatus, nutritionTar
           {displayTargets ? (
             <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 sm:gap-3">
               <div className="text-center p-3 bg-gray-50 rounded-xl">
-                <div className="text-lg sm:text-xl font-bold text-gray-900">{displayTargets.dailyCalories.toLocaleString()}</div>
+                <div className="text-lg sm:text-xl font-bold text-gray-900">{roundToNearest10(displayTargets.dailyCalories).toLocaleString()}</div>
                 <div className="text-xs text-gray-500">calories</div>
               </div>
               <div className="text-center p-3 bg-blue-50 rounded-xl">
-                <div className="text-lg sm:text-xl font-bold text-blue-700">{displayTargets.dailyProtein}g</div>
+                <div className="text-lg sm:text-xl font-bold text-blue-700">{roundToNearest10(displayTargets.dailyProtein)}g</div>
                 <div className="text-xs text-blue-600">protein</div>
               </div>
               <div className="text-center p-3 bg-amber-50 rounded-xl">
-                <div className="text-lg sm:text-xl font-bold text-amber-700">{displayTargets.dailyCarbs}g</div>
+                <div className="text-lg sm:text-xl font-bold text-amber-700">{roundToNearest10(displayTargets.dailyCarbs)}g</div>
                 <div className="text-xs text-amber-600">carbs</div>
               </div>
               <div className="text-center p-3 bg-green-50 rounded-xl">
-                <div className="text-lg sm:text-xl font-bold text-green-700">{displayTargets.dailyFat}g</div>
+                <div className="text-lg sm:text-xl font-bold text-green-700">{roundToNearest10(displayTargets.dailyFat)}g</div>
                 <div className="text-xs text-green-600">fat</div>
               </div>
             </div>
@@ -1440,7 +1465,7 @@ export function DashboardHome({ user, onNavigate, generationStatus, nutritionTar
               <>
                 <div className="text-2xl sm:text-3xl font-bold text-[#c1272d] mb-1">{caloriesEaten > 0 ? Math.round((caloriesEaten/displayTargets.dailyCalories)*100) : 0}%</div>
                 <div className="text-lg font-bold text-[#8b5cf6] mb-1">Daily goal</div>
-                <div className="text-sm text-gray-600">{caloriesEaten} / {displayTargets.dailyCalories} calories</div>
+                <div className="text-sm text-gray-600">{roundToNearest10(caloriesEaten)} / {roundToNearest10(displayTargets.dailyCalories)} calories</div>
               </>
             ) : (
               <>
@@ -1472,7 +1497,7 @@ export function DashboardHome({ user, onNavigate, generationStatus, nutritionTar
                 Macros
               </span>
             </div>
-            <div className="text-lg sm:text-xl font-bold text-[#c1272d] mb-1">{proteinEaten}g | {carbsEaten}g | {fatEaten}g</div>
+            <div className="text-lg sm:text-xl font-bold text-[#c1272d] mb-1">{roundToNearest10(proteinEaten)}g | {roundToNearest10(carbsEaten)}g | {roundToNearest10(fatEaten)}g</div>
             <div className="text-lg font-bold text-[#8b5cf6] mb-1">Protein | Carbs | Fat eaten</div>
             <div className="text-sm text-gray-600">From selected meals today</div>
           </div>
@@ -1556,7 +1581,7 @@ export function DashboardHome({ user, onNavigate, generationStatus, nutritionTar
                         </span>
                         <span className="flex items-center">
                           <Fire className="w-4 h-4 mr-1 text-[#8b5cf6]" weight="regular" />
-                          ~{todaysWorkout.calories} cal
+                          ~{roundToNearest10(todaysWorkout.calories)} cal
                         </span>
                         <span className="flex items-center">
                           <Target className="w-4 h-4 mr-1 text-[#8b5cf6]" weight="regular" />
@@ -1698,7 +1723,7 @@ export function DashboardHome({ user, onNavigate, generationStatus, nutritionTar
                                currentOption.isRestaurantLoading ? 'Searching nearby...' :
                                currentOption.isLoading ? 'Loading...' :
                                currentOption.isEmpty || currentOption.hasError || currentOption.hideCalories ? '' :
-                               `${currentOption.calories} cal`}
+                               `${roundToNearest10(currentOption.calories)} cal`}
                             </p>
 
                             <div className="flex items-center gap-3">
@@ -1813,22 +1838,22 @@ export function DashboardHome({ user, onNavigate, generationStatus, nutritionTar
                 <div className="flex flex-wrap gap-2 mb-3">
                   <div className="bg-white px-3 py-1 rounded-lg border border-orange-200">
                     <span className="text-xs text-orange-700 font-medium">
-                      ~{snackRecommendation.recommendedSnack.calories} cal
+                      ~{roundToNearest10(snackRecommendation.recommendedSnack.calories)} cal
                     </span>
                   </div>
                   <div className="bg-white px-3 py-1 rounded-lg border border-orange-200">
                     <span className="text-xs text-blue-700 font-medium">
-                      {snackRecommendation.recommendedSnack.protein}g protein
+                      {roundToNearest10(snackRecommendation.recommendedSnack.protein)}g protein
                     </span>
                   </div>
                   <div className="bg-white px-3 py-1 rounded-lg border border-orange-200">
                     <span className="text-xs text-green-700 font-medium">
-                      {snackRecommendation.recommendedSnack.carbs}g carbs
+                      {Math.round(snackRecommendation.recommendedSnack.carbs)}g carbs
                     </span>
                   </div>
                   <div className="bg-white px-3 py-1 rounded-lg border border-orange-200">
                     <span className="text-xs text-purple-700 font-medium">
-                      {snackRecommendation.recommendedSnack.fat}g fat
+                      {Math.round(snackRecommendation.recommendedSnack.fat)}g fat
                     </span>
                   </div>
                 </div>
@@ -1883,7 +1908,7 @@ export function DashboardHome({ user, onNavigate, generationStatus, nutritionTar
                 <div className="flex justify-between items-center text-xs mb-2">
                   <span className="text-[#8b5cf6] font-bold">Protein</span>
                   <span className="text-gray-700 font-bold">
-                    {proteinEaten}g/{Math.round(displayTargets.dailyProtein)}g
+                    {roundToNearest10(proteinEaten)}g/{roundToNearest10(displayTargets.dailyProtein)}g
                   </span>
                 </div>
                 <div className="w-full bg-gray-200 rounded-full h-2">
@@ -1899,7 +1924,7 @@ export function DashboardHome({ user, onNavigate, generationStatus, nutritionTar
                 <div className="flex justify-between items-center text-xs mb-2">
                   <span className="text-[#c1272d] font-bold">Carbs</span>
                   <span className="text-gray-700 font-bold">
-                    {carbsEaten}g/{Math.round(displayTargets.dailyCarbs)}g
+                    {roundToNearest10(carbsEaten)}g/{roundToNearest10(displayTargets.dailyCarbs)}g
                   </span>
                 </div>
                 <div className="w-full bg-gray-200 rounded-full h-2">
@@ -1915,7 +1940,7 @@ export function DashboardHome({ user, onNavigate, generationStatus, nutritionTar
                 <div className="flex justify-between items-center text-xs mb-2">
                   <span className="text-[#8b5cf6] font-bold">Fat</span>
                   <span className="text-gray-700 font-bold">
-                    {fatEaten}g/{Math.round(displayTargets.dailyFat)}g
+                    {roundToNearest10(fatEaten)}g/{roundToNearest10(displayTargets.dailyFat)}g
                   </span>
                 </div>
                 <div className="w-full bg-gray-200 rounded-full h-2">

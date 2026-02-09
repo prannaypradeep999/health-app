@@ -1,16 +1,17 @@
 'use client';
 
 import { useEffect, useRef, useState } from 'react';
+import { useRouter } from 'next/navigation';
 import { DashboardHome } from './DashboardHome';
 import { MealPlanPage } from './MealPlanPage';
 import { WorkoutPlanPage } from './WorkoutPlanPage';
 import { ProgressPage } from './ProgressPage';
 import { AccountPage } from './AccountPage';
 import { LoadingPage } from './LoadingPage';
-import { MealPlanningPreview } from './MealPlanningPreview';
 import AccountCreationModal from './modals/AccountCreationModal';
 import { ForkKnife, Spinner } from '@phosphor-icons/react';
 import { motion } from 'framer-motion';
+import { DashboardChat } from '@/components/chat/DashboardChat';
 
 type Screen = 'dashboard' | 'meal-plan' | 'workout-plan' | 'progress' | 'account';
 
@@ -47,6 +48,9 @@ interface GenerationStatus {
 
 export function DashboardContainer({ initialScreen = 'dashboard' }: DashboardContainerProps) {
   const MAX_DASHBOARD_POLL_ATTEMPTS = 60;
+  const router = useRouter();
+
+  // Initialize tab from URL param on client side
   const [currentScreen, setCurrentScreen] = useState<Screen>(initialScreen);
   const [surveyData, setSurveyData] = useState<SurveyData | null>(null);
   const [generationStatus, setGenerationStatus] = useState<GenerationStatus>({
@@ -59,10 +63,6 @@ export function DashboardContainer({ initialScreen = 'dashboard' }: DashboardCon
   const [loading, setLoading] = useState(true);
   const [navigating, setNavigating] = useState(false);
   const [showAccountModal, setShowAccountModal] = useState(false);
-  const [showPlanningPreview, setShowPlanningPreview] = useState(false);
-  const [previewData, setPreviewData] = useState<any>(null);
-  const [loadingPreview, setLoadingPreview] = useState(false);
-  const [shouldShowInitialPreview, setShouldShowInitialPreview] = useState(false);
   const [isEarlyArrival, setIsEarlyArrival] = useState(false);
   const [isWaitingForFreshData, setIsWaitingForFreshData] = useState(false);
   const [mealData, setMealData] = useState<any>(null);
@@ -196,6 +196,19 @@ export function DashboardContainer({ initialScreen = 'dashboard' }: DashboardCon
     }
   }, [generationStatus.mealsGenerated, generationStatus.workoutsGenerated]);
 
+  // Read tab param from URL on mount (client-side only)
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      const urlParams = new URLSearchParams(window.location.search);
+      const tabParam = urlParams.get('tab');
+      const validTabs: Screen[] = ['dashboard', 'meal-plan', 'workout-plan', 'progress', 'account'];
+
+      if (tabParam && validTabs.includes(tabParam as Screen)) {
+        setCurrentScreen(tabParam as Screen);
+      }
+    }
+  }, []);
+
   const fetchSurveyData = async () => {
     try {
       console.log('[DASHBOARD-CONTAINER] 🔍 Fetching survey data...');
@@ -230,16 +243,6 @@ export function DashboardContainer({ initialScreen = 'dashboard' }: DashboardCon
 
         setSurveyData(data.survey);
 
-        // If we should show initial preview and we have survey data, show it
-        console.log('[DashboardContainer] Preview trigger check:', { shouldShowInitialPreview, hasSurvey: !!data.survey });
-        if (shouldShowInitialPreview && data.survey) {
-          console.log('[DashboardContainer] Triggering initial preview for new user');
-          setTimeout(() => {
-            handleShowPlanningPreview(true);
-          }, 1000); // Small delay for smooth UX
-        } else {
-          console.log('[DashboardContainer] Preview trigger conditions not met:', { shouldShowInitialPreview, hasSurvey: !!data.survey });
-        }
       }
     } catch (error) {
       console.error('Failed to fetch survey data:', error);
@@ -376,6 +379,12 @@ export function DashboardContainer({ initialScreen = 'dashboard' }: DashboardCon
 
     setNavigating(true);
 
+    // Update URL with tab parameter (dashboard home uses clean URL)
+    const newUrl = nextScreen === 'dashboard'
+      ? '/dashboard'
+      : `/dashboard?tab=${nextScreen}`;
+    router.replace(newUrl);
+
     // Small delay to show loading state, then switch
     setTimeout(() => {
       setCurrentScreen(nextScreen);
@@ -383,48 +392,6 @@ export function DashboardContainer({ initialScreen = 'dashboard' }: DashboardCon
     }, 100);
   };
 
-  const handleShowPlanningPreview = async (isInitial = false) => {
-    setLoadingPreview(true);
-    setShowPlanningPreview(true);
-
-    try {
-      const response = await fetch('/api/ai/meals/planning-preview', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' }
-      });
-
-      if (response.ok) {
-        const result = await response.json();
-        setPreviewData(result.data);
-        console.log('[DashboardContainer] Preview data loaded:', result.data);
-      } else {
-        console.error('Failed to generate preview');
-        setPreviewData(null);
-      }
-    } catch (error) {
-      console.error('Preview generation failed:', error);
-      setPreviewData(null);
-    } finally {
-      setLoadingPreview(false);
-    }
-  };
-
-  const handlePreviewClose = () => {
-    setShowPlanningPreview(false);
-  };
-
-  const handlePreviewApprove = async () => {
-    console.log('[DashboardContainer] User approved preview, using existing 7-day meal plan...');
-
-    try {
-      setShowPlanningPreview(false);
-      await checkGenerationStatus();
-      console.log('[DashboardContainer] Using existing 7-day meal plan successfully');
-    } catch (error) {
-      console.error('[DashboardContainer] Failed to refresh meal plan data:', error);
-      setShowPlanningPreview(false);
-    }
-  };
 
   if (loading) {
     return <LoadingPage />;
@@ -532,91 +499,79 @@ export function DashboardContainer({ initialScreen = 'dashboard' }: DashboardCon
   };
 
   return (
-    <>
-      {pollErrorDashboard && (
-        <motion.div
-          initial={{ opacity: 0, y: -10 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.35, ease: [0.25, 0.46, 0.45, 0.94] }}
-          className="bg-red-50 border-b border-red-100 px-4 py-3"
-        >
-          <div className="flex items-center justify-center gap-2 text-red-800 text-sm">
-            Having trouble loading your plan. Please refresh or check back soon.
-          </div>
-        </motion.div>
-      )}
-      {(() => {
-        const hasStaleMeal = mealWeekStatus && mealWeekStatus.isCurrentWeek === false;
-        const hasStaleWorkout = workoutWeekStatus && workoutWeekStatus.isCurrentWeek === false;
-        if (!hasStaleMeal && !hasStaleWorkout) return null;
-        const weekOfLabel = mealWeekStatus?.weekOf || workoutWeekStatus?.weekOf || 'a previous week';
-        return (
+    <DashboardChat userName={surveyData?.firstName}>
+      <div className="min-h-screen bg-gray-50">
+        {/* Status Banners */}
+        {pollErrorDashboard && (
           <motion.div
             initial={{ opacity: 0, y: -10 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.35, ease: [0.25, 0.46, 0.45, 0.94] }}
-            className="bg-blue-50 border-b border-blue-100 px-4 py-3"
+            className="bg-red-50 border-b border-red-100 px-4 py-3"
           >
-            <div className="flex items-center justify-center gap-2 text-blue-800 text-sm">
-              Your plan is from week of {weekOfLabel}. New plans coming soon.
+            <div className="flex items-center justify-center gap-2 text-red-800 text-sm">
+              Having trouble loading your plan. Please refresh or check back soon.
             </div>
           </motion.div>
-        );
-      })()}
-      {/* Early Arrival Progress Banner */}
-      {isEarlyArrival && (!generationStatus.mealsGenerated || !generationStatus.workoutsGenerated) && (
-        <motion.div
-          initial={{ opacity: 0, y: -10 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.35, ease: [0.25, 0.46, 0.45, 0.94] }}
-          className="bg-amber-50 border-b border-amber-100 px-4 py-3"
-        >
-          <div className="flex items-center justify-center gap-2 text-amber-800">
+        )}
+        {(() => {
+          const hasStaleMeal = mealWeekStatus && mealWeekStatus.isCurrentWeek === false;
+          const hasStaleWorkout = workoutWeekStatus && workoutWeekStatus.isCurrentWeek === false;
+          if (!hasStaleMeal && !hasStaleWorkout) return null;
+          const weekOfLabel = mealWeekStatus?.weekOf || workoutWeekStatus?.weekOf || 'a previous week';
+          return (
             <motion.div
-              animate={{ rotate: 360 }}
-              transition={{ repeat: Infinity, duration: 1.2, ease: "linear" }}
+              initial={{ opacity: 0, y: -10 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.35, ease: [0.25, 0.46, 0.45, 0.94] }}
+              className="bg-blue-50 border-b border-blue-100 px-4 py-3"
             >
-              <Spinner size={14} />
+              <div className="flex items-center justify-center gap-2 text-blue-800 text-sm">
+                Your plan is from week of {weekOfLabel}. New plans coming soon.
+              </div>
             </motion.div>
-            <span className="text-sm font-medium">
-              Still generating your personalized plan...
-            </span>
-          </div>
-        </motion.div>
-      )}
+          );
+        })()}
+        {/* Early Arrival Progress Banner */}
+        {isEarlyArrival && (!generationStatus.mealsGenerated || !generationStatus.workoutsGenerated) && (
+          <motion.div
+            initial={{ opacity: 0, y: -10 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.35, ease: [0.25, 0.46, 0.45, 0.94] }}
+            className="bg-amber-50 border-b border-amber-100 px-4 py-3"
+          >
+            <div className="flex items-center justify-center gap-2 text-amber-800">
+              <motion.div
+                animate={{ rotate: 360 }}
+                transition={{ repeat: Infinity, duration: 1.2, ease: "linear" }}
+              >
+                <Spinner size={14} />
+              </motion.div>
+              <span className="text-sm font-medium">
+                Still generating your personalized plan...
+              </span>
+            </div>
+          </motion.div>
+        )}
 
-      {renderScreen()}
+        {/* Main Dashboard Content */}
+        <div className="bg-gray-50">
+          {renderScreen()}
+        </div>
 
-      {/* Floating Preview Button */}
-      {!showPlanningPreview && (
-        <button
-          onClick={() => handleShowPlanningPreview()}
-          className="fixed bottom-6 right-6 w-14 h-14 bg-gradient-to-r from-[#c1272d] to-[#8b5cf6] hover:from-[#a1232a] hover:to-[#7c3aed] text-white rounded-full shadow-lg hover:shadow-xl transition-all duration-200 flex items-center justify-center z-40 group"
-          title="Quick Preview"
-        >
-          <ForkKnife className="w-6 h-6" weight="regular" />
-        </button>
-      )}
 
-      {/* Account Creation Modal */}
-      <AccountCreationModal
-        isOpen={showAccountModal}
-        onClose={() => setShowAccountModal(false)}
-        guestData={{
-          email: surveyData?.email,
-          firstName: surveyData?.firstName,
-          lastName: surveyData?.lastName
-        }}
-      />
+        {/* Account Creation Modal */}
+        <AccountCreationModal
+          isOpen={showAccountModal}
+          onClose={() => setShowAccountModal(false)}
+          guestData={{
+            email: surveyData?.email,
+            firstName: surveyData?.firstName,
+            lastName: surveyData?.lastName
+          }}
+        />
 
-      {/* Meal Planning Preview Modal */}
-      <MealPlanningPreview
-        isOpen={showPlanningPreview}
-        onClose={handlePreviewClose}
-        onApprove={handlePreviewApprove}
-        data={previewData}
-        loading={loadingPreview}
-      />
-    </>
+      </div>
+    </DashboardChat>
   );
 }

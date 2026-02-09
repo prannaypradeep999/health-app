@@ -17,13 +17,6 @@ const DIET_EXCLUSIONS: Record<string, string[]> = {
   kosher: ['pork', 'bacon', 'ham', 'shellfish'],
 };
 
-const CATEGORY_ITEMS: Record<string, string[]> = {
-  proteins: ['chicken', 'beef', 'pork', 'lamb', 'turkey', 'fish', 'salmon', 'tuna', 'shrimp', 'tofu'],
-  dairy: ['milk', 'cheese', 'yogurt'],
-  fruits: ['apple', 'banana', 'grape', 'mango'],
-  vegetables: ['broccoli', 'spinach', 'mushroom', 'onion'],
-  other: ['spicy', 'raw fish', 'cilantro'],
-};
 
 export function checkPreferenceConflicts(
   preferredFoods: string[],
@@ -51,18 +44,7 @@ export function checkPreferenceConflicts(
   });
 
   Object.entries(strictExclusions).forEach(([category, items]) => {
-    const categoryItems = CATEGORY_ITEMS[category.toLowerCase()] || [];
-    preferredLower.forEach(food => {
-      if (categoryItems.some(item => food.includes(item) || item.includes(food))) {
-        conflicts.push({
-          preference: food,
-          restriction: `${category} exclusion`,
-          reason: `"${food}" is listed as a dislike in ${category}`,
-          severity: 'warning',
-        });
-      }
-    });
-
+    // Only check against actually selected exclusions, not all available options
     (items || []).forEach(excludedItem => {
       const excludedLower = excludedItem.toLowerCase();
       if (preferredLower.some(food => food.includes(excludedLower) || excludedLower.includes(food))) {
