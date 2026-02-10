@@ -47,7 +47,7 @@ interface GenerationStatus {
 }
 
 export function DashboardContainer({ initialScreen = 'dashboard' }: DashboardContainerProps) {
-  const MAX_DASHBOARD_POLL_ATTEMPTS = 60;
+  const MAX_DASHBOARD_POLL_ATTEMPTS = 120; // 10 minutes of polling for workout generation
   const router = useRouter();
 
   // Initialize tab from URL param on client side
@@ -70,17 +70,25 @@ export function DashboardContainer({ initialScreen = 'dashboard' }: DashboardCon
   const [mealWeekStatus, setMealWeekStatus] = useState<{ isCurrentWeek: boolean; weekOf?: string; currentWeek?: string } | null>(null);
   const [workoutWeekStatus, setWorkoutWeekStatus] = useState<{ isCurrentWeek: boolean; weekOf?: string; currentWeek?: string } | null>(null);
   const [pollErrorDashboard, setPollErrorDashboard] = useState(false);
+  const [hasSessionData, setHasSessionData] = useState(false);
   const generationPollAttemptsRef = useRef(0);
   const freshPollAttemptsRef = useRef(0);
 
   useEffect(() => {
-    fetchSurveyData();
-    checkGenerationStatus();
+    // Check for magic link token first
+    const urlParams = new URLSearchParams(window.location.search);
+    const token = urlParams.get('token');
+
+    if (token) {
+      handleMagicLink(token);
+    } else {
+      fetchSurveyData();
+      checkGenerationStatus();
+    }
 
     // Check URL params for survey completion or early arrival
-    const urlParams = new URLSearchParams(window.location.search);
-    const justCompleted = urlParams.get('surveyCompleted');
-    const earlyArrival = urlParams.get('earlyArrival');
+    const justCompleted = urlParams?.get('surveyCompleted');
+    const earlyArrival = urlParams?.get('earlyArrival');
 
     console.log('[DashboardContainer] URL params check:', { justCompleted, earlyArrival, href: window.location.href });
 
@@ -102,6 +110,15 @@ export function DashboardContainer({ initialScreen = 'dashboard' }: DashboardCon
 
         try {
           const response = await fetch('/api/ai/meals/current');
+
+          if (!response.ok) {
+            // For 404, it means plan doesn't exist yet - keep polling
+            // For other errors, log but continue polling
+            console.log(`[DashboardContainer] Fresh data poll: API returned ${response.status}, continuing...`);
+            setTimeout(pollForFreshData, 3000);
+            return;
+          }
+
           const data = await response.json();
 
           if (data.mealPlan) {
@@ -141,8 +158,8 @@ export function DashboardContainer({ initialScreen = 'dashboard' }: DashboardCon
 
         } catch (error) {
           console.error('[DashboardContainer] Error polling for fresh data:', error);
-          // Keep trying
-          setTimeout(pollForFreshData, 3000);
+          // For network errors, back off polling frequency but keep trying
+          setTimeout(pollForFreshData, 5000);
         }
       };
 
@@ -209,6 +226,36 @@ export function DashboardContainer({ initialScreen = 'dashboard' }: DashboardCon
     }
   }, []);
 
+  const handleMagicLink = async (token: string) => {
+    try {
+      console.log(`[DASHBOARD-CONTAINER] 🔗 Processing magic link token: ${token}`);
+      setLoading(true);
+
+      const response = await fetch(`/api/auth/magic-link?token=${token}`);
+      const result = await response.json();
+
+      if (response.ok) {
+        console.log(`[DASHBOARD-CONTAINER] ✅ Magic link processed successfully`);
+
+        // Remove token from URL
+        const url = new URL(window.location.href);
+        url.searchParams.delete('token');
+        window.history.replaceState({}, '', url.toString());
+
+        // Now fetch survey data with the new cookies
+        await fetchSurveyData();
+        await checkGenerationStatus();
+      } else {
+        console.error(`[DASHBOARD-CONTAINER] ❌ Magic link failed:`, result.error);
+        // Redirect to survey if magic link is invalid
+        router.push('/survey');
+      }
+    } catch (error) {
+      console.error('[DASHBOARD-CONTAINER] ❌ Error processing magic link:', error);
+      router.push('/survey');
+    }
+  };
+
   const fetchSurveyData = async () => {
     try {
       console.log('[DASHBOARD-CONTAINER] 🔍 Fetching survey data...');
@@ -242,10 +289,20 @@ export function DashboardContainer({ initialScreen = 'dashboard' }: DashboardCon
         }
 
         setSurveyData(data.survey);
+        setHasSessionData(true); // We have valid session data
 
+      } else if (response.status === 401 || response.status === 404) {
+        // No session or no survey found - this means genuine redirect case
+        console.log('[DASHBOARD-CONTAINER] ❌ No valid session found, should redirect to survey');
+        setHasSessionData(false);
+      } else {
+        // Other errors - treat as temporary, don't redirect
+        console.error('[DASHBOARD-CONTAINER] ❌ Survey API error:', response.status);
+        setHasSessionData(true); // Assume session exists but API failed
       }
     } catch (error) {
       console.error('Failed to fetch survey data:', error);
+      setHasSessionData(true); // Assume session exists but API failed
     }
   };
 
@@ -253,12 +310,25 @@ export function DashboardContainer({ initialScreen = 'dashboard' }: DashboardCon
     try {
       // Check if APIs return data and analyze meal plan structure
       const [mealsResponse, workoutsResponse] = await Promise.all([
-        fetch('/api/ai/meals/current'),
-        fetch('/api/ai/workouts/current')
+        fetch('/api/ai/meals/current').catch(err => {
+          console.error('[DASHBOARD-CONTAINER] Meals API fetch failed:', err);
+          return { ok: false, status: 0 }; // Return error response shape
+        }),
+        fetch('/api/ai/workouts/current').catch(err => {
+          console.error('[DASHBOARD-CONTAINER] Workouts API fetch failed:', err);
+          return { ok: false, status: 0 }; // Return error response shape
+        })
       ]);
 
+      // Only treat 404 as "not generated", other errors as temporary failures
       const mealsGenerated = mealsResponse.ok;
       const workoutsGenerated = workoutsResponse.ok;
+
+      // For network errors, don't change existing generation status
+      if (mealsResponse.status === 0 || workoutsResponse.status === 0) {
+        console.log('[DASHBOARD-CONTAINER] ⚠️ API network error, keeping existing status');
+        return; // Don't update generation status on network errors
+      }
 
       let homeMealsGenerated = false;
       let restaurantMealsGenerated = false;
@@ -364,6 +434,7 @@ export function DashboardContainer({ initialScreen = 'dashboard' }: DashboardCon
       });
     } catch (error) {
       console.error('Failed to check generation status:', error);
+      // Don't change existing status on errors - let polling retry
     } finally {
       setLoading(false);
     }
@@ -397,8 +468,10 @@ export function DashboardContainer({ initialScreen = 'dashboard' }: DashboardCon
     return <LoadingPage />;
   }
 
-  // Don't render dashboard without survey data - redirect to survey instead
-  if (!surveyData) {
+  // Only redirect to survey if we genuinely have NO session data
+  // If hasSessionData is true but surveyData is null, it means API issues or data still loading
+  if (!hasSessionData && !surveyData) {
+    console.log('[DASHBOARD-CONTAINER] 🔄 No session data, redirecting to survey');
     return (
       <div className="min-h-screen bg-gray-50 flex items-center justify-center">
         <div className="text-center">
@@ -410,6 +483,25 @@ export function DashboardContainer({ initialScreen = 'dashboard' }: DashboardCon
           >
             Complete Survey
           </button>
+        </div>
+      </div>
+    );
+  }
+
+  // If we have session data but no survey data yet, show generation state
+  if (hasSessionData && !surveyData) {
+    return (
+      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+        <div className="text-center">
+          <motion.div
+            animate={{ rotate: 360 }}
+            transition={{ repeat: Infinity, duration: 1.2, ease: "linear" }}
+            className="mx-auto mb-4 w-8 h-8 text-red-600"
+          >
+            <Spinner size={32} />
+          </motion.div>
+          <h2 className="text-xl font-medium text-gray-900 mb-4">Loading Your Data...</h2>
+          <p className="text-gray-600">Setting up your personalized dashboard.</p>
         </div>
       </div>
     );

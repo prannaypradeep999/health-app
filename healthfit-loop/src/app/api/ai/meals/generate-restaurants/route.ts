@@ -190,7 +190,7 @@ async function findAndSelectBestRestaurants(surveyData: any): Promise<Restaurant
     console.log(`[RESTAURANT-SEARCH]   - Restaurants to choose from: ${uniqueRestaurants.length}`);
     console.log(`[RESTAURANT-SEARCH]   - Model: gpt-4o`);
 
-    const gptResult = await withGPTRetry(async () => {
+    const gptResult = await withGPTRetry(async (signal) => {
       const response = await fetch('https://api.openai.com/v1/chat/completions', {
         method: 'POST',
         headers: {
@@ -202,11 +202,13 @@ async function findAndSelectBestRestaurants(surveyData: any): Promise<Restaurant
           messages: [{ role: 'user', content: selectionPrompt }],
           response_format: { type: "json_object" },
           temperature: 0.3
-        })
+        }),
+        signal: signal
       });
 
       if (!response.ok) {
-        throw new Error(`GPT API error: ${response.status}`);
+        const errorText = await response.text().catch(() => 'Unknown error');
+        throw new Error(`GPT API error: ${response.status} - ${errorText}`);
       }
       return response.json();
     }, 'Restaurant selection');
@@ -216,6 +218,33 @@ async function findAndSelectBestRestaurants(surveyData: any): Promise<Restaurant
       return uniqueRestaurants.slice(0, 8);
     }
     const data = gptResult.data;
+
+    // Check for OpenAI refusal or content filtering
+    if (data.choices?.[0]?.finish_reason === 'content_filter') {
+      console.error('[RESTAURANT-SEARCH] ❌ Content filtered by OpenAI');
+      console.warn('[RESTAURANT-SEARCH] ⚠️ Using fallback after content filtering');
+      return uniqueRestaurants.slice(0, 8);
+    }
+
+    if (data.choices?.[0]?.message?.refusal) {
+      console.error('[RESTAURANT-SEARCH] ❌ OpenAI refused request:', data.choices[0].message.refusal);
+      console.warn('[RESTAURANT-SEARCH] ⚠️ Using fallback after refusal');
+      return uniqueRestaurants.slice(0, 8);
+    }
+
+    // Validate response structure
+    if (!data.choices || !Array.isArray(data.choices) || data.choices.length === 0) {
+      console.error('[RESTAURANT-SEARCH] ❌ Invalid response structure - no choices');
+      console.warn('[RESTAURANT-SEARCH] ⚠️ Using fallback after invalid structure');
+      return uniqueRestaurants.slice(0, 8);
+    }
+
+    if (!data.choices[0]?.message?.content) {
+      console.error('[RESTAURANT-SEARCH] ❌ Invalid response structure - no content');
+      console.warn('[RESTAURANT-SEARCH] ⚠️ Using fallback after missing content');
+      return uniqueRestaurants.slice(0, 8);
+    }
+
     console.log(`[RESTAURANT-SEARCH] 📊 GPT Response data:`);
     console.log(`[RESTAURANT-SEARCH]   - Has choices: ${!!data.choices}`);
     console.log(`[RESTAURANT-SEARCH]   - Choices length: ${data.choices?.length || 0}`);
@@ -414,7 +443,7 @@ async function selectRestaurantMealsForSchedule(
     console.log(`[RESTAURANT-SELECTION]   - Estimated tokens: ${estimatedTokens}`);
     console.log(`[RESTAURANT-SELECTION]   - Model: gpt-4o`);
 
-    const gptResult = await withGPTRetry(async () => {
+    const gptResult = await withGPTRetry(async (signal) => {
       const response = await fetch('https://api.openai.com/v1/chat/completions', {
         method: 'POST',
         headers: {
@@ -426,11 +455,13 @@ async function selectRestaurantMealsForSchedule(
           messages: [{ role: 'user', content: prompt }],
           response_format: { type: "json_object" },
           temperature: 0.4
-        })
+        }),
+        signal: signal
       });
 
       if (!response.ok) {
-        throw new Error(`GPT API error: ${response.status}`);
+        const errorText = await response.text().catch(() => 'Unknown error');
+        throw new Error(`GPT API error: ${response.status} - ${errorText}`);
       }
       return response.json();
     }, 'Restaurant meal selection');
@@ -440,6 +471,29 @@ async function selectRestaurantMealsForSchedule(
       return [];
     }
     const data = gptResult.data;
+
+    // Check for OpenAI refusal or content filtering
+    if (data.choices?.[0]?.finish_reason === 'content_filter') {
+      console.error('[RESTAURANT-SELECTION] ❌ Content filtered by OpenAI');
+      throw new Error('Content filtered by OpenAI - please try rephrasing your food preferences');
+    }
+
+    if (data.choices?.[0]?.message?.refusal) {
+      console.error('[RESTAURANT-SELECTION] ❌ OpenAI refused request:', data.choices[0].message.refusal);
+      throw new Error(`OpenAI refused request: ${data.choices[0].message.refusal}`);
+    }
+
+    // Validate response structure
+    if (!data.choices || !Array.isArray(data.choices) || data.choices.length === 0) {
+      console.error('[RESTAURANT-SELECTION] ❌ Invalid response structure - no choices');
+      throw new Error('Invalid response structure from OpenAI');
+    }
+
+    if (!data.choices[0]?.message?.content) {
+      console.error('[RESTAURANT-SELECTION] ❌ Invalid response structure - no content');
+      throw new Error('No content in OpenAI response');
+    }
+
     console.log(`[RESTAURANT-SELECTION] 📊 GPT Response data:`);
     console.log(`[RESTAURANT-SELECTION]   - Has choices: ${!!data.choices}`);
     console.log(`[RESTAURANT-SELECTION]   - Choices length: ${data.choices?.length || 0}`);
@@ -817,6 +871,19 @@ export async function POST(req: NextRequest) {
       
     } catch (dbError) {
       console.error('[RESTAURANT-GENERATION] ❌ Failed to update meal plan:', dbError);
+      console.error('[RESTAURANT-GENERATION] ❌ Full error details:', {
+        name: (dbError as Error).name,
+        message: (dbError as Error).message,
+        stack: (dbError as Error).stack
+      });
+      return NextResponse.json(
+        {
+          error: 'Failed to save restaurant meals to database',
+          details: (dbError as Error).message,
+          restaurantMealsGenerated: true // Meals were generated but not saved
+        },
+        { status: 500 }
+      );
     }
     
     const totalTime = Date.now() - startTime;

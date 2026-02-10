@@ -6,6 +6,7 @@ import { cookies } from 'next/headers';
 import { nanoid } from 'nanoid';
 import { getStartOfWeek } from '@/lib/utils/date-utils';
 import { checkPreferenceConflicts } from '@/lib/utils/preference-conflict-checker';
+import { sendEmail, generateDashboardReadyEmail } from '@/lib/email';
 
 export const runtime = 'nodejs';
 
@@ -68,7 +69,6 @@ function buildSurveyData(data: any, sessionId: string, mealsOutPerWeek: number) 
     customFoodInput: data.customFoodInput || null,
     uploadedFiles: data.uploadedFiles || [],
     preferredNutrients: data.preferredNutrients || [],
-    cookingFrequency: data.fillerQuestions?.cookingFrequency || null,
     foodAllergies: data.fillerQuestions?.foodAllergies || [],
     eatingOutOccasions: data.fillerQuestions?.eatingOutOccasions || null,
     healthGoalPriority: data.fillerQuestions?.healthGoalPriority || null,
@@ -97,6 +97,35 @@ function countRestaurantMeals(weeklyMealSchedule: any): number {
   });
 
   return count;
+}
+
+export async function PATCH(req: Request) {
+  try {
+    const { surveyId, email } = await req.json();
+
+    if (!surveyId || !email) {
+      return NextResponse.json(
+        { error: 'surveyId and email are required' },
+        { status: 400 }
+      );
+    }
+
+    // Update the survey with the email address
+    await prisma.surveyResponse.update({
+      where: { id: surveyId },
+      data: { email }
+    });
+
+    console.log(`[SURVEY-PATCH] ✅ Email updated for survey ${surveyId}: ${email}`);
+
+    return NextResponse.json({ success: true });
+  } catch (error) {
+    console.error('[SURVEY-PATCH] ❌ Error updating email:', error);
+    return NextResponse.json(
+      { error: 'Failed to update email' },
+      { status: 500 }
+    );
+  }
 }
 
 export async function POST(req: Request) {
@@ -213,35 +242,24 @@ export async function POST(req: Request) {
       });
     }
 
-    // Set cookies (session cookies that expire on browser close)
+    // Set cookies with 30-day expiration to persist across browser restarts
     cookieStore.set('guest_session', sessionId, {
       httpOnly: true,
       secure: process.env.NODE_ENV === 'production',
       sameSite: 'lax',
-      path: '/'
+      path: '/',
+      maxAge: 30 * 24 * 60 * 60 // 30 days
     });
 
     cookieStore.set('survey_id', survey.id, {
       httpOnly: true,
       secure: process.env.NODE_ENV === 'production',
       sameSite: 'lax',
-      path: '/'
+      path: '/',
+      maxAge: 30 * 24 * 60 * 60 // 30 days
     });
 
-    console.log('[SURVEY-API] ✅ Survey saved successfully:', {
-      surveyId: survey.id,
-      hasAge: !!survey.age,
-      hasWeight: !!survey.weight,
-      hasHeight: !!survey.height,
-      hasSex: !!survey.sex,
-      age: survey.age,
-      weight: survey.weight,
-      height: survey.height,
-      sex: survey.sex,
-      goal: survey.goal,
-      activityLevel: survey.activityLevel,
-      weeklyMealSchedule: JSON.stringify(survey.weeklyMealSchedule).substring(0, 200)
-    });
+    console.log(`[SURVEY-API] ✅ Survey saved: id=${survey.id}, session=${sessionId}, age=${survey.age}, weight=${survey.weight}, height=${survey.height}, sex=${survey.sex}`);
 
     // Build base URL for internal API calls
     const protocol = req.headers.get('x-forwarded-proto') || 'http';
@@ -261,9 +279,10 @@ export async function POST(req: Request) {
         httpOnly: true,
         secure: process.env.NODE_ENV === 'production',
         sameSite: 'lax',
-        path: '/'
+        path: '/',
+        maxAge: 30 * 24 * 60 * 60 // 30 days
       });
-      console.log(`[FINAL] 🍪 Set meal_plan_id cookie: ${mealPlan.id}`);
+      console.log(`[SURVEY-API] 🍪 Set cookies: guest_session=${sessionId}, survey_id=${survey.id}, meal_plan_id=${mealPlan.id} (maxAge: 30d)`);
 
       // Step 2: Sequential meal generation + parallel workout generation
       // The LoadingJourney will poll for status updates
@@ -291,6 +310,36 @@ export async function POST(req: Request) {
 
           // Wait for workouts too
           await workoutPromise;
+
+          // Send dashboard ready email after all generation completes
+          try {
+            if (survey.email && !survey.dashboardEmailSent) {
+              console.log(`[FINAL] 📧 Sending dashboard ready email to ${survey.email}...`);
+              const { subject, html } = generateDashboardReadyEmail(survey.firstName, survey.id);
+              const emailSent = await sendEmail({
+                to: survey.email,
+                subject,
+                html
+              });
+
+              if (emailSent) {
+                await prisma.surveyResponse.update({
+                  where: { id: survey.id },
+                  data: { dashboardEmailSent: true }
+                });
+                console.log(`[FINAL] ✅ Dashboard email sent to ${survey.email}`);
+              } else {
+                console.log(`[FINAL] ❌ Failed to send dashboard email to ${survey.email}`);
+              }
+            } else if (survey.dashboardEmailSent) {
+              console.log(`[FINAL] 📧 Dashboard email already sent to ${survey.email}, skipping`);
+            } else {
+              console.log(`[FINAL] 📧 No email address found, skipping dashboard email`);
+            }
+          } catch (emailError) {
+            console.error('[FINAL] ❌ Email send failed, continuing:', emailError);
+          }
+
         } catch (error) {
           console.error('[FINAL] ❌ Sequential generation error:', error);
         }

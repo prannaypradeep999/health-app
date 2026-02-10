@@ -25,19 +25,24 @@ export async function POST(request: Request) {
 
     // Set user_id cookie for backward compatibility
     const cookieStore = await cookies();
+    if (!user.id) {
+      console.error(`[AUTH] ❌ CRITICAL: user.id is undefined/null for email: ${email}`);
+      throw new Error('User ID is missing after authentication');
+    }
     cookieStore.set('user_id', user.id, {
       httpOnly: true,
       secure: process.env.NODE_ENV === 'production',
       sameSite: 'lax',
       maxAge: 30 * 24 * 60 * 60 // 30 days
     });
+    console.log(`[AUTH] 🍪 Set cookies: user_id=${user.id}, session_id=${sessionId} (maxAge: 30d)`);
 
     // ========== Migrate guest data BEFORE clearing cookies ==========
     const guestSessionId = cookieStore.get('guest_session')?.value;
     const surveyId = cookieStore.get('survey_id')?.value;
 
     if (guestSessionId || surveyId) {
-      console.log(`[Auth] Migrating guest data for user: ${user.email}`);
+      console.log(`[AUTH] 🔗 Migrating guest data for user: ${user.email} (guestSession=${guestSessionId}, survey=${surveyId})`);
       await migrateGuestToUser(sessionId, user.id);
     }
     // =================================================================
@@ -46,7 +51,7 @@ export async function POST(request: Request) {
     cookieStore.delete('guest_session');
     cookieStore.delete('survey_id');
 
-    console.log(`[Auth] User logged in successfully: ${user.email}`);
+    console.log(`[AUTH] 🔑 User login successful: userId=${user.id}, email=${user.email}`);
 
     return NextResponse.json({
       success: true,

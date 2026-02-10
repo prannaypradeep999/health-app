@@ -365,15 +365,36 @@ export function LoadingJourney({ surveyData, onComplete, onSkipToDashboard }: Lo
   }, []);
 
   const handleSendEmail = async () => {
-    if (!email) return;
+    if (!email || !surveyData?.id) return;
 
-    // TODO: Implement actual email sending
-    // For now, just show confirmation
-    console.log('[LoadingJourney] Email backup requested:', email);
-    setEmailSent(true);
+    try {
+      console.log('[LoadingJourney] Saving email for dashboard notification:', email);
 
-    // In future: POST to /api/email/send-backup-link
-    // with surveyId and email
+      // Save email to survey record so server-side generation can use it
+      const response = await fetch('/api/survey', {
+        method: 'PATCH',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          surveyId: surveyData.id,
+          email: email
+        })
+      });
+
+      if (response.ok) {
+        setEmailSent(true);
+        console.log('[LoadingJourney] ✅ Email saved successfully');
+      } else {
+        console.error('[LoadingJourney] ❌ Failed to save email');
+        // Still show success message to user - don't block UX
+        setEmailSent(true);
+      }
+    } catch (error) {
+      console.error('[LoadingJourney] ❌ Error saving email:', error);
+      // Still show success message to user - don't block UX
+      setEmailSent(true);
+    }
   };
 
   const currentTip = nutritionTips[currentTipIndex];
@@ -678,7 +699,10 @@ export function LoadingJourney({ surveyData, onComplete, onSkipToDashboard }: Lo
             >
               <CheckCircle size={24} className="text-green-600 mx-auto mb-2" />
               <p className="text-sm text-green-800">
-                We'll email you a link to <strong>{email}</strong>
+                We'll email you when your plan is ready!
+              </p>
+              <p className="text-xs text-green-600 mt-1">
+                Sent to <strong>{email}</strong>
               </p>
             </motion.div>
           )}

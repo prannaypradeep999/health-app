@@ -76,7 +76,7 @@ export async function POST(req: NextRequest) {
     const workoutPlan = await generateWorkoutPlan(surveyData);
 
     const generationTime = Date.now() - generationStartTime;
-    console.log(`[WORKOUT-GENERATION] ✅ Plan generation completed in ${generationTime}ms`);
+    console.log(`[WORKOUT-GENERATION] ✅ GPT workout plan generated in ${generationTime}ms`);
 
     // Enhance workout plan with exercise images
     console.log('[WORKOUT-GENERATION] 🖼️ Enhancing workout plan with exercise images...');
@@ -103,9 +103,32 @@ export async function POST(req: NextRequest) {
         }
       });
       console.log(`[DATABASE] ✅ Workout plan saved with ID: ${createdWorkoutPlan.id}`);
+
+      // Set workout_plan_id cookie for direct lookup
+      const cookieStore = await cookies();
+      cookieStore.set('workout_plan_id', createdWorkoutPlan.id, {
+        httpOnly: true,
+        secure: process.env.NODE_ENV === 'production',
+        sameSite: 'lax',
+        path: '/',
+        maxAge: 30 * 24 * 60 * 60 // 30 days
+      });
+      console.log(`[DATABASE] 🍪 Set workout_plan_id cookie: ${createdWorkoutPlan.id}`);
     } catch (dbError) {
       console.error(`[DATABASE] ❌ Failed to save workout plan:`, dbError);
-      // Continue anyway since we have the data
+      console.error(`[DATABASE] ❌ Full error details:`, {
+        name: (dbError as Error).name,
+        message: (dbError as Error).message,
+        stack: (dbError as Error).stack
+      });
+      return NextResponse.json(
+        {
+          error: 'Failed to save workout plan to database',
+          details: (dbError as Error).message,
+          workoutGenerated: true // Plan was generated but not saved
+        },
+        { status: 500 }
+      );
     }
 
     return NextResponse.json({
@@ -134,7 +157,7 @@ async function generateWorkoutPlan(surveyData: any): Promise<WorkoutPlan> {
 
   const userPrompt = createWorkoutPlanPrompt(surveyData, workoutPrefs);
 
-  const gptResult = await withGPTRetry(async () => {
+  const gptResult = await withGPTRetry(async (signal) => {
     const response = await fetch('https://api.openai.com/v1/chat/completions', {
       method: 'POST',
       headers: {
@@ -152,11 +175,13 @@ async function generateWorkoutPlan(surveyData: any): Promise<WorkoutPlan> {
         ],
         response_format: { type: 'json_object' },
         temperature: 0.2
-      })
+      }),
+      signal: signal
     });
 
     if (!response.ok) {
-      throw new Error(`GPT API error: ${response.status}`);
+      const errorText = await response.text().catch(() => 'Unknown error');
+      throw new Error(`GPT API error: ${response.status} - ${errorText}`);
     }
     return response.json();
   }, 'Workout plan generation');
@@ -166,10 +191,47 @@ async function generateWorkoutPlan(surveyData: any): Promise<WorkoutPlan> {
   }
 
   const completion = gptResult.data;
+
+  // Check for OpenAI refusal or content filtering
+  if (completion.choices?.[0]?.finish_reason === 'content_filter') {
+    console.error('[GPT-WORKOUT] ❌ Content filtered by OpenAI');
+    throw new Error('Content filtered by OpenAI - please try rephrasing your workout preferences');
+  }
+
+  if (completion.choices?.[0]?.message?.refusal) {
+    console.error('[GPT-WORKOUT] ❌ OpenAI refused request:', completion.choices[0].message.refusal);
+    throw new Error(`OpenAI refused request: ${completion.choices[0].message.refusal}`);
+  }
+
+  // Validate response structure
+  if (!completion.choices || !Array.isArray(completion.choices) || completion.choices.length === 0) {
+    console.error('[GPT-WORKOUT] ❌ Invalid response structure - no choices');
+    throw new Error('Invalid response structure from OpenAI');
+  }
+
+  if (!completion.choices[0]?.message?.content) {
+    console.error('[GPT-WORKOUT] ❌ Invalid response structure - no content');
+    throw new Error('No content in OpenAI response');
+  }
+
   const workoutContent = completion.choices[0].message.content;
 
   try {
     const workoutPlan = JSON.parse(workoutContent) as WorkoutPlan;
+
+    // Validate that the parsed plan has the expected structure
+    if (!workoutPlan || typeof workoutPlan !== 'object') {
+      throw new Error('Parsed workout plan is not a valid object');
+    }
+
+    if (!workoutPlan.weeklyPlan || !Array.isArray(workoutPlan.weeklyPlan)) {
+      throw new Error('Workout plan missing weeklyPlan array');
+    }
+
+    if (workoutPlan.weeklyPlan.length === 0) {
+      throw new Error('Workout plan weeklyPlan array is empty');
+    }
+
     console.log(`[GPT-WORKOUT] ✅ Successfully generated ${workoutPlan.weeklyPlan.length} workout days`);
 
     const toNumber = (value: unknown): number | null => {

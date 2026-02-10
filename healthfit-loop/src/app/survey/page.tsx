@@ -244,7 +244,6 @@ interface SurveyData {
   fitnessLevel?: string;
   healthFocus?: string;
   maintainFocus?: string;
-  activityLevel: string;
   sportsInterests: string;
   fitnessTimeline: string;
   monthlyFoodBudget: number | '';
@@ -281,7 +280,6 @@ interface SurveyData {
   };
   additionalGoalsNotes?: string;
   fillerQuestions: {
-    cookingFrequency: string;
     foodAllergies: string[];
     eatingOutOccasions: string;
     healthGoalPriority: string;
@@ -626,6 +624,16 @@ function OnboardingWelcome({ onStart }: OnboardingWelcomeProps) {
         <p className="text-center text-sm text-gray-500 mt-4">
           Setup takes less than 2 minutes
         </p>
+
+        <p className="text-center text-sm text-gray-400 mt-3">
+          Already have an account?{' '}
+          <a
+            href="/login"
+            className="text-red-600 hover:text-red-700 underline transition-colors"
+          >
+            Log in
+          </a>
+        </p>
       </div>
     </div>
   );
@@ -643,10 +651,31 @@ function OnboardingSteps({ onComplete, onBack }: OnboardingStepsProps) {
   const [showAllergyConfirmation, setShowAllergyConfirmation] = useState(false);
   const [preferenceConflicts, setPreferenceConflicts] = useState<PreferenceConflict[]>([]);
   const [otherDietType, setOtherDietType] = useState('');
+  const [emailCheckError, setEmailCheckError] = useState<string | null>(null);
 
   // Template selection state
   const [selectedTemplate, setSelectedTemplate] = useState<string | null>(null);
   const [showCustomize, setShowCustomize] = useState(false);
+
+  // Function to check if email already exists
+  const checkEmailExists = async (email: string): Promise<boolean> => {
+    try {
+      const response = await fetch('/api/auth/check-email', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: email.trim() })
+      });
+
+      if (response.ok) {
+        const data = await response.json();
+        return data.exists;
+      }
+      return false;
+    } catch (error) {
+      console.error('Error checking email:', error);
+      return false;
+    }
+  };
 
   // Define all food options at the top
   const allFoodOptions = [
@@ -684,12 +713,12 @@ function OnboardingSteps({ onComplete, onBack }: OnboardingStepsProps) {
     zipCode: '',
     country: 'United States',
     goal: '',
+    activityLevel: '',
     primaryGoal: '',
     goalChallenge: '',
     fitnessLevel: '',
     healthFocus: '',
     maintainFocus: '',
-    activityLevel: '',
     sportsInterests: '',
     fitnessTimeline: '',
     preferredActivities: [],
@@ -730,7 +759,6 @@ function OnboardingSteps({ onComplete, onBack }: OnboardingStepsProps) {
       timePreferences: []
     },
     fillerQuestions: {
-      cookingFrequency: '',
       foodAllergies: [],
       eatingOutOccasions: '',
       healthGoalPriority: '',
@@ -810,13 +838,6 @@ function OnboardingSteps({ onComplete, onBack }: OnboardingStepsProps) {
     { value: 'GENERAL_WELLNESS', label: 'Wellness' }
   ];
 
-  const activityLevels = [
-    { value: 'SEDENTARY', label: 'Sedentary', desc: 'Little to no exercise' },
-    { value: 'LIGHTLY_ACTIVE', label: 'Light', desc: '1-3 days per week' },
-    { value: 'MODERATELY_ACTIVE', label: 'Moderate', desc: '3-5 days per week' },
-    { value: 'VERY_ACTIVE', label: 'High', desc: '6-7 days per week' }
-  ];
-
   const preferredActivitiesOptions = [
     'Cardio (Running, Cycling, Swimming)',
     'Strength Training (Weights, Bodyweight)',
@@ -894,7 +915,6 @@ function OnboardingSteps({ onComplete, onBack }: OnboardingStepsProps) {
 
   const getNormalizedFillerQuestions = () => ({
     ...formData.fillerQuestions,
-    cookingFrequency: formData.fillerQuestions?.cookingFrequency || 'few_times_week',
     foodAllergies: formData.fillerQuestions?.foodAllergies || []
   });
 
@@ -1045,9 +1065,7 @@ function OnboardingSteps({ onComplete, onBack }: OnboardingStepsProps) {
         break;
       }
       case 4: {
-        if (!formData.activityLevel) {
-          errors.push("Please select your activity level");
-        }
+        // No validation needed for this step now
         break;
       }
       case 5: {
@@ -1247,7 +1265,42 @@ function OnboardingSteps({ onComplete, onBack }: OnboardingStepsProps) {
     if (currentStep < totalSteps) {
       setCurrentStep(currentStep + 1);
     } else {
-      onComplete(formData);
+      // Final submission - use the same data transformation as intermediate steps
+      const finalData = {
+        email: formData.email || 'temp@example.com',
+        firstName: formData.firstName || 'User',
+        lastName: formData.lastName || '',
+        age: Number(formData.age) || 25,
+        sex: formData.sex || 'nonbinary',
+        height: Number(formData.height) || 70,
+        weight: Number(formData.weight) || 150,
+
+        // Full address fields
+        streetAddress: formData.streetAddress || '',
+        city: formData.city || '',
+        state: formData.state || '',
+        zipCode: formData.zipCode || '10001',
+        country: formData.country || 'United States',
+        goal: formData.goal || 'GENERAL_WELLNESS',
+        activityLevel: formData.activityLevel || 'MODERATELY_ACTIVE',
+        sportsInterests: formData.sportsInterests || '',
+        fitnessTimeline: formData.fitnessTimeline || '',
+        monthlyFoodBudget: Number(formData.monthlyFoodBudget) || 200,
+        monthlyFitnessBudget: Number(formData.monthlyFitnessBudget) || 50,
+        dietPrefs: normalizeDietPrefs(formData.dietPrefs || []),
+        weeklyMealSchedule: formData.weeklyMealSchedule,
+        distancePreference: formData.distancePreference || 'medium',
+        preferredCuisines: formData.preferredCuisines || [],
+        preferredFoods: formData.preferredFoods || [],
+        customFoodInput: formData.customFoodInput || '',
+        uploadedFiles: formData.uploadedFiles || [],
+        preferredNutrients: formData.preferredNutrients || [],
+        fillerQuestions: getNormalizedFillerQuestions(),
+        workoutPreferences: formData.workoutPreferences,
+        biomarkers: formData.biomarkers || {},
+        source: formData.source || 'web_v2'
+      };
+      onComplete(finalData);
     }
   };
 
@@ -1258,6 +1311,17 @@ function OnboardingSteps({ onComplete, onBack }: OnboardingStepsProps) {
       return;
     }
 
+    // Check for duplicate email on step 1
+    if (currentStep === 1) {
+      setEmailCheckError(null);
+      const emailExists = await checkEmailExists(formData.email);
+      if (emailExists) {
+        setEmailCheckError("This email is already associated with an account. Please log in instead.");
+        setStepErrors(["This email is already associated with an account. Please log in instead."]);
+        return;
+      }
+    }
+
     if (currentStep === 7 && getAllergySelectionCount() === 0) {
       setStepErrors([]);
       setShowAllergyConfirmation(true);
@@ -1265,6 +1329,7 @@ function OnboardingSteps({ onComplete, onBack }: OnboardingStepsProps) {
     }
 
     setStepErrors([]);
+    setEmailCheckError(null);
     await proceedToNext();
   };
 
@@ -1274,6 +1339,7 @@ function OnboardingSteps({ onComplete, onBack }: OnboardingStepsProps) {
     } else {
       setCurrentStep(currentStep - 1);
       setStepErrors([]);
+      setEmailCheckError(null);
     }
   };
 
@@ -1350,10 +1416,26 @@ function OnboardingSteps({ onComplete, onBack }: OnboardingStepsProps) {
                 <Input
                   type="email"
                   value={formData.email}
-                  onChange={(e) => updateFormData("email", e.target.value)}
+                  onChange={(e) => {
+                    updateFormData("email", e.target.value);
+                    setEmailCheckError(null);
+                  }}
                   placeholder="your.email@example.com"
                   className="border-gray-300 focus:border-red-500 bg-white text-gray-900 placeholder:text-gray-500"
                 />
+                {emailCheckError && (
+                  <div className="mt-2 p-3 bg-red-50 border border-red-200 rounded-lg">
+                    <p className="text-red-700 text-sm">
+                      {emailCheckError}{' '}
+                      <a
+                        href="/login"
+                        className="underline text-red-800 hover:text-red-900 font-medium"
+                      >
+                        Log in here
+                      </a>
+                    </p>
+                  </div>
+                )}
               </div>
               <div className="grid grid-cols-2 gap-4">
                 <div>
@@ -1611,51 +1693,8 @@ function OnboardingSteps({ onComplete, onBack }: OnboardingStepsProps) {
               <p className="text-gray-600">Tell us about your fitness lifestyle</p>
             </div>
 
-            {/* Activity Level */}
-            <div className="space-y-4">
-              <Label className="text-neutral-700 mb-4 block text-lg font-medium">
-                How active are you? <span className="text-red-500">*</span>
-              </Label>
-              <RadioGroup value={formData.activityLevel} onValueChange={(value) => updateFormData("activityLevel", value)}>
-                <div className="space-y-3">
-                  {activityLevels.map((option) => (
-                    <div
-                      key={option.value}
-                      className={`flex items-center space-x-3 p-3 rounded-lg border transition-all duration-200 cursor-pointer ${
-                        formData.activityLevel === option.value
-                          ? "border-blue-500 bg-blue-50 shadow-sm"
-                          : "border-gray-300 bg-white hover:border-gray-400 hover:bg-gray-50"
-                      }`}
-                      onClick={() => updateFormData("activityLevel", option.value)}
-                    >
-                      <RadioGroupItem value={option.value} id={option.value} />
-                      <div>
-                        <Label
-                          htmlFor={option.value}
-                          className={`font-medium cursor-pointer ${
-                            formData.activityLevel === option.value
-                              ? "text-blue-900"
-                              : "text-gray-900"
-                          }`}
-                        >
-                          {option.label}
-                        </Label>
-                        <p className={`text-sm ${
-                          formData.activityLevel === option.value
-                            ? "text-blue-700"
-                            : "text-gray-600"
-                        }`}>
-                          {option.desc}
-                        </p>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </RadioGroup>
-            </div>
-
             {/* Activity Preferences */}
-            <div className="space-y-4 pt-6 border-t border-gray-200">
+            <div className="space-y-4">
               <div>
                 <Label className="text-neutral-700 mb-4 block text-lg font-medium">How do you like to stay active?</Label>
                 <p className="text-sm text-gray-600 mb-4">Select all activity types you enjoy (we'll factor these into your fitness recommendations)</p>
@@ -2152,36 +2191,6 @@ function OnboardingSteps({ onComplete, onBack }: OnboardingStepsProps) {
                 </Button>
               </div>
               <p className="text-xs text-gray-500 mt-2">Press Enter or click Add to include your custom food</p>
-            </div>
-
-            {/* Cooking Frequency */}
-            <div className="border-t pt-6">
-              <Label className="text-gray-700 mb-2 block">
-                How often do you cook at home?
-              </Label>
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                {[
-                  { value: 'daily', label: 'Daily', desc: 'I cook most meals' },
-                  { value: 'few_times_week', label: 'A few times a week', desc: '3-5 meals per week' },
-                  { value: 'weekly', label: 'Once or twice a week', desc: '1-2 meals per week' },
-                  { value: 'rarely', label: 'Rarely', desc: 'I prefer quick/simple meals' },
-                  { value: 'never', label: 'Never', desc: "I don't cook at home" },
-                ].map((option) => (
-                  <button
-                    key={option.value}
-                    type="button"
-                    onClick={() => updateFillerQuestions('cookingFrequency', option.value)}
-                    className={`p-4 rounded-xl border text-left transition-all duration-200 ${
-                      formData.fillerQuestions?.cookingFrequency === option.value
-                        ? 'bg-green-50 border-green-300'
-                        : 'bg-white border-gray-200 hover:bg-gray-50'
-                    }`}
-                  >
-                    <div className="font-medium text-gray-900">{option.label}</div>
-                    <div className="text-sm text-gray-500">{option.desc}</div>
-                  </button>
-                ))}
-              </div>
             </div>
 
             {/* SECTION 1: Diet Type */}
@@ -2718,6 +2727,7 @@ function SurveyContent() {
   const [submitting, setSubmitting] = useState(false);
   const [message, setMessage] = useState<{ ok?: boolean; error?: string } | null>(null);
 
+
   const [existingPlanCheck, setExistingPlanCheck] = useState<{
     checking: boolean;
     hasExistingPlan: boolean;
@@ -2858,7 +2868,6 @@ function SurveyContent() {
     try {
       const normalizedFillerQuestions = {
         ...data.fillerQuestions,
-        cookingFrequency: data.fillerQuestions?.cookingFrequency || 'few_times_week',
         foodAllergies: data.fillerQuestions?.foodAllergies || []
       };
 

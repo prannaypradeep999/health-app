@@ -288,7 +288,7 @@ function LoginContent() {
           </CardContent>
         </Card>
 
-        {/* Continue as Guest Option */}
+        {/* Survey Option */}
         <div className="mt-6 text-center">
           <Button
             variant="outline"
@@ -296,7 +296,7 @@ function LoginContent() {
             className="text-gray-600 border-gray-300 hover:bg-gray-50"
           >
             <ArrowLeft className="w-4 h-4 mr-2" />
-            Continue as Guest
+            Take Our Survey
           </Button>
           <p className="text-xs text-gray-500 mt-2">
             You can create an account later to save your progress

@@ -7,7 +7,7 @@ import { validateMealPlan } from '@/lib/utils/meal-plan-validator';
 import { validateIngredientSums } from '@/lib/utils/ingredient-validator';
 import { validateRestrictions } from '@/lib/utils/restriction-validator';
 import { buildFallbackGroceryList, enhanceGroceryListWithUsage } from '@/lib/utils/grocery-list';
-import { createHomeMealGenerationPrompt } from '@/lib/ai/prompts';
+import { createHomeMealGenerationPrompt, createPlanningPrompt, createDetailPrompt, createGroceryPrompt } from '@/lib/ai/prompts';
 import { pexelsClient } from '@/lib/external/pexels-client';
 import { withGPTRetry } from '@/lib/utils/retry';
 import { getStartOfWeek } from '@/lib/utils/date-utils';
@@ -271,8 +271,33 @@ async function generateHomeMealsForSchedule(
   weeklyNutritionTargets?: any
 ): Promise<any> {
   const startTime = Date.now();
-  let restrictionViolations: any[] = [];
   console.log(`[HOME-MEALS-7DAY] 🏠 Generating ${homeMeals.length} home meals for 7-day schedule...`);
+
+  // Try Phase 2 plan+parallel architecture first (NEW DEFAULT)
+  try {
+    console.log(`[HOME-MEALS-7DAY] 🚀 Trying Phase 2: Plan+Parallel architecture...`);
+    const result = await generateHomeMealsParallel(homeMeals, surveyData, nutritionTargets, weeklyNutritionTargets);
+    const totalTime = Date.now() - startTime;
+    console.log(`[HOME-MEALS-7DAY] ✅ Phase 2 completed successfully in ${totalTime}ms`);
+    return result;
+  } catch (phase2Error) {
+    console.warn(`[HOME-MEALS-7DAY] ⚠️ Phase 2 failed, falling back to Phase 1:`, (phase2Error as Error).message);
+
+    // Fallback to Phase 1 (original single-call approach)
+    return await generateHomeMealsLegacy(homeMeals, surveyData, nutritionTargets, weeklyNutritionTargets);
+  }
+}
+
+// Phase 1: Legacy single-call approach (FALLBACK)
+async function generateHomeMealsLegacy(
+  homeMeals: Array<{day: string, mealType: string}>,
+  surveyData: any,
+  nutritionTargets: any,
+  weeklyNutritionTargets?: any
+): Promise<any> {
+  const startTime = Date.now();
+  let restrictionViolations: any[] = [];
+  console.log(`[HOME-MEALS-LEGACY] 🔄 Fallback: Using Phase 1 legacy approach for ${homeMeals.length} meals...`);
 
   try {
     // Organize meals by type for better prompting
@@ -296,7 +321,8 @@ async function generateHomeMealsForSchedule(
     });
 
     // Replace the direct fetch with retry wrapper:
-    const gptResult = await withGPTRetry(async () => {
+    console.log(`[HOME-MEALS-LEGACY] 🤖 Using model: gpt-4o, max_tokens: 16384`);
+    const gptResult = await withGPTRetry(async (signal) => {
       const response = await fetch('https://api.openai.com/v1/chat/completions', {
         method: 'POST',
         headers: {
@@ -304,15 +330,17 @@ async function generateHomeMealsForSchedule(
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
-          model: 'gpt-4o-mini',
+          model: 'gpt-4o',
           messages: [{ role: 'system', content: prompt }],
-          temperature: 0.8,
+          temperature: 0.5,
+          max_tokens: 16384,
           response_format: { type: "json_object" }
-        })
+        }),
+        signal: signal
       });
 
       if (!response.ok) {
-        const errorText = await response.text();
+        const errorText = await response.text().catch(() => 'Unknown error');
         throw new Error(`GPT API error ${response.status}: ${errorText.substring(0, 100)}`);
       }
 
@@ -330,8 +358,54 @@ async function generateHomeMealsForSchedule(
     }
 
     const data = gptResult.data;
+
+    // Store token usage for later logging
+    const tokenUsage = data.usage;
+
+    // Check for OpenAI refusal or content filtering
+    if (data.choices?.[0]?.finish_reason === 'content_filter') {
+      console.error('[HOME-MEALS-7DAY] ❌ Content filtered by OpenAI');
+      return {
+        homeMeals: [],
+        groceryList: null,
+        error: 'Content filtered by OpenAI - please try rephrasing your meal preferences',
+        retryAttempts: gptResult.attempts
+      };
+    }
+
+    if (data.choices?.[0]?.message?.refusal) {
+      console.error('[HOME-MEALS-7DAY] ❌ OpenAI refused request:', data.choices[0].message.refusal);
+      return {
+        homeMeals: [],
+        groceryList: null,
+        error: `OpenAI refused request: ${data.choices[0].message.refusal}`,
+        retryAttempts: gptResult.attempts
+      };
+    }
+
+    // Validate response structure
+    if (!data.choices || !Array.isArray(data.choices) || data.choices.length === 0) {
+      console.error('[HOME-MEALS-7DAY] ❌ Invalid response structure - no choices');
+      return {
+        homeMeals: [],
+        groceryList: null,
+        error: 'Invalid response structure from OpenAI',
+        retryAttempts: gptResult.attempts
+      };
+    }
+
+    if (!data.choices[0]?.message?.content) {
+      console.error('[HOME-MEALS-7DAY] ❌ Invalid response structure - no content');
+      return {
+        homeMeals: [],
+        groceryList: null,
+        error: 'No content in OpenAI response',
+        retryAttempts: gptResult.attempts
+      };
+    }
+
     console.log(`[HOME-MEALS-7DAY] ✅ Succeeded after ${gptResult.attempts} attempt(s)`);
-    const content = data.choices?.[0]?.message?.content || '{}';
+    const content = data.choices[0].message.content;
 
     console.log('[HOME-MEALS-7DAY] 🔍 Raw GPT response (first 500 chars):', content.substring(0, 500));
 
@@ -478,7 +552,11 @@ async function generateHomeMealsForSchedule(
     }
 
     const generationTime = Date.now() - startTime;
-    console.log(`[HOME-MEALS-7DAY] ✅ Generated ${parsedResult.homeMeals?.length || 0} home meals in ${generationTime}ms`);
+    if (tokenUsage) {
+      console.log(`[HOME-MEALS-7DAY] ✅ GPT home meals generated in ${generationTime}ms (prompt: ${tokenUsage.prompt_tokens} tokens, response: ${tokenUsage.completion_tokens} tokens)`);
+    } else {
+      console.log(`[HOME-MEALS-7DAY] ✅ GPT home meals generated in ${generationTime}ms (token usage not available)`);
+    }
 
     return {
       ...parsedResult,
@@ -604,6 +682,343 @@ async function triggerGroceryPriceLookup(surveyId: string) {
     });
   } catch (error) {
     console.error('[HOME-MEALS] ❌ Failed to trigger grocery price lookup:', error);
+  }
+}
+
+// ========================================
+// PHASE 2: PLAN+PARALLEL ARCHITECTURE
+// ========================================
+
+/**
+ * Phase 1: Planning Call - High-level meal planning for the entire week
+ */
+async function planWeekMeals(
+  homeMeals: Array<{day: string, mealType: string}>,
+  surveyData: any,
+  nutritionTargets: any,
+  weeklyNutritionTargets?: any
+): Promise<any> {
+  console.log(`[HOME-MEALS-7DAY] 📋 Phase 1: Planning ${homeMeals.length} meals...`);
+  const startTime = Date.now();
+
+  // Build schedule summary
+  const mealsByType = homeMeals.reduce((acc, meal) => {
+    if (!acc[meal.mealType]) acc[meal.mealType] = [];
+    acc[meal.mealType].push(meal.day);
+    return acc;
+  }, {} as Record<string, string[]>);
+
+  const scheduleText = Object.entries(mealsByType).map(([mealType, days]) =>
+    `${mealType.charAt(0).toUpperCase() + mealType.slice(1)}: ${days.join(', ')}`
+  ).join('\n');
+
+  // Create planning prompt with user context but simpler output
+  const planningPrompt = createPlanningPrompt({
+    homeMeals,
+    surveyData,
+    nutritionTargets,
+    scheduleText,
+    weeklyNutritionTargets
+  });
+
+  const gptResult = await withGPTRetry(async (signal) => {
+    const response = await fetch('https://api.openai.com/v1/chat/completions', {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${process.env.GPT_KEY}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        model: 'gpt-4o',
+        messages: [{ role: 'system', content: planningPrompt }],
+        temperature: 0.7,
+        max_tokens: 2000,
+        response_format: { type: "json_object" }
+      }),
+      signal: signal
+    });
+
+    if (!response.ok) {
+      const errorText = await response.text().catch(() => 'Unknown error');
+      throw new Error(`GPT API error ${response.status}: ${errorText.substring(0, 100)}`);
+    }
+
+    return response.json();
+  }, 'Meal planning');
+
+  if (!gptResult.success) {
+    throw new Error(`Meal planning failed: ${gptResult.error}`);
+  }
+
+  const data = gptResult.data;
+  const content = data.choices?.[0]?.message?.content;
+
+  if (!content) {
+    throw new Error('No planning content received');
+  }
+
+  const planningTime = Date.now() - startTime;
+  const tokenUsage = data.usage;
+
+  if (tokenUsage) {
+    console.log(`[HOME-MEALS-7DAY] ✅ Planning complete in ${planningTime}ms (prompt: ${tokenUsage.prompt_tokens} tokens, response: ${tokenUsage.completion_tokens} tokens)`);
+  } else {
+    console.log(`[HOME-MEALS-7DAY] ✅ Planning complete in ${planningTime}ms`);
+  }
+
+  try {
+    const planningResult = JSON.parse(content);
+    console.log(`[HOME-MEALS-7DAY] 📝 Planning raw response (first 500 chars):`, content.substring(0, 500));
+    console.log(`[HOME-MEALS-7DAY] 📝 Planning response structure:`, Object.keys(planningResult));
+
+    return planningResult;
+  } catch (parseError) {
+    console.error('[HOME-MEALS-7DAY] Planning JSON parse failed:', parseError);
+    console.error('[HOME-MEALS-7DAY] Raw content:', content.substring(0, 1000));
+    throw new Error('Failed to parse meal planning response');
+  }
+}
+
+/**
+ * Phase 2: Detail Generation - Generate full recipes for a chunk of planned meals
+ */
+async function generateMealDetails(
+  plannedMealsChunk: any[],
+  surveyData: any,
+  nutritionTargets: any,
+  chunkName: string
+): Promise<any> {
+  console.log(`[HOME-MEALS-7DAY] 📋 Phase 2: Generating details for ${chunkName} (${plannedMealsChunk.length} meals)...`);
+  const startTime = Date.now();
+
+  // Create detail prompt with planned meals and user context
+  const detailPrompt = createDetailPrompt(plannedMealsChunk, {
+    homeMeals: plannedMealsChunk.map(m => ({day: m.day, mealType: m.mealType})),
+    surveyData,
+    nutritionTargets,
+    scheduleText: `Details for ${chunkName}`
+  });
+
+  const gptResult = await withGPTRetry(async (signal) => {
+    const response = await fetch('https://api.openai.com/v1/chat/completions', {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${process.env.GPT_KEY}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        model: 'gpt-4o',
+        messages: [{ role: 'system', content: detailPrompt }],
+        temperature: 0.5,
+        max_tokens: 8000,
+        response_format: { type: "json_object" }
+      }),
+      signal: signal
+    });
+
+    if (!response.ok) {
+      const errorText = await response.text().catch(() => 'Unknown error');
+      throw new Error(`GPT API error ${response.status}: ${errorText.substring(0, 100)}`);
+    }
+
+    return response.json();
+  }, `Detail generation ${chunkName}`);
+
+  if (!gptResult.success) {
+    throw new Error(`Detail generation failed for ${chunkName}: ${gptResult.error}`);
+  }
+
+  const data = gptResult.data;
+  const content = data.choices?.[0]?.message?.content;
+
+  if (!content) {
+    throw new Error(`No detail content received for ${chunkName}`);
+  }
+
+  const detailTime = Date.now() - startTime;
+  const tokenUsage = data.usage;
+
+  if (tokenUsage) {
+    console.log(`[HOME-MEALS-7DAY] ✅ ${chunkName} complete in ${detailTime}ms (prompt: ${tokenUsage.prompt_tokens} tokens, response: ${tokenUsage.completion_tokens} tokens)`);
+  } else {
+    console.log(`[HOME-MEALS-7DAY] ✅ ${chunkName} complete in ${detailTime}ms`);
+  }
+
+  try {
+    const detailResult = JSON.parse(content);
+    console.log(`[HOME-MEALS-7DAY] 📝 ${chunkName} raw response (first 500 chars):`, content.substring(0, 500));
+    console.log(`[HOME-MEALS-7DAY] 📝 ${chunkName} parsed: ${detailResult.meals?.length || 0} meals with recipes`);
+
+    return detailResult;
+  } catch (parseError) {
+    console.error(`[HOME-MEALS-7DAY] ${chunkName} JSON parse failed:`, parseError);
+    console.error(`[HOME-MEALS-7DAY] ${chunkName} raw content:`, content.substring(0, 1000));
+    throw new Error(`Failed to parse detail response for ${chunkName}`);
+  }
+}
+
+/**
+ * Phase 3: Generate grocery list from all meals
+ */
+async function generateGroceryList(allMeals: any[], surveyData: any): Promise<any> {
+  console.log(`[HOME-MEALS-7DAY] 📋 Phase 3: Consolidating grocery list from ${allMeals.length} meals...`);
+  const startTime = Date.now();
+
+  // Create grocery prompt
+  const groceryPrompt = createGroceryPrompt(allMeals, surveyData);
+
+  const gptResult = await withGPTRetry(async (signal) => {
+    const response = await fetch('https://api.openai.com/v1/chat/completions', {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${process.env.GPT_KEY}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        model: 'gpt-4o',
+        messages: [{ role: 'system', content: groceryPrompt }],
+        temperature: 0.3,
+        max_tokens: 4000,
+        response_format: { type: "json_object" }
+      }),
+      signal: signal
+    });
+
+    if (!response.ok) {
+      const errorText = await response.text().catch(() => 'Unknown error');
+      throw new Error(`GPT API error ${response.status}: ${errorText.substring(0, 100)}`);
+    }
+
+    return response.json();
+  }, 'Grocery list generation');
+
+  if (!gptResult.success) {
+    throw new Error(`Grocery list generation failed: ${gptResult.error}`);
+  }
+
+  const data = gptResult.data;
+  const content = data.choices?.[0]?.message?.content;
+
+  if (!content) {
+    throw new Error('No grocery content received');
+  }
+
+  const groceryTime = Date.now() - startTime;
+  const tokenUsage = data.usage;
+
+  if (tokenUsage) {
+    console.log(`[HOME-MEALS-7DAY] ✅ Grocery list complete in ${groceryTime}ms (prompt: ${tokenUsage.prompt_tokens} tokens, response: ${tokenUsage.completion_tokens} tokens)`);
+  } else {
+    console.log(`[HOME-MEALS-7DAY] ✅ Grocery list complete in ${groceryTime}ms`);
+  }
+
+  try {
+    const groceryResult = JSON.parse(content);
+    console.log(`[HOME-MEALS-7DAY] 📝 Grocery raw response (first 500 chars):`, content.substring(0, 500));
+
+    const list = groceryResult.groceryList || groceryResult;
+    const categories = Object.keys(list || {});
+    const totalItems = categories.reduce((sum, cat) => sum + (list[cat]?.length || 0), 0);
+    console.log(`[HOME-MEALS-7DAY] ✅ Grocery list: ${totalItems} items across ${categories.length} categories (${categories.join(', ')})`);
+
+    return groceryResult;
+  } catch (parseError) {
+    console.error('[HOME-MEALS-7DAY] Grocery JSON parse failed:', parseError);
+    console.error('[HOME-MEALS-7DAY] Raw grocery content:', content.substring(0, 1000));
+    throw new Error('Failed to parse grocery list response');
+  }
+}
+
+/**
+ * Main Plan+Parallel Generation Function
+ */
+async function generateHomeMealsParallel(
+  homeMeals: Array<{day: string, mealType: string}>,
+  surveyData: any,
+  nutritionTargets: any,
+  weeklyNutritionTargets?: any
+): Promise<any> {
+  const startTime = Date.now();
+  console.log(`[HOME-MEALS-7DAY] 🚀 Starting plan+parallel generation for ${homeMeals.length} home meals...`);
+
+  try {
+    // Phase 1: Plan all meals
+    const planningResult = await planWeekMeals(homeMeals, surveyData, nutritionTargets, weeklyNutritionTargets);
+
+    // Defensive parsing - try multiple possible response shapes
+    const plannedMeals = planningResult.plannedMeals || planningResult.mealPlan || planningResult.meals || [];
+
+    console.log(`[HOME-MEALS-7DAY] 📝 Planning parsed: ${plannedMeals.length} meals found`);
+    if (plannedMeals.length > 0) {
+      console.log(`[HOME-MEALS-7DAY] 📝 Sample meal:`, {
+        day: plannedMeals[0].day,
+        mealType: plannedMeals[0].mealType,
+        name: plannedMeals[0].plannedName,
+        protein: plannedMeals[0].primaryProtein,
+        calories: plannedMeals[0].targetCalories
+      });
+    }
+
+    if (plannedMeals.length === 0) {
+      console.error('[HOME-MEALS-7DAY] ❌ Unexpected planning response shape:', Object.keys(planningResult));
+      throw new Error(`No meals planned - planning phase failed. Response keys: ${Object.keys(planningResult).join(', ')}`);
+    }
+
+    // Phase 2: Split planned meals into chunks for parallel processing
+    const chunks = [
+      { name: "Chunk A (Mon-Tue)", meals: plannedMeals.filter((m: any) => ['monday', 'tuesday'].includes(m.day)) },
+      { name: "Chunk B (Wed-Thu)", meals: plannedMeals.filter((m: any) => ['wednesday', 'thursday'].includes(m.day)) },
+      { name: "Chunk C (Fri-Sun)", meals: plannedMeals.filter((m: any) => ['friday', 'saturday', 'sunday'].includes(m.day)) }
+    ].filter(chunk => chunk.meals.length > 0);
+
+    console.log(`[HOME-MEALS-7DAY] 📋 Phase 2: Generating details for ${chunks.length} chunks in parallel...`);
+
+    // Generate details for all chunks in parallel
+    const detailResults = await Promise.all(
+      chunks.map(chunk => generateMealDetails(chunk.meals, surveyData, nutritionTargets, chunk.name))
+    );
+
+    // Merge all detail results
+    const allMeals = detailResults.flatMap(result => result.meals || []);
+
+    console.log(`[HOME-MEALS-7DAY] 📋 Phase 3: Merging ${allMeals.length} meals...`);
+
+    // Count meals by day for verification
+    const mealsByDay = allMeals.reduce((acc: any, meal: any) => {
+      if (!acc[meal.day]) acc[meal.day] = 0;
+      acc[meal.day]++;
+      return acc;
+    }, {});
+    console.log(`[HOME-MEALS-7DAY] 📝 Merged meals by day:`, mealsByDay);
+
+    if (allMeals.length === 0) {
+      console.error('[HOME-MEALS-7DAY] ❌ No detailed meals generated from chunks:',
+        detailResults.map((r, i) => `Chunk ${i}: ${r.meals?.length || 0} meals`));
+      throw new Error('No detailed meals generated - detail phase failed');
+    }
+
+    // Phase 3: Generate grocery list
+    console.log(`[HOME-MEALS-7DAY] 📋 Phase 4: Grocery consolidation...`);
+    const groceryResult = await generateGroceryList(allMeals, surveyData);
+
+    const totalTime = Date.now() - startTime;
+    console.log(`[HOME-MEALS-7DAY] 🏁 Total plan+parallel generation: ${totalTime}ms`);
+
+    return {
+      homeMeals: allMeals,
+      groceryList: groceryResult.groceryList || null,
+      metadata: {
+        generationTime: totalTime,
+        totalHomeMeals: allMeals.length,
+        nutritionTargets,
+        architecture: 'plan+parallel'
+      }
+    };
+
+  } catch (error) {
+    const totalTime = Date.now() - startTime;
+    console.error(`[HOME-MEALS-7DAY] ❌ Plan+parallel generation failed after ${totalTime}ms:`, error);
+    throw error;
   }
 }
 
@@ -867,7 +1282,19 @@ export async function POST(req: NextRequest) {
 
     } catch (dbError) {
       console.error(`[HOME-GENERATION] ❌ Failed to save home meal plan:`, dbError);
-      // Continue anyway since we have the data
+      console.error(`[HOME-GENERATION] ❌ Full error details:`, {
+        name: (dbError as Error).name,
+        message: (dbError as Error).message,
+        stack: (dbError as Error).stack
+      });
+      return NextResponse.json(
+        {
+          error: 'Failed to save home meal plan to database',
+          details: (dbError as Error).message,
+          homeMealPlanGenerated: true // Plan was generated but not saved
+        },
+        { status: 500 }
+      );
     }
 
     const totalTime = Date.now() - startTime;

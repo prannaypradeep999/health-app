@@ -86,7 +86,6 @@ export const SurveySchema = z.object({
   // Extra personalization (optional)
   fillerQuestions: z
     .object({
-      cookingFrequency: z.string().optional(),
       foodAllergies: z.array(z.string()).default([]),
       eatingOutOccasions: z.string().optional(),
       healthGoalPriority: z.string().optional(),

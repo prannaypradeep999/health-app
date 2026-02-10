@@ -41,22 +41,27 @@ export async function POST(request: Request) {
     const surveyId = cookieStore.get('survey_id')?.value;
 
     if (guestSessionId || surveyId) {
-      console.log(`[Auth] Auto-migrating guest data for new user: ${user.email}`);
+      console.log(`[AUTH] 🔗 Auto-migrating guest data for new user: ${user.email} (guestSession=${guestSessionId}, survey=${surveyId})`);
       await migrateGuestToUser(sessionId, user.id);
 
       cookieStore.delete('guest_session');
       cookieStore.delete('survey_id');
     }
 
+    if (!user.id) {
+      console.error(`[AUTH] ❌ CRITICAL: user.id is undefined/null for email: ${email}`);
+      throw new Error('User ID is missing after registration');
+    }
     cookieStore.set('user_id', user.id, {
       httpOnly: true,
       secure: process.env.NODE_ENV === 'production',
       sameSite: 'lax',
       maxAge: 30 * 24 * 60 * 60
     });
+    console.log(`[AUTH] 🍪 Set cookies: user_id=${user.id}, session_id=${sessionId} (maxAge: 30d)`);
     // ============================================================
 
-    console.log(`[Auth] User registered successfully: ${user.email}`);
+    console.log(`[AUTH] 🔑 User registration successful: userId=${user.id}, email=${user.email}`);
 
     return NextResponse.json({
       success: true,

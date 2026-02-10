@@ -7,52 +7,115 @@ export async function GET() {
   try {
     const cookieStore = await cookies();
     const userId = cookieStore.get('user_id')?.value;
-    const surveyId = cookieStore.get('survey_id')?.value;
     const sessionId = cookieStore.get('guest_session')?.value;
+    const surveyId = cookieStore.get('survey_id')?.value;
+    const workoutPlanId = cookieStore.get('workout_plan_id')?.value;
 
     // Clean up undefined/null strings from cookies (including literal strings and actual nulls)
     const cleanUserId = (!userId || userId === 'undefined' || userId === 'null' || userId === null) ? undefined : userId;
     const cleanSurveyId = (!surveyId || surveyId === 'undefined' || surveyId === 'null' || surveyId === null) ? undefined : surveyId;
     const cleanSessionId = (!sessionId || sessionId === 'undefined' || sessionId === 'null' || sessionId === null) ? undefined : sessionId;
+    const cleanWorkoutPlanId = (!workoutPlanId || workoutPlanId === 'undefined' || workoutPlanId === 'null' || workoutPlanId === null) ? undefined : workoutPlanId;
 
     // Reduce logging frequency for current workout API calls
     const shouldLog = Math.random() < 0.1; // Log only 10% of requests
 
     if (shouldLog) {
-      console.log(`[WorkoutCurrent] Session info - userId: ${cleanUserId}, surveyId: ${cleanSurveyId}, sessionId: ${cleanSessionId}`);
+      console.log(`[WorkoutCurrent] Raw cookies - userId: "${userId}", surveyId: "${surveyId}", sessionId: "${sessionId}", workoutPlanId: "${workoutPlanId}"`);
+      console.log(`[WorkoutCurrent] Cleaned cookies - userId: "${cleanUserId}", surveyId: "${cleanSurveyId}", sessionId: "${cleanSessionId}", workoutPlanId: "${cleanWorkoutPlanId}"`);
     }
 
-    if (!cleanUserId && !cleanSurveyId && !cleanSessionId) {
+    if (!cleanUserId && !cleanSurveyId && !cleanSessionId && !cleanWorkoutPlanId) {
       return NextResponse.json(
         { error: 'No user session found' },
         { status: 401 }
       );
     }
 
-    // If we have a sessionId, find the survey first
-    let surveyFromSession = null;
-    if (cleanSessionId && !cleanSurveyId) {
-      surveyFromSession = await prisma.surveyResponse.findFirst({
-        where: { sessionId: cleanSessionId }
+    // PRIORITY 1: If we have a direct workoutPlanId, use it (fastest, most accurate)
+    let workoutPlan = null;
+    if (cleanWorkoutPlanId) {
+      if (shouldLog) console.log(`[WorkoutCurrent] Using direct workoutPlanId from cookie: ${cleanWorkoutPlanId}`);
+      workoutPlan = await prisma.workoutPlan.findUnique({
+        where: { id: cleanWorkoutPlanId }
       });
-      if (shouldLog) console.log(`[WorkoutCurrent] Found survey from session: ${surveyFromSession?.id}`);
+
+      if (workoutPlan) {
+        if (shouldLog) console.log(`[WorkoutCurrent] ✅ Found workout plan via direct ID: ${workoutPlan.id}, status: ${workoutPlan.status}`);
+      } else {
+        if (shouldLog) console.log(`[WorkoutCurrent] ⚠️ Workout plan ID from cookie not found, falling back to other methods`);
+      }
     }
 
-    const workoutPlan = await prisma.workoutPlan.findFirst({
-      where: {
-        OR: [
-          { userId: cleanUserId },
-          { surveyId: cleanSurveyId || surveyFromSession?.id }
-        ].filter(condition => Object.values(condition).some(val => val !== undefined))
-      },
-      orderBy: {
-        createdAt: 'desc'
+    // PRIORITY 2: Query by sessionId to get the NEWEST survey and its workout plan
+    if (!workoutPlan && cleanSessionId) {
+      if (shouldLog) console.log(`[WorkoutCurrent] Looking for latest survey via sessionId: ${cleanSessionId}`);
+
+      // Find the LATEST survey for this session (fixes stale data issue)
+      const latestSurvey = await prisma.surveyResponse.findFirst({
+        where: { sessionId: cleanSessionId },
+        orderBy: { createdAt: 'desc' }  // Get newest survey for this session
+      });
+
+      if (latestSurvey) {
+        if (shouldLog) console.log(`[WorkoutCurrent] Found latest survey for session: ${latestSurvey.id} (created: ${latestSurvey.createdAt})`);
+
+        // Find workout plan for this latest survey
+        workoutPlan = await prisma.workoutPlan.findFirst({
+          where: {
+            surveyId: latestSurvey.id,
+            status: { in: ['active', 'complete', 'partial'] }
+          },
+          orderBy: { createdAt: 'desc' }  // Always get newest
+        });
+
+        if (workoutPlan) {
+          if (shouldLog) console.log(`[WorkoutCurrent] ✅ Found workout plan via latest survey: ${workoutPlan.id}, status: ${workoutPlan.status}`);
+        }
+      } else {
+        if (shouldLog) console.log(`[WorkoutCurrent] No survey found for sessionId: ${cleanSessionId}`);
       }
-    });
+    }
 
-    if (shouldLog) console.log(`[WorkoutCurrent] Query result: ${workoutPlan ? 'Found workout plan' : 'No workout plan found'}`);
+    // PRIORITY 3: Fall back to direct surveyId lookup
+    if (!workoutPlan && cleanSurveyId) {
+      if (shouldLog) console.log(`[WorkoutCurrent] Falling back to direct surveyId lookup: ${cleanSurveyId}`);
 
-    if (!workoutPlan) {
+      workoutPlan = await prisma.workoutPlan.findFirst({
+        where: {
+          surveyId: cleanSurveyId,
+          status: { in: ['active', 'complete', 'partial'] }
+        },
+        orderBy: { createdAt: 'desc' }  // Always get newest
+      });
+
+      if (workoutPlan) {
+        if (shouldLog) console.log(`[WorkoutCurrent] ✅ Found workout plan via direct surveyId: ${workoutPlan.id}, status: ${workoutPlan.status}`);
+      }
+    }
+
+    // PRIORITY 4: Fall back to userId lookup
+    if (!workoutPlan && cleanUserId) {
+      if (shouldLog) console.log(`[WorkoutCurrent] Falling back to userId lookup: ${cleanUserId}`);
+
+      workoutPlan = await prisma.workoutPlan.findFirst({
+        where: {
+          userId: cleanUserId,
+          status: { in: ['active', 'complete', 'partial'] }
+        },
+        orderBy: { createdAt: 'desc' }  // Always get newest
+      });
+
+      if (workoutPlan) {
+        if (shouldLog) console.log(`[WorkoutCurrent] ✅ Found workout plan via userId: ${workoutPlan.id}, status: ${workoutPlan.status}`);
+      }
+    }
+
+    const finalWorkoutPlan = workoutPlan;
+
+    if (shouldLog) console.log(`[WorkoutCurrent] Query result: ${finalWorkoutPlan ? 'Found workout plan' : 'No workout plan found'}`);
+
+    if (!finalWorkoutPlan) {
       // Debug: Check what workout plans exist at all
       const allWorkoutPlans = await prisma.workoutPlan.findMany({
         select: {
@@ -65,18 +128,7 @@ export async function GET() {
         take: 5
       });
       console.log('[WorkoutCurrent] Debug - Recent workout plans in database:', allWorkoutPlans);
-
-      // Also check if there are ANY workout plans for debugging
-      const anyPlan = await prisma.workoutPlan.findFirst({
-        where: {
-          OR: [
-            { userId: cleanUserId },
-            { surveyId: cleanSurveyId }
-          ].filter(condition => Object.values(condition).some(val => val !== undefined))
-        },
-        orderBy: { createdAt: 'desc' }
-      });
-      console.log(`[WorkoutCurrent] Any workout plan exists: ${anyPlan ? 'Yes, created: ' + anyPlan.createdAt.toISOString() : 'No'}`);
+      console.log('[WorkoutCurrent] No workout plan found in database');
 
       return NextResponse.json(
         { error: 'No workout plan found' },
@@ -85,18 +137,20 @@ export async function GET() {
     }
 
     const currentWeekStart = getStartOfWeek();
-    const workoutWeekOf = workoutPlan.weekOf.toISOString().split('T')[0];
-    const isCurrentWeek = formatDateKey(currentWeekStart) === formatDateKey(workoutPlan.weekOf);
+    const workoutWeekOf = finalWorkoutPlan.weekOf.toISOString().split('T')[0];
+    const isCurrentWeek = formatDateKey(currentWeekStart) === formatDateKey(finalWorkoutPlan.weekOf);
+
+    if (shouldLog) console.log(`[WorkoutCurrent] Returning workout plan: ${finalWorkoutPlan.id}, status: ${finalWorkoutPlan.status}`);
 
     return NextResponse.json({
       success: true,
       workoutPlan: {
-        id: workoutPlan.id,
+        id: finalWorkoutPlan.id,
         weekOf: workoutWeekOf,
-        startDate: workoutPlan.generatedAt.toISOString(),
-        status: workoutPlan.status,
-        planData: workoutPlan.planData,
-        generatedAt: workoutPlan.generatedAt
+        startDate: finalWorkoutPlan.generatedAt.toISOString(),
+        status: finalWorkoutPlan.status,
+        planData: finalWorkoutPlan.planData,
+        generatedAt: finalWorkoutPlan.generatedAt
       },
       isCurrentWeek,
       weekOf: workoutWeekOf,

@@ -206,14 +206,20 @@ Incorporate these preferences directly into meal planning.`
   : 'No custom food notes provided.'}
 
 🍳 COOKING CONTEXT:
-- Cooking frequency: ${surveyData.cookingFrequency || 'moderate'}
-- ${['rarely', 'never'].includes(surveyData.cookingFrequency)
-  ? 'User cooks rarely — prefer simple recipes with minimal prep, basic techniques, and common ingredients.'
-  : surveyData.cookingFrequency === 'daily'
-    ? 'User cooks daily — can handle more complex recipes and varied techniques.'
-    : surveyData.cookingFrequency === 'weekly'
-      ? 'User cooks about weekly — favor batch-friendly, low-effort recipes with leftovers.'
-      : 'User cooks moderately — balance simplicity with variety.'}
+- Based on meal schedule: ${(() => {
+  const schedule = surveyData.weeklyMealSchedule;
+  if (!schedule) return 'Mixed cooking and dining out';
+
+  const allMeals = Object.values(schedule).flatMap(day => [day.breakfast, day.lunch, day.dinner]);
+  const homeMeals = allMeals.filter(meal => meal === 'home').length;
+  const totalMeals = allMeals.filter(meal => meal !== 'no-meal').length;
+  const homeRatio = totalMeals > 0 ? homeMeals / totalMeals : 0;
+
+  if (homeRatio >= 0.8) return 'User cooks most meals at home — can handle varied recipes and cooking techniques.';
+  if (homeRatio >= 0.5) return 'User cooks about half their meals — balance simple home recipes with dining out.';
+  if (homeRatio >= 0.2) return 'User cooks occasionally — prefer simple, quick recipes when cooking at home.';
+  return 'User rarely cooks — focus on simple, minimal-prep recipes when they do cook.';
+})()}
 
 ⏱️ TIMELINE CONTEXT:
 - Goal timeline: ${surveyData.fitnessTimeline || 'flexible'}
@@ -1150,5 +1156,220 @@ Return JSON with this EXACT structure - include placeId for matching:
       "reason": "Why this restaurant was selected"
     }
   ]
+}`;
+}
+
+// PHASE 2: PLAN+PARALLEL ARCHITECTURE PROMPTS
+
+// Planning prompt for high-level meal structure (Phase 1 of 3)
+export function createPlanningPrompt(context: MealGenerationContext): string {
+  const { homeMeals, nutritionTargets, scheduleText, surveyData } = context;
+
+  return `Plan a high-level 7-day home meal structure for ${homeMeals.length} meals.
+
+USER WEEKLY SCHEDULE:
+${scheduleText}
+
+TOTAL HOME MEALS TO GENERATE: ${homeMeals.length}
+
+${formatNutritionTargets(context)}
+
+USER PROFILE:
+- Goal: ${surveyData.goal || 'General Wellness'} (${surveyData.primaryGoal || 'none provided'})
+- Challenge: ${surveyData.goalChallenge || 'None specified'}
+- Preferred Cuisines: ${(surveyData.preferredCuisines || []).join(', ') || 'varied'}
+- Preferred Foods: ${(surveyData.preferredFoods || []).slice(0, 10).join(', ') || 'varied ingredients'}
+- Diet Type: ${(surveyData.dietPrefs || []).join(', ') || 'none'}
+- Allergies: ${(surveyData.foodAllergies || []).join(', ') || 'none'}
+- Budget: $${Math.round((surveyData.monthlyFoodBudget || 200) / 4)}/week
+
+REQUIREMENTS:
+1. Create a diverse meal plan with NO repeated main proteins across consecutive days
+2. Use at least 4-5 different primary proteins across the week
+3. Balance cuisines: ${(surveyData.preferredCuisines || []).join(', ') || 'Mediterranean, Asian, American, Mexican'}
+4. Mix prep times: 40% quick (≤20min), 40% medium (20-35min), 20% involved (35+min)
+5. Variety in meal formats: bowls, plates, salads, wraps, soups, stir-fries
+6. Each meal should hit calorie targets ±50 calories
+7. Consider batch cooking opportunities
+
+Return JSON with this EXACT structure:
+{
+  "mealPlan": [
+    {
+      "day": "monday",
+      "mealType": "breakfast",
+      "plannedName": "Mediterranean Veggie Scramble",
+      "primaryProtein": "eggs",
+      "cuisine": "Mediterranean",
+      "targetCalories": 420,
+      "targetProtein": 25,
+      "targetCarbs": 30,
+      "targetFat": 22,
+      "prepTime": "15 min",
+      "mealFormat": "plate",
+      "keyIngredients": ["eggs", "spinach", "tomatoes", "feta"],
+      "batchCookingNotes": "Can prep vegetables night before"
+    }
+  ]
+}`;
+}
+
+// Detail prompt for specific recipe generation (Phase 2 of 3)
+export function createDetailPrompt(plannedMealsChunk: any[], context: MealGenerationContext): string {
+  const { surveyData } = context;
+
+  const strictExclusionsWarning = formatStrictExclusions(surveyData);
+
+  // Format all planned meals in the chunk
+  const plannedMealsList = plannedMealsChunk.map(meal =>
+    `${meal.day} ${meal.mealType}: ${meal.plannedName} (${meal.primaryProtein}, target: ${meal.targetCalories} cal, ${meal.targetProtein}g protein, ${meal.targetCarbs}g carbs, ${meal.targetFat}g fat)`
+  ).join('\n');
+
+  return `Generate detailed recipes for these SPECIFIC planned meals. Do NOT change the meal names or primary proteins — follow the plan exactly:
+
+PLANNED MEALS TO GENERATE:
+${plannedMealsList}
+
+USER CONSTRAINTS:
+- Diet Type: ${(surveyData.dietPrefs || []).join(', ') || 'none'}
+- Allergies: ${(surveyData.foodAllergies || []).join(', ') || 'none'}
+- Preferred Foods: ${(surveyData.preferredFoods || []).slice(0, 10).join(', ') || 'varied'}
+
+${strictExclusionsWarning}
+
+NUTRITION REFERENCE TABLE (use exact values):
+[Include the same nutrition table from createHomeMealGenerationPrompt - abbreviated here for brevity]
+PROTEINS (per serving):
+- Chicken breast (4 oz): 190 cal, 35g protein, 0g carbs, 4g fat
+- Eggs (large): 70 cal, 6g protein, 1g carbs, 5g fat
+- Salmon (4 oz): 210 cal, 23g protein, 0g carbs, 12g fat
+- Greek yogurt plain 2% (1 cup): 150 cal, 17g protein, 8g carbs, 4g fat
+
+VEGETABLES (per serving):
+- Spinach raw (1 cup): 5 cal, 1g protein, 1g carbs, 0g fat
+- Broccoli (1 cup): 55 cal, 4g protein, 11g carbs, 1g fat
+- Bell pepper (1 medium): 30 cal, 1g protein, 6g carbs, 0g fat
+
+GRAINS & CARBS (per serving):
+- Rice brown (1 cup cooked): 215 cal, 5g protein, 45g carbs, 2g fat
+- Oats rolled (1/2 cup dry): 155 cal, 5g protein, 27g carbs, 3g fat
+- Whole wheat bread (1 slice): 80 cal, 4g protein, 15g carbs, 1g fat
+
+FATS & OILS (per serving):
+- Olive oil (1 tbsp): 120 cal, 0g protein, 0g carbs, 14g fat
+- Avocado (1/4): 80 cal, 1g protein, 4g carbs, 7g fat
+
+REQUIREMENTS:
+1. Generate detailed recipes for ALL planned meals listed above
+2. Use EXACT nutrition values from the reference table
+3. Calculate by summing all ingredients - verify math
+4. Include both primary AND alternative recipes for each meal
+5. Alternative must be meaningfully different (different protein OR cuisine)
+6. Both recipes must hit their specific nutrition targets (±25 calories)
+7. Do NOT change the meal names - use the exact planned names provided
+8. Do NOT change the primary proteins - use the exact proteins specified
+
+Return JSON with ALL meals:
+{
+  "meals": [
+    {
+      "day": "monday",
+      "mealType": "breakfast",
+      "primary": {
+        "name": "EXACT NAME FROM PLANNED MEALS ABOVE",
+        "description": "Brief description",
+        "estimatedCalories": 420,
+        "protein": 25,
+        "carbs": 30,
+        "fat": 22,
+        "prepTime": "15 min",
+        "cookTime": "10 min",
+        "difficulty": "Easy",
+        "cuisine": "Mediterranean",
+        "ingredientsWithNutrition": [
+          { "item": "3 large eggs", "calories": 210, "protein": 18, "carbs": 3, "fat": 15 },
+          { "item": "2 cups spinach", "calories": 10, "protein": 2, "carbs": 2, "fat": 0 }
+        ],
+        "ingredients": ["3 large eggs", "2 cups spinach"],
+        "instructions": ["Step 1", "Step 2"],
+        "tags": ["high-protein", "quick"],
+        "source": "home"
+      },
+      "alternative": {
+        "name": "Different Recipe Name (but for same meal slot)",
+        "description": "Different description",
+        "estimatedCalories": 415,
+        "protein": 24,
+        "carbs": 32,
+        "fat": 21,
+        "prepTime": "20 min",
+        "cookTime": "15 min",
+        "difficulty": "Easy",
+        "cuisine": "American",
+        "ingredientsWithNutrition": [
+          { "item": "1/2 cup oats", "calories": 155, "protein": 5, "carbs": 27, "fat": 3 },
+          { "item": "1 cup Greek yogurt", "calories": 150, "protein": 17, "carbs": 8, "fat": 4 }
+        ],
+        "ingredients": ["1/2 cup oats", "1 cup Greek yogurt"],
+        "instructions": ["Different step 1", "Different step 2"],
+        "tags": ["fiber-rich", "protein-rich"],
+        "source": "home"
+      }
+    }
+  ]
+}`;
+}
+
+// Grocery consolidation prompt (Phase 3 of 3)
+export function createGroceryPrompt(allMeals: any[], surveyData: any): string {
+  const ingredientsList = allMeals.map(meal => {
+    const primary = meal.primary?.ingredientsWithNutrition || [];
+    return primary.map((ing: any) => ing.item);
+  }).flat();
+
+  return `Generate a consolidated grocery list from these recipe ingredients.
+
+ALL INGREDIENTS FROM RECIPES:
+${ingredientsList.join('\n')}
+
+USER BUDGET: $${Math.round((surveyData.monthlyFoodBudget || 200) / 4)}/week
+DIET RESTRICTIONS: ${(surveyData.dietPrefs || []).join(', ') || 'none'}
+ALLERGIES: ${(surveyData.foodAllergies || []).join(', ') || 'none'}
+
+REQUIREMENTS:
+1. Consolidate duplicate ingredients (combine quantities)
+2. Round up to practical shopping amounts
+3. Use these EXACT categories: proteins, vegetables, grains, dairy, pantryStaples, snacks
+4. Each item needs: name, quantity, uses
+5. Include ONLY primary recipe ingredients
+6. Be specific with quantities (package sizes)
+
+Return JSON:
+{
+  "groceryList": {
+    "proteins": [
+      {"name": "Chicken breast", "quantity": "2 lbs", "uses": "Multiple protein-rich meals"},
+      {"name": "Eggs", "quantity": "1 dozen", "uses": "Breakfast, baking"}
+    ],
+    "vegetables": [
+      {"name": "Spinach", "quantity": "2 bags (5oz each)", "uses": "Salads, cooking"},
+      {"name": "Bell peppers", "quantity": "3 mixed colors", "uses": "Stir-fries, salads"}
+    ],
+    "grains": [
+      {"name": "Brown rice", "quantity": "2 lb bag", "uses": "Base for bowls"},
+      {"name": "Oats", "quantity": "42oz container", "uses": "Breakfast"}
+    ],
+    "dairy": [
+      {"name": "Greek yogurt", "quantity": "32oz container", "uses": "Breakfast, snacks"},
+      {"name": "Milk", "quantity": "1/2 gallon", "uses": "Cereal, smoothies"}
+    ],
+    "pantryStaples": [
+      {"name": "Olive oil", "quantity": "500ml bottle", "uses": "Cooking, dressings"},
+      {"name": "Salt", "quantity": "26oz container", "uses": "Seasoning"}
+    ],
+    "snacks": [
+      {"name": "Mixed nuts", "quantity": "1 lb bag", "uses": "Healthy snacking"}
+    ]
+  }
 }`;
 }

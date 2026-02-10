@@ -73,7 +73,6 @@ model SurveyResponse {
   preferredNutrients     String[]   @default([])
   strictExclusions       Json?      // { proteins: [], dairy: [], fruits: [], vegetables: [], nuts: [], grains: [], other: [] }
   uploadedFiles          String[]   @default([])
-  cookingFrequency       String?
   foodAllergies          String[]   @default([])
   eatingOutOccasions     String?
   healthGoalPriority     String?
@@ -86,6 +85,7 @@ model SurveyResponse {
   maintainFocus          String?
   preferredActivities    String[]   @default([])
   additionalGoalsNotes   String     @default("")
+  dashboardEmailSent     Boolean    @default(false)
   user                   User?      @relation(fields: [userId], references: [id])
   activeForUser          User?      @relation("ActiveSurvey")
 

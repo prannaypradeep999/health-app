@@ -36,12 +36,12 @@ function sleep(ms: number): Promise<void> {
 /**
  * Wraps a function with a timeout
  */
-async function withTimeout<T>(fn: () => Promise<T>, timeoutMs: number): Promise<T> {
+async function withTimeout<T>(fn: (signal: AbortSignal) => Promise<T>, timeoutMs: number): Promise<T> {
   const controller = new AbortController();
   const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
 
   try {
-    const result = await fn();
+    const result = await fn(controller.signal);
     clearTimeout(timeoutId);
     return result;
   } catch (error) {
@@ -57,7 +57,7 @@ async function withTimeout<T>(fn: () => Promise<T>, timeoutMs: number): Promise<
  * Execute an async function with retry logic and exponential backoff
  */
 export async function withRetry<T>(
-  fn: () => Promise<T>,
+  fn: (signal: AbortSignal) => Promise<T>,
   options: RetryOptions = {}
 ): Promise<RetryResult<T>> {
   const opts = { ...defaultOptions, ...options };
@@ -116,7 +116,7 @@ export const RetryPresets = {
     initialDelayMs: 2000,
     maxDelayMs: 15000,
     backoffMultiplier: 2,
-    timeoutMs: 75000 // 75s timeout per attempt - complex prompts need time
+    timeoutMs: 240000 // 240s timeout per attempt - workout and meal generation need more time
   },
   // Perplexity calls - similar to GPT but slightly faster
   perplexity: {
@@ -147,27 +147,27 @@ export const RetryPresets = {
 /**
  * Helper for GPT API calls
  */
-export function withGPTRetry<T>(fn: () => Promise<T>, context: string): Promise<RetryResult<T>> {
+export function withGPTRetry<T>(fn: (signal: AbortSignal) => Promise<T>, context: string): Promise<RetryResult<T>> {
   return withRetry(fn, { ...RetryPresets.gpt, context: `GPT: ${context}` });
 }
 
 /**
  * Helper for Perplexity API calls
  */
-export function withPerplexityRetry<T>(fn: () => Promise<T>, context: string): Promise<RetryResult<T>> {
+export function withPerplexityRetry<T>(fn: (signal: AbortSignal) => Promise<T>, context: string): Promise<RetryResult<T>> {
   return withRetry(fn, { ...RetryPresets.perplexity, context: `Perplexity: ${context}` });
 }
 
 /**
  * Helper for Pexels API calls
  */
-export function withPexelsRetry<T>(fn: () => Promise<T>, context: string): Promise<RetryResult<T>> {
+export function withPexelsRetry<T>(fn: (signal: AbortSignal) => Promise<T>, context: string): Promise<RetryResult<T>> {
   return withRetry(fn, { ...RetryPresets.pexels, context: `Pexels: ${context}` });
 }
 
 /**
  * Helper for Google Places API calls
  */
-export function withPlacesRetry<T>(fn: () => Promise<T>, context: string): Promise<RetryResult<T>> {
+export function withPlacesRetry<T>(fn: (signal: AbortSignal) => Promise<T>, context: string): Promise<RetryResult<T>> {
   return withRetry(fn, { ...RetryPresets.googlePlaces, context: `Places: ${context}` });
 }

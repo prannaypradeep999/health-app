@@ -12,11 +12,31 @@ export async function POST() {
       await deleteSession(sessionId);
     }
 
-    // Clear auth cookies
-    await clearAuthCookie();
-    cookieStore.delete('user_id');
+    // Clear ALL cookies using both delete() and set() with maxAge: 0 for maximum reliability
+    const cookiesToClear = [
+      'auth_session',
+      'user_id',
+      'guest_session',
+      'survey_id',
+      'meal_plan_id',
+      'workout_plan_id'
+    ];
 
-    console.log('[Auth] User logged out successfully');
+    for (const cookieName of cookiesToClear) {
+      // Method 1: Delete the cookie
+      cookieStore.delete(cookieName);
+
+      // Method 2: Set empty value with maxAge: 0 as backup
+      cookieStore.set(cookieName, '', {
+        httpOnly: true,
+        secure: process.env.NODE_ENV === 'production',
+        sameSite: 'lax',
+        path: '/',
+        maxAge: 0 // Expire immediately
+      });
+    }
+
+    console.log('[Auth] 🚪 User logged out successfully - cleared all cookies');
 
     return NextResponse.json({
       success: true,

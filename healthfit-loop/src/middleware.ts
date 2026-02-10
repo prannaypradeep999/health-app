@@ -1,8 +1,13 @@
 import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
 
-export function middleware(request: NextRequest) {
+export async function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
+
+  // Allow magic link requests to pass through (will be handled by dashboard page)
+  if (pathname === '/dashboard' && request.nextUrl.searchParams.has('token')) {
+    return NextResponse.next();
+  }
 
   // Check for auth session cookie
   const sessionId = request.cookies.get('auth_session')?.value;

@@ -79,7 +79,7 @@ export async function POST(req: NextRequest) {
 
     // Step 1: Find local grocery stores via Perplexity
     console.log('[GROCERY-PRICES] Step 1/3: Finding local stores...');
-    const storeResult = await withPerplexityRetry(async () => {
+    const storeResult = await withPerplexityRetry(async (signal) => {
       return perplexityClient.getLocalGroceryStores(streetAddress, city, state, zipcode);
     }, 'Local grocery stores');
 
@@ -125,7 +125,7 @@ export async function POST(req: NextRequest) {
 
     // Step 3: Get prices for all items via Perplexity
     console.log('[GROCERY-PRICES] Step 3/3: Getting prices from Perplexity...');
-    const priceResult = await withPerplexityRetry(async () => {
+    const priceResult = await withPerplexityRetry(async (signal) => {
       return perplexityClient.getGroceryPrices(allItems, storeResponse.stores, city, userGoal);
     }, 'Grocery prices');
 
