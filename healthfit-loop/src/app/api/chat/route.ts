@@ -286,6 +286,7 @@ Guidelines:
 
       if (!response.tool_calls || response.tool_calls.length === 0) {
         // No tool calls, return final response as stream
+        let streamClosed = false;
         const stream = new ReadableStream({
           start(controller) {
             const content = response.content || '';
@@ -294,18 +295,36 @@ Guidelines:
             // Stream the content progressively
             let index = 0;
             const streamChunk = () => {
-              if (index < content.length) {
+              if (streamClosed || index >= content.length) {
+                if (!streamClosed) {
+                  try {
+                    controller.enqueue(encoder.encode(`data: [DONE]\n\n`));
+                    controller.close();
+                  } catch (e) {
+                    // Controller already closed, ignore
+                  }
+                  streamClosed = true;
+                }
+                return;
+              }
+
+              try {
                 const chunk = content.slice(index, index + 5);
                 controller.enqueue(encoder.encode(`data: ${JSON.stringify({ content: chunk })}\n\n`));
                 index += 5;
                 setTimeout(streamChunk, 30);
-              } else {
-                controller.enqueue(encoder.encode(`data: [DONE]\n\n`));
-                controller.close();
+              } catch (e) {
+                // Controller already closed, stop streaming
+                streamClosed = true;
+                return;
               }
             };
 
             streamChunk();
+          },
+          cancel() {
+            // Client disconnected or stream was closed
+            streamClosed = true;
           }
         });
 

@@ -388,29 +388,53 @@ export async function GET(req: Request) {
     const surveyId = cookieStore.get('survey_id')?.value;
     const userId = cookieStore.get('user_id')?.value;
 
+    console.log(`[SURVEY-GET] 🔍 Looking up survey: userId="${userId}", sessionId="${sessionId}", surveyId="${surveyId}"`);
+
     let survey = null;
 
-    if (userId) {
+    // Priority 1: Direct surveyId lookup (most specific)
+    if (surveyId) {
+      survey = await prisma.surveyResponse.findUnique({
+        where: { id: surveyId }
+      });
+      if (survey) {
+        console.log(`[SURVEY-GET] ✅ Found survey via surveyId: ${survey.id}`);
+      }
+    }
+
+    // Priority 2: Session-based lookup
+    if (!survey && sessionId) {
+      survey = await prisma.surveyResponse.findFirst({
+        where: {
+          sessionId,
+          isGuest: true
+        },
+        orderBy: { createdAt: 'desc' }
+      });
+      if (survey) {
+        console.log(`[SURVEY-GET] ✅ Found survey via sessionId: ${survey.id}`);
+      }
+    }
+
+    // Priority 3: User-based lookup (but verify user exists first)
+    if (!survey && userId) {
       const user = await prisma.user.findUnique({
         where: { id: userId },
         include: { activeSurvey: true }
       });
-      survey = user?.activeSurvey;
-    } else if (surveyId) {
-      survey = await prisma.surveyResponse.findUnique({
-        where: { id: surveyId }
-      });
-    } else if (sessionId) {
-      survey = await prisma.surveyResponse.findFirst({
-        where: { 
-          sessionId,
-          isGuest: true 
-        },
-        orderBy: { createdAt: 'desc' }
-      });
+
+      if (user) {
+        survey = user.activeSurvey;
+        if (survey) {
+          console.log(`[SURVEY-GET] ✅ Found survey via userId: ${survey.id}`);
+        }
+      } else {
+        console.warn(`[SURVEY-GET] ⚠️ Stale user_id cookie: ${userId} not found in DB, ignoring`);
+      }
     }
 
     if (!survey) {
+      console.log(`[SURVEY-GET] ❌ No survey found with any method`);
       return NextResponse.json({ error: 'No survey found' }, { status: 404 });
     }
 

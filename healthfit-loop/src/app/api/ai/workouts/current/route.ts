@@ -94,20 +94,26 @@ export async function GET() {
       }
     }
 
-    // PRIORITY 4: Fall back to userId lookup
+    // PRIORITY 4: Fall back to userId lookup (but verify user exists first)
     if (!workoutPlan && cleanUserId) {
-      if (shouldLog) console.log(`[WorkoutCurrent] Falling back to userId lookup: ${cleanUserId}`);
+      // Check if user exists before doing userId lookup
+      const userExists = await prisma.user.findUnique({ where: { id: cleanUserId } });
+      if (!userExists) {
+        console.warn(`[WorkoutCurrent] ⚠️ Stale user_id cookie: ${cleanUserId} - user not found in DB`);
+      } else {
+        if (shouldLog) console.log(`[WorkoutCurrent] Falling back to userId lookup: ${cleanUserId}`);
 
-      workoutPlan = await prisma.workoutPlan.findFirst({
-        where: {
-          userId: cleanUserId,
-          status: { in: ['active', 'complete', 'partial'] }
-        },
-        orderBy: { createdAt: 'desc' }  // Always get newest
-      });
+        workoutPlan = await prisma.workoutPlan.findFirst({
+          where: {
+            userId: cleanUserId,
+            status: { in: ['active', 'complete', 'partial'] }
+          },
+          orderBy: { createdAt: 'desc' }  // Always get newest
+        });
 
-      if (workoutPlan) {
-        if (shouldLog) console.log(`[WorkoutCurrent] ✅ Found workout plan via userId: ${workoutPlan.id}, status: ${workoutPlan.status}`);
+        if (workoutPlan) {
+          if (shouldLog) console.log(`[WorkoutCurrent] ✅ Found workout plan via userId: ${workoutPlan.id}, status: ${workoutPlan.status}`);
+        }
       }
     }
 

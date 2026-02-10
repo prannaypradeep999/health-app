@@ -93,20 +93,26 @@ export async function GET() {
       }
     }
 
-    // PRIORITY 4: Fall back to userId lookup (MISSING FALLBACK ADDED)
+    // PRIORITY 4: Fall back to userId lookup (but verify user exists first)
     if (!mealPlan && cleanUserId) {
-      console.log(`[MealCurrent] Falling back to userId lookup: ${cleanUserId}`);
+      // Check if user exists before doing userId lookup
+      const userExists = await prisma.user.findUnique({ where: { id: cleanUserId } });
+      if (!userExists) {
+        console.warn(`[MealCurrent] ⚠️ Stale user_id cookie: ${cleanUserId} - user not found in DB`);
+      } else {
+        console.log(`[MealCurrent] Falling back to userId lookup: ${cleanUserId}`);
 
-      mealPlan = await prisma.mealPlan.findFirst({
-        where: {
-          userId: cleanUserId,
-          status: { in: ['active', 'complete', 'partial'] }
-        },
-        orderBy: { createdAt: 'desc' }  // Always get newest
-      });
+        mealPlan = await prisma.mealPlan.findFirst({
+          where: {
+            userId: cleanUserId,
+            status: { in: ['active', 'complete', 'partial'] }
+          },
+          orderBy: { createdAt: 'desc' }  // Always get newest
+        });
 
-      if (mealPlan) {
-        console.log(`[MealCurrent] ✅ Found meal plan via userId: ${mealPlan.id}, status: ${mealPlan.status}`);
+        if (mealPlan) {
+          console.log(`[MealCurrent] ✅ Found meal plan via userId: ${mealPlan.id}, status: ${mealPlan.status}`);
+        }
       }
     }
 
