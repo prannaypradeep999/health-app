@@ -15,7 +15,8 @@ export async function POST(req: Request) {
       setsCompleted,
       repsCompleted,
       duration,
-      estimatedCalories
+      estimatedCalories,
+      weightUsedLbs,
     } = await req.json();
 
     const cookieStore = await cookies();
@@ -62,7 +63,8 @@ export async function POST(req: Request) {
         where: { id: existingExercise.id },
         data: {
           setsCompleted: completed ? (setsCompleted || 1) : 0,
-          duration: duration || null
+          duration: duration || null,
+          weightUsedLbs: weightUsedLbs || null,
         }
       });
     } else if (completed) {
@@ -72,7 +74,8 @@ export async function POST(req: Request) {
           exerciseName,
           setsCompleted: setsCompleted || 1,
           repsCompleted: repsCompleted || [],
-          duration: duration || null
+          duration: duration || null,
+          weightUsedLbs: weightUsedLbs || null,
         }
       });
     }
