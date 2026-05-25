@@ -3,13 +3,12 @@
 import { useState, useEffect } from "react";
 import { ChatSearchBar } from "@/components/chat/ChatSearchBar";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
 import { ImageWithFallback } from "@/components/ui/ImageWithFallback";
 import {
   ArrowLeft,
-  Clock,
   Target,
   Play,
   CheckCircle,
@@ -19,11 +18,7 @@ import {
   Barbell,
   UserCircle,
   Plus,
-  X,
-  Calendar,
-  PencilSimple,
-  Trash,
-  Heart  // ADD THIS
+  Heart
 } from "@phosphor-icons/react";
 import Logo from '@/components/logo';
 import ExerciseLibraryModal from './ExerciseLibraryModal';
@@ -62,10 +57,6 @@ export function WorkoutPlanPage({ onNavigate, generationStatus }: WorkoutPlanPag
   const [completedExercises, setCompletedExercises] = useState<Record<string, Set<string> | string[]>>({});
   const [workoutData, setWorkoutData] = useState<any>(null);
   const [loading, setLoading] = useState(true);
-  const [showLogModal, setShowLogModal] = useState(false);
-  const [loggedWorkouts, setLoggedWorkouts] = useState<any[]>([]);
-  const [selectedActivity, setSelectedActivity] = useState<string>('');
-  const [workoutDetails, setWorkoutDetails] = useState('');
   const [showSuccessMessage, setShowSuccessMessage] = useState(false);
   const [workoutRatings, setWorkoutRatings] = useState<Record<string, number>>({});
 
@@ -358,83 +349,9 @@ export function WorkoutPlanPage({ onNavigate, generationStatus }: WorkoutPlanPag
     }
   };
 
-  const activities = [
-    { id: 'class', label: 'Class', caloriesPerMin: 8 },
-    { id: 'run', label: 'Run', caloriesPerMin: 12 },
-    { id: 'swim', label: 'Swim', caloriesPerMin: 10 },
-    { id: 'bike', label: 'Bike', caloriesPerMin: 9 },
-    { id: 'yoga', label: 'Yoga', caloriesPerMin: 3 },
-    { id: 'other', label: 'Other', caloriesPerMin: 6 }
-  ];
-
-  const analyzeWorkoutWithLLM = async (activity: string, details: string): Promise<{calories: number, tips: string}> => {
-    try {
-      const response = await fetch('/api/ai/analyze-workout', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ activity, details })
-      });
-
-      if (response.ok) {
-        const data = await response.json();
-        return { calories: data.calories, tips: data.tips };
-      }
-    } catch (error) {
-      console.error('LLM workout analysis failed:', error);
-    }
-
-    // Fallback to simple estimation
-    const selectedActivityData = activities.find(a => a.id === activity);
-    const baseRate = selectedActivityData?.caloriesPerMin || 6;
-    const estimatedCalories = Math.round(30 * baseRate); // 30min default
-
-    return {
-      calories: estimatedCalories,
-      tips: `Great ${activity} workout! Keep up the consistent effort to reach your fitness goals.`
-    };
-  };
-
-  const [workoutTips, setWorkoutTips] = useState<string>('');
-  const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [showLibraryModal, setShowLibraryModal] = useState(false);
   const [addedExercises, setAddedExercises] = useState<Record<string, any[]>>({});
   const [activeView, setActiveView] = useState<'plan' | 'library'>('plan');
-
-  const logWorkout = async () => {
-    if (!selectedActivity || !workoutDetails.trim()) return;
-
-    setIsAnalyzing(true);
-
-    // Use LLM to analyze the workout
-    const analysis = await analyzeWorkoutWithLLM(selectedActivity, workoutDetails);
-
-    const newWorkout = {
-      id: Date.now().toString(),
-      activity: selectedActivity,
-      activityLabel: activities.find(a => a.id === selectedActivity)?.label || 'Other',
-      details: workoutDetails,
-      calories: analysis.calories,
-      tips: analysis.tips,
-      timestamp: new Date().toISOString(),
-      date: new Date().toLocaleDateString(),
-      time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
-    };
-
-    setLoggedWorkouts(prev => [newWorkout, ...prev]);
-    setWorkoutTips(analysis.tips);
-    setShowLogModal(false);
-    setSelectedActivity('');
-    setWorkoutDetails('');
-    setIsAnalyzing(false);
-
-    // Show success message with tips
-    setShowSuccessMessage(true);
-    setTimeout(() => setShowSuccessMessage(false), 5000);
-  };
-
-  const deleteWorkout = (workoutId: string) => {
-    setLoggedWorkouts(prev => prev.filter(w => w.id !== workoutId));
-  };
 
   // Get current workout based on selected day
   const getCurrentWorkout = () => {
@@ -707,76 +624,6 @@ export function WorkoutPlanPage({ onNavigate, generationStatus }: WorkoutPlanPag
       <p className="text-neutral-600">
         Creating personalized exercises based on your fitness goals...
       </p>
-    </div>
-  );
-
-  const WorkoutLogModal = () => (
-    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-      <div className="bg-white rounded-xl max-w-md w-full max-h-[90vh] overflow-y-auto">
-        <div className="p-6">
-          {/* Header */}
-          <div className="flex items-center justify-between mb-6">
-            <div>
-              <h2 className="text-xl font-semibold text-black">Log Alternative Workout</h2>
-              <p className="text-gray-600 text-sm mt-1">What did you do?</p>
-            </div>
-            <button
-              onClick={() => setShowLogModal(false)}
-              className="p-1 hover:bg-gray-100 rounded-full"
-            >
-              <X className="w-5 h-5 text-gray-500" />
-            </button>
-          </div>
-
-          {/* Activity Selector */}
-          <div className="mb-6">
-            <p className="text-sm font-medium text-gray-700 mb-3">Activity Type</p>
-            <div className="grid grid-cols-3 gap-2">
-              {activities.map((activity) => (
-                <button
-                  key={activity.id}
-                  onClick={() => setSelectedActivity(activity.id)}
-                  className={`p-3 rounded-full text-sm font-medium transition-all ${
-                    selectedActivity === activity.id
-                      ? 'bg-purple-600 text-white shadow-lg'
-                      : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
-                  }`}
-                >
-                  {activity.label}
-                </button>
-              ))}
-            </div>
-          </div>
-
-          {/* Details Field */}
-          <div className="mb-6">
-            <p className="text-sm font-medium text-gray-700 mb-3">Details</p>
-            <textarea
-              value={workoutDetails}
-              onChange={(e) => setWorkoutDetails(e.target.value)}
-              placeholder="Duration, intensity, notes... (e.g., '45 min high intensity spin class')"
-              className="w-full p-4 border border-gray-200 rounded-lg resize-none focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-transparent"
-              rows={4}
-            />
-          </div>
-
-          {/* Action Button */}
-          <Button
-            onClick={logWorkout}
-            disabled={!selectedActivity || !workoutDetails.trim() || isAnalyzing}
-            className="w-full bg-purple-600 hover:bg-purple-700 text-white py-3 disabled:bg-gray-300 disabled:cursor-not-allowed"
-          >
-            {isAnalyzing ? (
-              <div className="flex items-center space-x-2">
-                <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
-                <span>Analyzing workout...</span>
-              </div>
-            ) : (
-              'Log Workout'
-            )}
-          </Button>
-        </div>
-      </div>
     </div>
   );
 
@@ -1103,55 +950,6 @@ export function WorkoutPlanPage({ onNavigate, generationStatus }: WorkoutPlanPag
           )}
         </div>
 
-        {/* Logged Workouts History */}
-        {loggedWorkouts.length > 0 && (
-          <div className="mb-6">
-            <div className="flex items-center justify-between mb-4">
-              <h3 className="text-lg font-semibold text-purple-600 border-l-4 border-purple-600 pl-3">
-                Recent Workouts
-              </h3>
-            </div>
-            <div className="space-y-3">
-              {loggedWorkouts.map((workout) => (
-                <div key={workout.id} className="flex items-start space-x-4 p-4 bg-white border rounded-lg">
-                  <div className="flex-shrink-0">
-                    <div className="w-12 h-12 bg-purple-100 rounded-lg flex items-center justify-center">
-                      <span className="text-purple-600 font-semibold text-xs">
-                        {workout.activityLabel.slice(0, 3).toUpperCase()}
-                      </span>
-                    </div>
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-start justify-between mb-1">
-                      <div>
-                        <h4 className="font-medium text-black text-sm">{workout.activityLabel}</h4>
-                        <div className="flex items-center text-xs text-gray-500 mt-1">
-                          <Calendar className="w-3 h-3 mr-1" />
-                          <span>{workout.date} at {workout.time}</span>
-                        </div>
-                      </div>
-                      <div className="flex items-center space-x-2 ml-2">
-                        <span className="text-orange-600 font-medium text-sm">
-                          ~{Math.round(workout.calories)} cal
-                        </span>
-                        <button
-                          onClick={() => deleteWorkout(workout.id)}
-                          className="p-1 hover:bg-red-100 rounded text-red-500"
-                        >
-                          <Trash className="w-4 h-4" weight="regular" />
-                        </button>
-                      </div>
-                    </div>
-                    <p className="text-xs text-gray-600 leading-relaxed line-clamp-2">
-                      {workout.details}
-                    </p>
-                  </div>
-                </div>
-              ))}
-            </div>
-          </div>
-        )}
-
         {/* Exercises or Rest Day */}
         <div className="space-y-6 pb-20 sm:pb-24">
           {currentWorkout.restDay ? (
@@ -1241,16 +1039,6 @@ export function WorkoutPlanPage({ onNavigate, generationStatus }: WorkoutPlanPag
             </>
           )}
 
-          {/* Log Workout Button */}
-          <div className="mt-6">
-            <Button
-              onClick={() => setShowLogModal(true)}
-              className="w-full bg-purple-600 hover:bg-purple-700 text-white py-4 flex items-center justify-center space-x-2"
-            >
-              <Plus className="w-5 h-5" />
-              <span>Log Alternative Workout</span>
-            </Button>
-          </div>
         </div>
       </div>
       )}
@@ -1270,16 +1058,13 @@ export function WorkoutPlanPage({ onNavigate, generationStatus }: WorkoutPlanPag
               <div>
                 <p className="font-medium text-sm">Workout Logged Successfully!</p>
                 <p className="text-xs opacity-90 mt-1">
-                  {workoutTips || 'Great job staying active! Your estimated calorie burn has been added to your daily totals.'}
+                  Exercise added successfully!
                 </p>
               </div>
             </div>
           </div>
         </div>
       )}
-
-      {/* Workout Log Modal */}
-      {showLogModal && <WorkoutLogModal />}
 
       {/* Exercise Library Modal */}
       {showLibraryModal && workoutData && (
