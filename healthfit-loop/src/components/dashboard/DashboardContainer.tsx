@@ -606,24 +606,6 @@ export function DashboardContainer({ initialScreen = 'dashboard' }: DashboardCon
             </div>
           </motion.div>
         )}
-        {(() => {
-          const hasStaleMeal = mealWeekStatus && mealWeekStatus.isCurrentWeek === false;
-          const hasStaleWorkout = workoutWeekStatus && workoutWeekStatus.isCurrentWeek === false;
-          if (!hasStaleMeal && !hasStaleWorkout) return null;
-          const weekOfLabel = mealWeekStatus?.weekOf || workoutWeekStatus?.weekOf || 'a previous week';
-          return (
-            <motion.div
-              initial={{ opacity: 0, y: -10 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ duration: 0.35, ease: [0.25, 0.46, 0.45, 0.94] }}
-              className="bg-blue-50 border-b border-blue-100 px-4 py-3"
-            >
-              <div className="flex items-center justify-center gap-2 text-blue-800 text-sm">
-                Your plan is from week of {weekOfLabel}. New plans coming soon.
-              </div>
-            </motion.div>
-          );
-        })()}
         {/* Early Arrival Progress Banner */}
         {isEarlyArrival && (!generationStatus.mealsGenerated || !generationStatus.workoutsGenerated) && (
           <motion.div
