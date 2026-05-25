@@ -1,9 +1,9 @@
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { Drawer, DrawerContent, DrawerHeader, DrawerTitle } from '@/components/ui/drawer';
 import { Input } from '@/components/ui/input';
-import { Search, Plus, Dumbbell } from 'lucide-react';
+import { Search, Plus, Star, Loader2 } from 'lucide-react';
 import WeightInput from './WeightInput';
 
 interface LibraryExercise {
@@ -31,7 +31,7 @@ interface ExerciseLibraryModalProps {
   onAdded: (exercise: LibraryExercise, additionType: 'supplement' | 'standalone', weight: number | null) => void;
 }
 
-const MUSCLE_GROUPS = ['All', 'Chest', 'Back', 'Legs', 'Shoulders', 'Arms', 'Core', 'Cardio', 'Mobility', 'Full Body'];
+const MUSCLE_GROUPS = ['Favorites', 'All', 'Chest', 'Back', 'Legs', 'Shoulders', 'Arms', 'Core', 'Cardio', 'Mobility', 'Full Body'];
 const DIFFICULTY_COLORS: Record<string, string> = {
   beginner: 'bg-green-100 text-green-700',
   intermediate: 'bg-yellow-100 text-yellow-700',
@@ -47,17 +47,49 @@ export default function ExerciseLibraryModal({
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [weights, setWeights] = useState<Record<string, number | null>>({});
   const [adding, setAdding] = useState<string | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [favorited, setFavorited] = useState<Set<string>>(new Set());
+
+  const fetchFavorites = useCallback(async () => {
+    const res = await fetch('/api/exercises/favorites');
+    const data = await res.json();
+    setFavorited(new Set(data.favoriteIds || []));
+  }, []);
 
   const fetchExercises = useCallback(async () => {
-    const params = new URLSearchParams();
-    if (selectedGroup !== 'All') params.set('muscleGroup', selectedGroup);
-    if (search) params.set('search', search);
-    const res = await fetch(`/api/exercises?${params}`);
-    const data = await res.json();
-    setExercises(data.exercises || []);
+    setLoading(true);
+    try {
+      const params = new URLSearchParams();
+      if (selectedGroup !== 'All' && selectedGroup !== 'Favorites') params.set('muscleGroup', selectedGroup);
+      if (search) params.set('search', search);
+      const res = await fetch(`/api/exercises?${params}`);
+      const data = await res.json();
+      setExercises(data.exercises || []);
+    } finally {
+      setLoading(false);
+    }
   }, [selectedGroup, search]);
 
-  useEffect(() => { if (open) fetchExercises(); }, [open, fetchExercises]);
+  useEffect(() => {
+    if (open) {
+      fetchFavorites();
+      fetchExercises();
+    }
+  }, [open, fetchExercises, fetchFavorites]);
+
+  async function toggleFavorite(exerciseId: string) {
+    const isFav = favorited.has(exerciseId);
+    setFavorited(prev => {
+      const next = new Set(prev);
+      isFav ? next.delete(exerciseId) : next.add(exerciseId);
+      return next;
+    });
+    await fetch('/api/exercises/favorites', {
+      method: isFav ? 'DELETE' : 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ exerciseLibraryId: exerciseId }),
+    });
+  }
 
   async function handleAdd(exercise: LibraryExercise, additionType: 'supplement' | 'standalone') {
     setAdding(`${exercise.id}-${additionType}`);
@@ -74,12 +106,16 @@ export default function ExerciseLibraryModal({
     onAdded(exercise, additionType, weights[exercise.id] ?? null);
   }
 
+  const displayedExercises = selectedGroup === 'Favorites'
+    ? exercises.filter(ex => favorited.has(ex.id))
+    : exercises;
+
   return (
-    <Dialog open={open} onOpenChange={onClose}>
-      <DialogContent className="max-w-2xl max-h-[85vh] flex flex-col p-0">
-        <DialogHeader className="px-5 pt-5 pb-3 border-b border-gray-100">
-          <DialogTitle className="text-base font-semibold">Add Exercise</DialogTitle>
-        </DialogHeader>
+    <Drawer open={open} onOpenChange={onClose}>
+      <DrawerContent className="flex flex-col p-0">
+        <DrawerHeader className="px-5 pt-4 pb-3 border-b border-gray-100">
+          <DrawerTitle className="text-base font-semibold">Add Exercise</DrawerTitle>
+        </DrawerHeader>
 
         <div className="px-5 py-3 border-b border-gray-100 space-y-3">
           <div className="relative">
@@ -98,21 +134,28 @@ export default function ExerciseLibraryModal({
                 onClick={() => setSelectedGroup(g)}
                 className={`flex-shrink-0 px-3 py-1 rounded-full text-xs font-medium transition-colors ${
                   selectedGroup === g
-                    ? 'bg-red-600 text-white'
-                    : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                    ? g === 'Favorites' ? 'bg-amber-400 text-white' : 'bg-red-600 text-white'
+                    : g === 'Favorites' ? 'bg-amber-50 text-amber-600 hover:bg-amber-100' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
                 }`}
               >
-                {g}
+                {g === 'Favorites' ? '★ Favorites' : g}
               </button>
             ))}
           </div>
         </div>
 
         <div className="flex-1 overflow-y-auto px-5 py-3 space-y-2">
-          {exercises.length === 0 && (
-            <p className="text-sm text-gray-400 text-center py-8">No exercises found.</p>
+          {loading && (
+            <div className="flex items-center justify-center py-12">
+              <Loader2 className="w-6 h-6 animate-spin text-gray-400" />
+            </div>
           )}
-          {exercises.map(ex => (
+          {!loading && displayedExercises.length === 0 && (
+            <p className="text-sm text-gray-400 text-center py-8">
+              {selectedGroup === 'Favorites' ? 'No favourites yet — star exercises to save them here.' : 'No exercises found.'}
+            </p>
+          )}
+          {!loading && displayedExercises.map(ex => (
             <div key={ex.id} className="border border-gray-100 rounded-xl overflow-hidden">
               <button
                 className="w-full flex items-start justify-between p-3 text-left hover:bg-gray-50 transition-colors"
@@ -124,6 +167,9 @@ export default function ExerciseLibraryModal({
                     <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${DIFFICULTY_COLORS[ex.difficulty]}`}>
                       {ex.difficulty}
                     </span>
+                    <span className="text-xs px-2 py-0.5 rounded-full bg-gray-100 text-gray-500 font-medium">
+                      {ex.category}
+                    </span>
                   </div>
                   <div className="flex items-center gap-2 text-xs text-gray-500">
                     <span>{ex.muscleGroup}</span>
@@ -133,7 +179,15 @@ export default function ExerciseLibraryModal({
                     <span>{ex.defaultSets}×{ex.defaultReps}</span>
                   </div>
                 </div>
-                <Dumbbell className="w-4 h-4 text-gray-400 flex-shrink-0 mt-0.5" />
+                <button
+                  onClick={e => { e.stopPropagation(); toggleFavorite(ex.id); }}
+                  className="flex-shrink-0 p-1 rounded-lg hover:bg-amber-50 transition-colors ml-1"
+                  aria-label={favorited.has(ex.id) ? 'Remove from favourites' : 'Add to favourites'}
+                >
+                  <Star
+                    className={`w-4 h-4 transition-colors ${favorited.has(ex.id) ? 'fill-amber-400 text-amber-400' : 'text-gray-300'}`}
+                  />
+                </button>
               </button>
 
               {expandedId === ex.id && (
@@ -182,7 +236,7 @@ export default function ExerciseLibraryModal({
             </div>
           ))}
         </div>
-      </DialogContent>
-    </Dialog>
+      </DrawerContent>
+    </Drawer>
   );
 }
