@@ -34,6 +34,8 @@ model User {
   workoutProgress     WorkoutProgress[]
   foodProfiles        FoodProfile[]
   workoutProfiles     WorkoutProfile[]
+  customWorkouts      UserCustomWorkout[]
+  workoutAdditions    UserWorkoutAddition[]
 }
 
 model SurveyResponse {
@@ -324,6 +326,7 @@ model WorkoutPlan {
   workoutLogs          WorkoutLog[]
   user                 User?             @relation(fields: [userId], references: [id])
   progressStats        WorkoutProgress[]
+  additions            UserWorkoutAddition[]
 
   @@index([userId])
   @@index([surveyId])
@@ -365,6 +368,7 @@ model WorkoutExerciseLog {
   formRating       Int?
   difficultyRating Int?
   notes            String?
+  weightUsedLbs    Float?
   createdAt        DateTime   @default(now())
   workoutLog       WorkoutLog @relation(fields: [workoutLogId], references: [id], onDelete: Cascade)
 
@@ -497,6 +501,70 @@ model FavoriteRestaurant {
 
   @@unique([surveyId, restaurantName])
   @@index([surveyId])
+}
+
+model ExerciseLibrary {
+  id             String   @id @default(cuid())
+  name           String   @unique
+  description    String
+  muscleGroup    String
+  equipmentType  String
+  category       String
+  defaultSets    Int
+  defaultReps    String
+  difficulty     String
+  weightGuidance String
+  beginnerMod    String
+  advancedMod    String
+  tags           String[] @default([])
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  additions UserWorkoutAddition[]
+
+  @@index([muscleGroup])
+  @@index([equipmentType])
+  @@index([category])
+  @@index([difficulty])
+}
+
+model UserCustomWorkout {
+  id        String   @id @default(cuid())
+  userId    String?
+  surveyId  String?
+  name      String
+  notes     String?
+  exercises Json     @default("[]")
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  user User? @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([surveyId])
+}
+
+model UserWorkoutAddition {
+  id                String           @id @default(cuid())
+  userId            String?
+  surveyId          String?
+  workoutPlanId     String
+  day               String
+  additionType      String
+  source            String
+  exerciseLibraryId String?
+  customData        Json?
+  weightUsedLbs     Float?
+  createdAt         DateTime         @default(now())
+
+  user            User?            @relation(fields: [userId], references: [id], onDelete: Cascade)
+  exerciseLibrary ExerciseLibrary? @relation(fields: [exerciseLibraryId], references: [id])
+  workoutPlan     WorkoutPlan      @relation(fields: [workoutPlanId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([surveyId])
+  @@index([workoutPlanId])
+  @@index([day])
 }
 
 enum HealthGoal {
