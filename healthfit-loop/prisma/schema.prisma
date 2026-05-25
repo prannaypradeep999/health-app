@@ -36,6 +36,7 @@ model User {
   workoutProfiles     WorkoutProfile[]
   customWorkouts      UserCustomWorkout[]
   workoutAdditions    UserWorkoutAddition[]
+  exerciseFavorites   UserExerciseFavorite[]
 }
 
 model SurveyResponse {
@@ -521,6 +522,7 @@ model ExerciseLibrary {
   updatedAt      DateTime @updatedAt
 
   additions UserWorkoutAddition[]
+  favorites UserExerciseFavorite[]
 
   @@index([muscleGroup])
   @@index([equipmentType])
@@ -566,6 +568,22 @@ model UserWorkoutAddition {
   @@index([workoutPlanId])
   @@index([day])
   @@index([exerciseLibraryId])
+}
+
+model UserExerciseFavorite {
+  id                String          @id @default(cuid())
+  userId            String?
+  surveyId          String?
+  exerciseLibraryId String
+  createdAt         DateTime        @default(now())
+
+  user            User?           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  exerciseLibrary ExerciseLibrary @relation(fields: [exerciseLibraryId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, exerciseLibraryId])
+  @@unique([surveyId, exerciseLibraryId])
+  @@index([userId])
+  @@index([surveyId])
 }
 
 enum HealthGoal {
