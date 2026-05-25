@@ -565,6 +565,7 @@ model UserWorkoutAddition {
   @@index([surveyId])
   @@index([workoutPlanId])
   @@index([day])
+  @@index([exerciseLibraryId])
 }
 
 enum HealthGoal {

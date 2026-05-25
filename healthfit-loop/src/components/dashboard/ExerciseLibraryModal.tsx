@@ -67,7 +67,7 @@ export default function ExerciseLibraryModal({
       body: JSON.stringify({
         workoutPlanId, day, additionType, source: 'library',
         exerciseLibraryId: exercise.id,
-        weightUsedLbs: weights[exercise.id] || null,
+        weightUsedLbs: weights[exercise.id] ?? null,
       }),
     });
     setAdding(null);
