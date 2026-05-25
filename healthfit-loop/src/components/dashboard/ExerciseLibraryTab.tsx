@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import { Input } from '@/components/ui/input';
-import { Search, Plus, Trash2, Edit2, ChevronDown, ChevronUp } from 'lucide-react';
+import { Search, Plus, Trash2, Edit2, ChevronDown, ChevronUp, Star, Loader2 } from 'lucide-react';
 import WeightInput from './WeightInput';
 
 interface LibraryExercise {
@@ -28,7 +28,7 @@ interface CustomWorkout {
   exercises: Array<{ name: string; sets: string; reps: string; notes?: string }>;
 }
 
-const MUSCLE_GROUPS = ['All', 'Chest', 'Back', 'Legs', 'Shoulders', 'Arms', 'Core', 'Cardio', 'Mobility', 'Full Body'];
+const MUSCLE_GROUPS = ['Favorites', 'All', 'Chest', 'Back', 'Legs', 'Shoulders', 'Arms', 'Core', 'Cardio', 'Mobility', 'Full Body'];
 const DIFFICULTY_COLORS: Record<string, string> = {
   beginner: 'bg-green-100 text-green-700',
   intermediate: 'bg-yellow-100 text-yellow-700',
@@ -42,6 +42,8 @@ export default function ExerciseLibraryTab() {
   const [search, setSearch] = useState('');
   const [selectedGroup, setSelectedGroup] = useState('All');
   const [expandedId, setExpandedId] = useState<string | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [favorited, setFavorited] = useState<Set<string>>(new Set());
 
   const [customs, setCustoms] = useState<CustomWorkout[]>([]);
   const [showCreateForm, setShowCreateForm] = useState(false);
@@ -50,14 +52,30 @@ export default function ExerciseLibraryTab() {
   const [formNotes, setFormNotes] = useState('');
   const [formExercises, setFormExercises] = useState([{ name: '', sets: '3', reps: '10', notes: '' }]);
 
-  const fetchExercises = useCallback(async () => {
+  useEffect(() => {
+    if (activeTab !== 'library') return;
+    const controller = new AbortController();
+    setLoading(true);
     const params = new URLSearchParams();
-    if (selectedGroup !== 'All') params.set('muscleGroup', selectedGroup);
+    if (selectedGroup !== 'All' && selectedGroup !== 'Favorites') params.set('muscleGroup', selectedGroup);
     if (search) params.set('search', search);
-    const res = await fetch(`/api/exercises?${params}`);
+    fetch(`/api/exercises?${params}`, { signal: controller.signal })
+      .then(res => res.json())
+      .then(data => setExercises(data.exercises || []))
+      .catch(err => { if (err.name !== 'AbortError') console.error(err); })
+      .finally(() => setLoading(false));
+    return () => controller.abort();
+  }, [activeTab, selectedGroup, search]);
+
+  const fetchFavorites = useCallback(async () => {
+    const res = await fetch('/api/exercises/favorites');
     const data = await res.json();
-    setExercises(data.exercises || []);
-  }, [selectedGroup, search]);
+    setFavorited(new Set(data.favoriteIds || []));
+  }, []);
+
+  useEffect(() => {
+    if (activeTab === 'library') fetchFavorites();
+  }, [activeTab, fetchFavorites]);
 
   const fetchCustoms = useCallback(async () => {
     const res = await fetch('/api/workouts/custom');
@@ -65,8 +83,32 @@ export default function ExerciseLibraryTab() {
     setCustoms(data.customs || []);
   }, []);
 
-  useEffect(() => { fetchExercises(); }, [fetchExercises]);
   useEffect(() => { if (activeTab === 'myworkouts') fetchCustoms(); }, [activeTab, fetchCustoms]);
+
+  const displayedExercises = selectedGroup === 'Favorites'
+    ? exercises.filter(ex => favorited.has(ex.id))
+    : exercises;
+
+  async function toggleFavorite(exerciseId: string) {
+    const isFav = favorited.has(exerciseId);
+    setFavorited(prev => {
+      const next = new Set(prev);
+      isFav ? next.delete(exerciseId) : next.add(exerciseId);
+      return next;
+    });
+    const res = await fetch('/api/exercises/favorites', {
+      method: isFav ? 'DELETE' : 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ exerciseLibraryId: exerciseId }),
+    });
+    if (!res.ok) {
+      setFavorited(prev => {
+        const next = new Set(prev);
+        isFav ? next.add(exerciseId) : next.delete(exerciseId);
+        return next;
+      });
+    }
+  }
 
   async function saveCustomWorkout() {
     if (!formName.trim()) return;
@@ -124,32 +166,71 @@ export default function ExerciseLibraryTab() {
             </div>
             <div className="flex gap-2 overflow-x-auto pb-1">
               {MUSCLE_GROUPS.map(g => (
-                <button key={g} onClick={() => setSelectedGroup(g)}
-                  className={`flex-shrink-0 px-3 py-1 rounded-full text-xs font-medium transition-colors ${selectedGroup === g ? 'bg-red-600 text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'}`}>
-                  {g}
+                <button
+                  key={g}
+                  onClick={() => setSelectedGroup(g)}
+                  className={`flex-shrink-0 px-3 py-1 rounded-full text-xs font-medium transition-colors ${
+                    selectedGroup === g
+                      ? g === 'Favorites' ? 'bg-amber-400 text-white' : 'bg-red-600 text-white'
+                      : g === 'Favorites' ? 'bg-amber-50 text-amber-600 hover:bg-amber-100' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                  }`}
+                >
+                  {g === 'Favorites' ? '★ Favorites' : g}
                 </button>
               ))}
             </div>
           </div>
 
           <div className="flex-1 overflow-y-auto space-y-2">
-            {exercises.map(ex => (
+            {loading && (
+              <div className="flex items-center justify-center py-12">
+                <Loader2 className="w-6 h-6 animate-spin text-gray-400" />
+              </div>
+            )}
+            {!loading && displayedExercises.length === 0 && (
+              <p className="text-sm text-gray-400 text-center py-8">
+                {selectedGroup === 'Favorites' ? 'No favourites yet — star exercises to save them here.' : 'No exercises found.'}
+              </p>
+            )}
+            {!loading && displayedExercises.map(ex => (
               <div key={ex.id} className="border border-gray-100 rounded-xl overflow-hidden">
-                <button
-                  className="w-full flex items-start justify-between p-3 text-left hover:bg-gray-50 transition-colors"
+                <div
+                  role="button"
+                  tabIndex={0}
+                  className="w-full flex items-start justify-between p-3 text-left hover:bg-gray-50 transition-colors cursor-pointer"
                   onClick={() => setExpandedId(expandedId === ex.id ? null : ex.id)}
+                  onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setExpandedId(expandedId === ex.id ? null : ex.id); } }}
                 >
-                  <div className="flex-1 min-w-0 mr-2">
-                    <div className="flex items-center gap-2 flex-wrap mb-0.5">
+                  <div className="flex-1 min-w-0 mr-3">
+                    <div className="flex items-center gap-2 flex-wrap mb-1">
                       <span className="text-sm font-semibold text-gray-900">{ex.name}</span>
-                      <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${DIFFICULTY_COLORS[ex.difficulty]}`}>{ex.difficulty}</span>
+                      <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${DIFFICULTY_COLORS[ex.difficulty] ?? 'bg-gray-100 text-gray-600'}`}>
+                        {ex.difficulty}
+                      </span>
+                      <span className="text-xs px-2 py-0.5 rounded-full bg-gray-100 text-gray-500 font-medium">
+                        {ex.category}
+                      </span>
                     </div>
-                    <p className="text-xs text-gray-500">{ex.muscleGroup} · {ex.equipmentType} · {ex.defaultSets}×{ex.defaultReps}</p>
+                    <div className="flex items-center gap-2 text-xs text-gray-500">
+                      <span>{ex.muscleGroup}</span>
+                      <span>·</span>
+                      <span>{ex.equipmentType}</span>
+                      <span>·</span>
+                      <span>{ex.defaultSets}×{ex.defaultReps}</span>
+                    </div>
                   </div>
-                  {expandedId === ex.id ? <ChevronUp className="w-4 h-4 text-gray-400 flex-shrink-0" /> : <ChevronDown className="w-4 h-4 text-gray-400 flex-shrink-0" />}
-                </button>
+                  <button
+                    onClick={e => { e.stopPropagation(); toggleFavorite(ex.id); }}
+                    className="flex-shrink-0 p-1 rounded-lg hover:bg-amber-50 transition-colors ml-1"
+                    aria-label={favorited.has(ex.id) ? 'Remove from favourites' : 'Add to favourites'}
+                  >
+                    <Star
+                      className={`w-4 h-4 transition-colors ${favorited.has(ex.id) ? 'fill-amber-400 text-amber-400' : 'text-gray-300'}`}
+                    />
+                  </button>
+                </div>
                 {expandedId === ex.id && (
-                  <div className="px-3 pb-3 pt-2 border-t border-gray-100 space-y-2">
+                  <div className="px-3 pb-3 border-t border-gray-100 pt-3 space-y-3">
                     <p className="text-sm text-gray-600">{ex.description}</p>
                     <div className="bg-blue-50 rounded-lg px-3 py-2">
                       <p className="text-xs font-medium text-blue-700 mb-0.5">Weight Guidance</p>
@@ -167,9 +248,6 @@ export default function ExerciseLibraryTab() {
                 )}
               </div>
             ))}
-            {exercises.length === 0 && (
-              <p className="text-sm text-gray-400 text-center py-8">No exercises found.</p>
-            )}
           </div>
         </div>
       )}
