@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { cookies } from 'next/headers';
 import { prisma } from '@/lib/db';
 import { pexelsClient } from '@/lib/external/pexels-client';
-import { createWorkoutPlanPrompt, type WorkoutPlan, type WorkoutDay } from '@/lib/ai/prompts';
+import { createWorkoutPlanPrompt, type WorkoutPlan, type WorkoutDay, type WorkoutFeedbackContext } from '@/lib/ai/prompts';
 import { withGPTRetry } from '@/lib/utils/retry';
 import { validateWorkoutPlan } from '@/lib/utils/workout-validator';
 import { getStartOfWeek } from '@/lib/utils/date-utils';
@@ -152,10 +152,72 @@ export async function POST(req: NextRequest) {
   }
 }
 
+async function getWorkoutFeedbackContext(surveyData: any): Promise<WorkoutFeedbackContext | undefined> {
+  const userId = surveyData.userId;
+  const surveyId = surveyData.id;
+  if (!userId && !surveyId) return undefined;
+
+  const [exerciseLogs, workoutLogs, customWorkouts] = await Promise.all([
+    prisma.workoutExerciseLog.findMany({
+      where: { workoutLog: { userId: userId || undefined } },
+      select: { exerciseName: true, difficultyRating: true, formRating: true },
+      take: 100,
+      orderBy: { createdAt: 'desc' },
+    }),
+    prisma.workoutLog.findMany({
+      where: { userId: userId || undefined },
+      select: { day: true, completed: true },
+      take: 50,
+      orderBy: { createdAt: 'desc' },
+    }),
+    prisma.userCustomWorkout.findMany({
+      where: {
+        OR: [
+          ...(userId ? [{ userId }] : []),
+          ...(surveyId ? [{ surveyId }] : []),
+        ],
+      },
+      select: { exercises: true },
+      take: 10,
+    }),
+  ]);
+
+  const poor = exerciseLogs.filter(l => (l.difficultyRating || 0) >= 8).map(l => l.exerciseName);
+  const good = exerciseLogs.filter(l => (l.formRating || 0) >= 8).map(l => l.exerciseName);
+
+  const dayTotals: Record<string, { total: number; completed: number }> = {};
+  for (const log of workoutLogs) {
+    if (!dayTotals[log.day]) dayTotals[log.day] = { total: 0, completed: 0 };
+    dayTotals[log.day].total++;
+    if (log.completed) dayTotals[log.day].completed++;
+  }
+  const completionRateByDay: Record<string, number> = {};
+  for (const [day, { total, completed }] of Object.entries(dayTotals)) {
+    completionRateByDay[day] = Math.round((completed / total) * 100);
+  }
+
+  const savedNames = customWorkouts.flatMap(cw => {
+    const exs = cw.exercises as Array<{ name: string }>;
+    return exs.map(e => e.name);
+  });
+
+  if (!poor.length && !good.length && !savedNames.length && !Object.keys(completionRateByDay).length) {
+    return undefined;
+  }
+
+  return {
+    poorlyRatedExercises: [...new Set(poor)].slice(0, 10),
+    wellRatedExercises: [...new Set(good)].slice(0, 10),
+    completionRateByDay,
+    savedCustomExercises: [...new Set(savedNames)].slice(0, 10),
+  };
+}
+
 async function generateWorkoutPlan(surveyData: any): Promise<WorkoutPlan> {
   const workoutPrefs = surveyData.workoutPreferencesJson || {};
 
-  const userPrompt = createWorkoutPlanPrompt(surveyData, workoutPrefs);
+  const feedbackContext = await getWorkoutFeedbackContext(surveyData);
+  const userPrompt = createWorkoutPlanPrompt(surveyData, workoutPrefs, feedbackContext);
 
   const gptResult = await withGPTRetry(async (signal) => {
     const response = await fetch('https://api.openai.com/v1/chat/completions', {

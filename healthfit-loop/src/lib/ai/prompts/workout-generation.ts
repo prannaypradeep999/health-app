@@ -66,6 +66,13 @@ export interface WorkoutDay {
   };
 }
 
+export interface WorkoutFeedbackContext {
+  poorlyRatedExercises: string[];
+  wellRatedExercises: string[];
+  completionRateByDay: Record<string, number>;
+  savedCustomExercises: string[];
+}
+
 export interface WorkoutPlan {
   weeklyPlan: WorkoutDay[];
   overview: {
@@ -145,7 +152,11 @@ Keep it concise but comprehensive (300-500 words). Write like a knowledgeable tr
 };
 
 // Main Workout Plan Generation Prompt
-export const createWorkoutPlanPrompt = (surveyData: SurveyResponse, workoutPrefs: WorkoutPreferences): string => {
+export const createWorkoutPlanPrompt = (
+  surveyData: SurveyResponse,
+  workoutPrefs: WorkoutPreferences,
+  feedbackContext?: WorkoutFeedbackContext
+): string => {
   const dayInfo = getCurrentDayInfo();
   const currentDate = new Date().toLocaleDateString('en-US', {
     weekday: 'long',
@@ -153,6 +164,17 @@ export const createWorkoutPlanPrompt = (surveyData: SurveyResponse, workoutPrefs
     month: 'long',
     day: 'numeric'
   });
+
+  const feedbackBlock = feedbackContext && (
+    feedbackContext.poorlyRatedExercises.length > 0 ||
+    feedbackContext.wellRatedExercises.length > 0 ||
+    feedbackContext.savedCustomExercises.length > 0 ||
+    Object.keys(feedbackContext.completionRateByDay).length > 0
+  ) ? `\n\nPAST WORKOUT FEEDBACK (use this to improve the plan):
+${feedbackContext.poorlyRatedExercises.length > 0 ? `- Exercises rated poorly — avoid or substitute: ${feedbackContext.poorlyRatedExercises.slice(0, 10).join(', ')}` : ''}
+${feedbackContext.wellRatedExercises.length > 0 ? `- Exercises rated well — include variations: ${feedbackContext.wellRatedExercises.slice(0, 10).join(', ')}` : ''}
+${Object.keys(feedbackContext.completionRateByDay).length > 0 ? `- Completion rate by day: ${Object.entries(feedbackContext.completionRateByDay).map(([d, r]) => `${d} ${r}%`).join(', ')} — reduce volume on low-completion days` : ''}
+${feedbackContext.savedCustomExercises.length > 0 ? `- User's saved exercises (reference their style): ${feedbackContext.savedCustomExercises.slice(0, 10).join(', ')}` : ''}` : '';
 
   return `You are an expert fitness trainer with decades of experience in exercise science, biomechanics, and program design. You create science-based workout programs following established methodologies from top fitness professionals and research institutions.
 
@@ -786,5 +808,5 @@ GOOD example: "Time to sculpt your chest, shoulders, and arms! Push movements ar
 
 Generate the complete 7-day plan now with expert-level detail and motivating descriptions:
 
-CRITICAL: Return PURE JSON only. No markdown, no text before/after. Must start with { and end with }.`;
+CRITICAL: Return PURE JSON only. No markdown, no text before/after. Must start with { and end with }.${feedbackBlock}`;
 };
