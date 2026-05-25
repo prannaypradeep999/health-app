@@ -23,7 +23,7 @@ import {
 import Logo from '@/components/logo';
 import ExerciseLibraryModal from './ExerciseLibraryModal';
 import ExerciseLibraryTab from './ExerciseLibraryTab';
-import { getPlanDayIndex, getCurrentMealPeriod, getPlanDays, getDayStatus, isPlanExpired, getBrowserTimezone } from '@/lib/utils/date-utils';
+import { getPlanDayIndex, getPlanDays, getDayStatus, isPlanExpired, getBrowserTimezone } from '@/lib/utils/date-utils';
 
 const getWorkoutStorageKey = (workoutPlanId?: string) => {
   if (workoutPlanId) return `completedExercises:${workoutPlanId}`;
@@ -1080,6 +1080,8 @@ export function WorkoutPlanPage({ onNavigate, generationStatus }: WorkoutPlanPag
               [selectedDay]: [...(prev[selectedDay] || []), { ...exercise, additionType, weightUsedLbs: weight }],
             }));
             setShowLibraryModal(false);
+            setShowSuccessMessage(true);
+            setTimeout(() => setShowSuccessMessage(false), 5000);
           }}
         />
       )}
