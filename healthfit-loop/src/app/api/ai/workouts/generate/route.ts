@@ -157,7 +157,12 @@ async function getWorkoutFeedbackContext(surveyData: any): Promise<WorkoutFeedba
   const surveyId = surveyData.id;
   if (!userId && !surveyId) return undefined;
 
-  const [exerciseLogs, workoutLogs, customWorkouts] = await Promise.all([
+  const userFilter = [
+    ...(userId ? [{ userId }] : []),
+    ...(surveyId ? [{ surveyId }] : []),
+  ];
+
+  const [exerciseLogs, workoutLogs, customWorkouts, favoritesRaw] = await Promise.all([
     prisma.workoutExerciseLog.findMany({
       where: { workoutLog: { userId: userId || undefined } },
       select: { exerciseName: true, difficultyRating: true, formRating: true },
@@ -171,14 +176,14 @@ async function getWorkoutFeedbackContext(surveyData: any): Promise<WorkoutFeedba
       orderBy: { createdAt: 'desc' },
     }),
     prisma.userCustomWorkout.findMany({
-      where: {
-        OR: [
-          ...(userId ? [{ userId }] : []),
-          ...(surveyId ? [{ surveyId }] : []),
-        ],
-      },
+      where: { OR: userFilter },
       select: { exercises: true },
       take: 10,
+    }),
+    prisma.userExerciseFavorite.findMany({
+      where: { OR: userFilter },
+      select: { exerciseLibrary: { select: { name: true } } },
+      take: 20,
     }),
   ]);
 
@@ -201,7 +206,9 @@ async function getWorkoutFeedbackContext(surveyData: any): Promise<WorkoutFeedba
     return exs.map(e => e.name);
   });
 
-  if (!poor.length && !good.length && !savedNames.length && !Object.keys(completionRateByDay).length) {
+  const favoriteNames = favoritesRaw.map(f => f.exerciseLibrary.name);
+
+  if (!poor.length && !good.length && !savedNames.length && !favoriteNames.length && !Object.keys(completionRateByDay).length) {
     return undefined;
   }
 
@@ -210,6 +217,7 @@ async function getWorkoutFeedbackContext(surveyData: any): Promise<WorkoutFeedba
     wellRatedExercises: [...new Set(good)].slice(0, 10),
     completionRateByDay,
     savedCustomExercises: [...new Set(savedNames)].slice(0, 10),
+    favoriteExercises: [...new Set(favoriteNames)].slice(0, 10),
   };
 }
 

@@ -71,6 +71,7 @@ export interface WorkoutFeedbackContext {
   wellRatedExercises: string[];
   completionRateByDay: Record<string, number>;
   savedCustomExercises: string[];
+  favoriteExercises: string[];
 }
 
 export interface WorkoutPlan {
@@ -169,12 +170,14 @@ export const createWorkoutPlanPrompt = (
     feedbackContext.poorlyRatedExercises.length > 0 ||
     feedbackContext.wellRatedExercises.length > 0 ||
     feedbackContext.savedCustomExercises.length > 0 ||
+    feedbackContext.favoriteExercises.length > 0 ||
     Object.keys(feedbackContext.completionRateByDay).length > 0
   ) ? `\n\nPAST WORKOUT FEEDBACK (use this to improve the plan):
 ${feedbackContext.poorlyRatedExercises.length > 0 ? `- Exercises rated poorly — avoid or substitute: ${feedbackContext.poorlyRatedExercises.slice(0, 10).join(', ')}` : ''}
 ${feedbackContext.wellRatedExercises.length > 0 ? `- Exercises rated well — include variations: ${feedbackContext.wellRatedExercises.slice(0, 10).join(', ')}` : ''}
 ${Object.keys(feedbackContext.completionRateByDay).length > 0 ? `- Completion rate by day: ${Object.entries(feedbackContext.completionRateByDay).map(([d, r]) => `${d} ${r}%`).join(', ')} — reduce volume on low-completion days` : ''}
-${feedbackContext.savedCustomExercises.length > 0 ? `- User's saved exercises (reference their style): ${feedbackContext.savedCustomExercises.slice(0, 10).join(', ')}` : ''}` : '';
+${feedbackContext.savedCustomExercises.length > 0 ? `- User's saved exercises (reference their style): ${feedbackContext.savedCustomExercises.slice(0, 10).join(', ')}` : ''}
+${feedbackContext.favoriteExercises.length > 0 ? `- User's favourite exercises — include variations or progressions: ${feedbackContext.favoriteExercises.slice(0, 10).join(', ')}` : ''}` : '';
 
   return `You are an expert fitness trainer with decades of experience in exercise science, biomechanics, and program design. You create science-based workout programs following established methodologies from top fitness professionals and research institutions.
 
