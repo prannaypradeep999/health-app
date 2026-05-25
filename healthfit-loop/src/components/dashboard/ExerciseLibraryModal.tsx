@@ -56,27 +56,39 @@ export default function ExerciseLibraryModal({
     setFavorited(new Set(data.favoriteIds || []));
   }, []);
 
-  const fetchExercises = useCallback(async () => {
+  // Fix #1: inline fetch with AbortController to cancel stale in-flight requests
+  useEffect(() => {
+    if (!open) return;
+    const controller = new AbortController();
     setLoading(true);
-    try {
-      const params = new URLSearchParams();
-      if (selectedGroup !== 'All' && selectedGroup !== 'Favorites') params.set('muscleGroup', selectedGroup);
-      if (search) params.set('search', search);
-      const res = await fetch(`/api/exercises?${params}`);
-      const data = await res.json();
-      setExercises(data.exercises || []);
-    } finally {
-      setLoading(false);
-    }
-  }, [selectedGroup, search]);
+    const params = new URLSearchParams();
+    if (selectedGroup !== 'All' && selectedGroup !== 'Favorites') params.set('muscleGroup', selectedGroup);
+    if (search) params.set('search', search);
+    fetch(`/api/exercises?${params}`, { signal: controller.signal })
+      .then(res => res.json())
+      .then(data => setExercises(data.exercises || []))
+      .catch(err => { if (err.name !== 'AbortError') console.error(err); })
+      .finally(() => setLoading(false));
+    return () => controller.abort();
+  }, [open, selectedGroup, search]);
 
   useEffect(() => {
     if (open) {
       fetchFavorites();
-      fetchExercises();
     }
-  }, [open, fetchExercises, fetchFavorites]);
+  }, [open, fetchFavorites]);
 
+  // Fix #4: reset state when modal reopens
+  useEffect(() => {
+    if (open) {
+      setSelectedGroup(defaultMuscleGroup || 'All');
+      setExpandedId(null);
+      setWeights({});
+      setSearch('');
+    }
+  }, [open, defaultMuscleGroup]);
+
+  // Fix #3: rollback optimistic update on failure
   async function toggleFavorite(exerciseId: string) {
     const isFav = favorited.has(exerciseId);
     setFavorited(prev => {
@@ -84,26 +96,39 @@ export default function ExerciseLibraryModal({
       isFav ? next.delete(exerciseId) : next.add(exerciseId);
       return next;
     });
-    await fetch('/api/exercises/favorites', {
+    const res = await fetch('/api/exercises/favorites', {
       method: isFav ? 'DELETE' : 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ exerciseLibraryId: exerciseId }),
     });
+    if (!res.ok) {
+      setFavorited(prev => {
+        const next = new Set(prev);
+        isFav ? next.add(exerciseId) : next.delete(exerciseId);
+        return next;
+      });
+    }
   }
 
+  // Fix #2: only call onAdded on success, use finally to always clear adding state
   async function handleAdd(exercise: LibraryExercise, additionType: 'supplement' | 'standalone') {
     setAdding(`${exercise.id}-${additionType}`);
-    await fetch('/api/exercises/add-to-plan', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        workoutPlanId, day, additionType, source: 'library',
-        exerciseLibraryId: exercise.id,
-        weightUsedLbs: weights[exercise.id] ?? null,
-      }),
-    });
-    setAdding(null);
-    onAdded(exercise, additionType, weights[exercise.id] ?? null);
+    try {
+      const res = await fetch('/api/exercises/add-to-plan', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          workoutPlanId, day, additionType, source: 'library',
+          exerciseLibraryId: exercise.id,
+          weightUsedLbs: weights[exercise.id] ?? null,
+        }),
+      });
+      if (res.ok) {
+        onAdded(exercise, additionType, weights[exercise.id] ?? null);
+      }
+    } finally {
+      setAdding(null);
+    }
   }
 
   const displayedExercises = selectedGroup === 'Favorites'
@@ -157,14 +182,19 @@ export default function ExerciseLibraryModal({
           )}
           {!loading && displayedExercises.map(ex => (
             <div key={ex.id} className="border border-gray-100 rounded-xl overflow-hidden">
-              <button
-                className="w-full flex items-start justify-between p-3 text-left hover:bg-gray-50 transition-colors"
+              {/* Fix #5: outer element changed to div to avoid nested button HTML validity bug */}
+              <div
+                role="button"
+                tabIndex={0}
+                className="w-full flex items-start justify-between p-3 text-left hover:bg-gray-50 transition-colors cursor-pointer"
                 onClick={() => setExpandedId(expandedId === ex.id ? null : ex.id)}
+                onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setExpandedId(expandedId === ex.id ? null : ex.id); } }}
               >
                 <div className="flex-1 min-w-0 mr-3">
                   <div className="flex items-center gap-2 flex-wrap mb-1">
                     <span className="text-sm font-semibold text-gray-900">{ex.name}</span>
-                    <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${DIFFICULTY_COLORS[ex.difficulty]}`}>
+                    {/* Fix #6: fallback for unknown difficulty values */}
+                    <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${DIFFICULTY_COLORS[ex.difficulty] ?? 'bg-gray-100 text-gray-600'}`}>
                       {ex.difficulty}
                     </span>
                     <span className="text-xs px-2 py-0.5 rounded-full bg-gray-100 text-gray-500 font-medium">
@@ -188,7 +218,7 @@ export default function ExerciseLibraryModal({
                     className={`w-4 h-4 transition-colors ${favorited.has(ex.id) ? 'fill-amber-400 text-amber-400' : 'text-gray-300'}`}
                   />
                 </button>
-              </button>
+              </div>
 
               {expandedId === ex.id && (
                 <div className="px-3 pb-3 border-t border-gray-100 pt-3 space-y-3">
