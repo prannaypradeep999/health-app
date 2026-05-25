@@ -26,6 +26,7 @@ import {
   Heart  // ADD THIS
 } from "@phosphor-icons/react";
 import Logo from '@/components/logo';
+import ExerciseLibraryModal from './ExerciseLibraryModal';
 import { getPlanDayIndex, getCurrentMealPeriod, getPlanDays, getDayStatus, isPlanExpired, getBrowserTimezone } from '@/lib/utils/date-utils';
 
 const getWorkoutStorageKey = (workoutPlanId?: string) => {
@@ -394,6 +395,8 @@ export function WorkoutPlanPage({ onNavigate, generationStatus }: WorkoutPlanPag
 
   const [workoutTips, setWorkoutTips] = useState<string>('');
   const [isAnalyzing, setIsAnalyzing] = useState(false);
+  const [showLibraryModal, setShowLibraryModal] = useState(false);
+  const [addedExercises, setAddedExercises] = useState<Record<string, any[]>>({});
 
   const logWorkout = async () => {
     if (!selectedActivity || !workoutDetails.trim()) return;
@@ -1160,6 +1163,23 @@ export function WorkoutPlanPage({ onNavigate, generationStatus }: WorkoutPlanPag
                     {currentWorkout.exercises.map((exercise: any) => (
                       <ExerciseCard key={exercise.id || exercise.name} exercise={exercise} />
                     ))}
+                    {/* Library-added exercises */}
+                    {(addedExercises[selectedDay] || []).map((ex, i) => (
+                      <div key={i} className="flex items-center gap-3 p-3 bg-blue-50 rounded-xl border border-blue-100">
+                        <div className="flex-1">
+                          <p className="text-sm font-medium text-gray-900">{ex.name}</p>
+                          <p className="text-xs text-gray-500">{ex.defaultSets}×{ex.defaultReps} · {ex.equipmentType}</p>
+                        </div>
+                        <span className="text-xs bg-blue-100 text-blue-700 px-2 py-0.5 rounded-full font-medium">Added</span>
+                      </div>
+                    ))}
+                    <button
+                      onClick={() => setShowLibraryModal(true)}
+                      className="w-full mt-2 flex items-center justify-center gap-2 py-2.5 border border-dashed border-gray-300 rounded-xl text-sm text-gray-500 hover:border-red-400 hover:text-red-600 transition-colors"
+                    >
+                      <Plus className="w-4 h-4" />
+                      Add Exercise
+                    </button>
                   </div>
 
                   {/* Cooldown Section */}
@@ -1226,6 +1246,24 @@ export function WorkoutPlanPage({ onNavigate, generationStatus }: WorkoutPlanPag
 
       {/* Workout Log Modal */}
       {showLogModal && <WorkoutLogModal />}
+
+      {/* Exercise Library Modal */}
+      {showLibraryModal && workoutData && (
+        <ExerciseLibraryModal
+          open={showLibraryModal}
+          onClose={() => setShowLibraryModal(false)}
+          workoutPlanId={workoutData.workoutPlan.id}
+          day={selectedDay}
+          defaultMuscleGroup={(workoutData.workoutPlan.planData?.weeklyPlan as any[])?.find((d: any) => d.day === selectedDay)?.targetMuscles?.[0]}
+          onAdded={(exercise, additionType, weight) => {
+            setAddedExercises(prev => ({
+              ...prev,
+              [selectedDay]: [...(prev[selectedDay] || []), { ...exercise, additionType, weightUsedLbs: weight }],
+            }));
+            setShowLibraryModal(false);
+          }}
+        />
+      )}
 
       {/* Bottom Navigation */}
       <div className="fixed bottom-0 left-0 right-0 bg-white border-t border-neutral-200">
