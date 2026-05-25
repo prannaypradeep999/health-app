@@ -68,9 +68,14 @@ export default function ExerciseLibraryTab() {
   }, [activeTab, selectedGroup, search]);
 
   const fetchFavorites = useCallback(async () => {
-    const res = await fetch('/api/exercises/favorites');
-    const data = await res.json();
-    setFavorited(new Set(data.favoriteIds || []));
+    try {
+      const res = await fetch('/api/exercises/favorites');
+      if (!res.ok) return;
+      const data = await res.json();
+      setFavorited(new Set(data.favoriteIds || []));
+    } catch (err) {
+      console.error(err);
+    }
   }, []);
 
   useEffect(() => {
