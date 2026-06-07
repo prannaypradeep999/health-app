@@ -125,7 +125,16 @@ const getCurrentDayInfo = () => {
 export const createWorkoutPlanningPrompt = (
   surveyData: SurveyResponse,
   workoutPrefs: WorkoutPreferences,
-  feedbackContext?: WorkoutFeedbackContext
+  feedbackContext?: WorkoutFeedbackContext,
+  libraryExercises?: Array<{
+    name: string;
+    muscleGroup: string | null;
+    equipmentType: string | null;
+    defaultSets: number | null;
+    defaultReps: string | null;
+    difficulty: string | null;
+    weightGuidance: string | null;
+  }>
 ): string => {
   const dayInfo = getCurrentDayInfo();
 
@@ -145,6 +154,14 @@ WORKOUT PREFERENCES:
 - Preferred Types: ${workoutPrefs.workoutTypes?.join(', ') || 'varied'}
 - Injuries: ${(workoutPrefs.injuryConsiderations || []).join(', ') || 'none'}
 
+${libraryExercises && libraryExercises.length > 0 ? `
+AVAILABLE EXERCISE LIBRARY (prefer these exercises — curated for this user's equipment):
+${libraryExercises.map(e =>
+  `- ${e.name} | muscles: ${e.muscleGroup || 'general'} | equipment: ${e.equipmentType || 'bodyweight'} | sets: ${e.defaultSets || 3} | reps: ${e.defaultReps || '8-12'} | difficulty: ${e.difficulty || 'intermediate'}`
+).join('\n')}
+
+PREFER exercises from this library. Add exercises not in the library only if the library lacks coverage for a muscle group.
+` : ''}
 GOAL CONTEXT: ${getWorkoutGoalContext(surveyData.goal)}
 
 Select the best training split and outline all 7 days. For rest days, mark restDay: true and set exercises to an empty array.

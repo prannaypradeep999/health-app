@@ -329,10 +329,19 @@ function sanitizeDay(day: any): { sanitized: any; warnings: string[] } {
 async function planWorkout(
   surveyData: any,
   workoutPrefs: WorkoutPreferences,
-  feedbackContext?: WorkoutFeedbackContext
+  feedbackContext?: WorkoutFeedbackContext,
+  libraryExercises?: Array<{
+    name: string;
+    muscleGroup: string | null;
+    equipmentType: string | null;
+    defaultSets: number | null;
+    defaultReps: string | null;
+    difficulty: string | null;
+    weightGuidance: string | null;
+  }>
 ): Promise<any> {
   console.log('[GPT-WORKOUT] 📋 Phase 1: Planning workout structure...');
-  const planningPrompt = createWorkoutPlanningPrompt(surveyData, workoutPrefs, feedbackContext);
+  const planningPrompt = createWorkoutPlanningPrompt(surveyData, workoutPrefs, feedbackContext, libraryExercises);
 
   const gptResult = await withGPTRetry(async (signal) => {
     const response = await fetch('https://api.openai.com/v1/chat/completions', {
@@ -423,8 +432,44 @@ async function generateWorkoutPlan(surveyData: any): Promise<WorkoutPlan> {
     console.log(`[GPT-WORKOUT] 📊 Feedback context: ${Object.keys(feedbackContext.weightProgressionByExercise).length} exercises with weight history`);
   }
 
+  // Query exercise library filtered by user's equipment and fitness level
+  const gymAccess = workoutPrefs.gymAccess || 'no_gym';
+  const fitnessLevel = (surveyData as any).fitnessLevel || workoutPrefs.fitnessExperience || 'intermediate';
+
+  const equipmentFilter: Record<string, string[]> = {
+    no_gym: ['bodyweight'],
+    calisthenics: ['bodyweight'],
+    free_weights: ['bodyweight', 'dumbbells', 'barbell', 'kettlebell'],
+    full_gym: [],
+  };
+  const allowedEquipment = equipmentFilter[gymAccess] || [];
+
+  const libraryExercises = await prisma.exerciseLibrary.findMany({
+    where: {
+      ...(allowedEquipment.length > 0
+        ? { equipmentType: { in: allowedEquipment } }
+        : {}),
+      ...(fitnessLevel === 'beginner'
+        ? { difficulty: { in: ['beginner', 'intermediate'] } }
+        : {}),
+    },
+    select: {
+      name: true,
+      muscleGroup: true,
+      equipmentType: true,
+      defaultSets: true,
+      defaultReps: true,
+      difficulty: true,
+      weightGuidance: true,
+    },
+    take: 60,
+    orderBy: { name: 'asc' },
+  }).catch(() => []);
+
+  console.log(`[GPT-WORKOUT] 📚 Exercise library: ${libraryExercises.length} exercises available for ${gymAccess}`);
+
   // Phase 1: Get high-level plan outline
-  const planResult = await planWorkout(surveyData, workoutPrefs, feedbackContext);
+  const planResult = await planWorkout(surveyData, workoutPrefs, feedbackContext, libraryExercises);
   const weeklyOutline: any[] = planResult.weeklyPlan || [];
 
   if (weeklyOutline.length === 0) {
