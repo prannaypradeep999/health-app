@@ -7,7 +7,7 @@ import { validateMealPlan } from '@/lib/utils/meal-plan-validator';
 import { validateIngredientSums } from '@/lib/utils/ingredient-validator';
 import { validateRestrictions } from '@/lib/utils/restriction-validator';
 import { buildFallbackGroceryList, enhanceGroceryListWithUsage } from '@/lib/utils/grocery-list';
-import { createHomeMealGenerationPrompt, createPlanningPrompt, createDetailPrompt, createGroceryPrompt } from '@/lib/ai/prompts';
+import { createHomeMealGenerationPrompt, createPlanningPrompt, createDetailPrompt, createGroceryPrompt, type MealFeedbackContext } from '@/lib/ai/prompts';
 import { pexelsClient } from '@/lib/external/pexels-client';
 import { withGPTRetry } from '@/lib/utils/retry';
 import { getStartOfWeek } from '@/lib/utils/date-utils';
@@ -263,6 +263,86 @@ function convertToLegacyTargets(weeklyTargets: any, day?: string): any {
   };
 }
 
+async function getMealFeedbackContext(surveyData: any): Promise<MealFeedbackContext | null> {
+  const userId = surveyData.userId || null;
+  const sessionId = surveyData.sessionId || null;
+  const surveyId = surveyData.id || null;
+
+  if (!userId && !sessionId && !surveyId) return null;
+
+  const feedbackOrFilter = [
+    ...(userId ? [{ userId }] : []),
+    ...(sessionId ? [{ sessionId }] : []),
+  ];
+
+  const consumptionOrFilter = [
+    ...(userId ? [{ userId }] : []),
+    ...(sessionId ? [{ sessionId }] : []),
+    ...(surveyId ? [{ surveyId }] : []),
+  ];
+
+  if (feedbackOrFilter.length === 0 && consumptionOrFilter.length === 0) return null;
+
+  const [feedbackLogs, consumptionLogs] = await Promise.all([
+    feedbackOrFilter.length > 0 ? prisma.mealFeedbackLog.findMany({
+      where: { OR: feedbackOrFilter },
+      select: { feedbackType: true, dishName: true, mealType: true, rating: true },
+      orderBy: { createdAt: 'desc' },
+      take: 100,
+    }) : Promise.resolve([]),
+    consumptionOrFilter.length > 0 ? prisma.mealConsumptionLog.findMany({
+      where: { OR: consumptionOrFilter },
+      select: { wasEaten: true, mealType: true, optionType: true, calories: true },
+      orderBy: { loggedAt: 'desc' },
+      take: 100,
+    }) : Promise.resolve([]),
+  ]);
+
+  if (feedbackLogs.length === 0 && consumptionLogs.length === 0) return null;
+
+  const lovedDishes = [...new Set(
+    feedbackLogs.filter(f => f.feedbackType === 'loved').map(f => f.dishName)
+  )].slice(0, 10);
+
+  const dislikedDishes = [...new Set(
+    feedbackLogs.filter(f => f.feedbackType === 'disliked').map(f => f.dishName)
+  )].slice(0, 10);
+
+  const skipCounts: Record<string, number> = {};
+  const totalCounts: Record<string, number> = {};
+  consumptionLogs.forEach(l => {
+    if (!l.mealType) return;
+    totalCounts[l.mealType] = (totalCounts[l.mealType] || 0) + 1;
+    if (!l.wasEaten) skipCounts[l.mealType] = (skipCounts[l.mealType] || 0) + 1;
+  });
+  const skippedMealTypes = Object.entries(skipCounts)
+    .filter(([type, count]) => count / (totalCounts[type] || 1) > 0.3)
+    .map(([type]) => type);
+
+  const primCount = consumptionLogs.filter(l => l.optionType === 'primary' && l.wasEaten).length;
+  const altCount = consumptionLogs.filter(l => l.optionType === 'alternative' && l.wasEaten).length;
+  const preferredOptionType: 'primary' | 'alternative' | 'mixed' =
+    primCount === 0 && altCount === 0 ? 'mixed' :
+    altCount / (primCount + altCount) > 0.6 ? 'alternative' :
+    primCount / (primCount + altCount) > 0.6 ? 'primary' : 'mixed';
+
+  const eatenLogs = consumptionLogs.filter(l => l.wasEaten && l.calories > 0);
+  const avgCalorieAdherence = eatenLogs.length > 0
+    ? Math.min(100, Math.round(
+        eatenLogs.reduce((sum, l) => sum + Math.min(l.calories / 600, 1), 0) / eatenLogs.length * 100
+      ))
+    : 100;
+
+  return {
+    lovedDishes,
+    dislikedDishes,
+    lovedCuisines: [],
+    skippedMealTypes,
+    preferredOptionType,
+    avgCalorieAdherence,
+  };
+}
+
 // Generate home meals based on 7-day schedule
 async function generateHomeMealsForSchedule(
   homeMeals: Array<{day: string, mealType: string}>,
@@ -273,10 +353,16 @@ async function generateHomeMealsForSchedule(
   const startTime = Date.now();
   console.log(`[HOME-MEALS-7DAY] 🏠 Generating ${homeMeals.length} home meals for 7-day schedule...`);
 
+  // Fetch behavioral feedback to improve generation
+  const feedbackContext = await getMealFeedbackContext(surveyData);
+  if (feedbackContext) {
+    console.log(`[HOME-MEALS-7DAY] 📊 Meal feedback: ${feedbackContext.lovedDishes.length} loved, ${feedbackContext.dislikedDishes.length} disliked, skipped: ${feedbackContext.skippedMealTypes.join(', ') || 'none'}`);
+  }
+
   // Try Phase 2 plan+parallel architecture first (NEW DEFAULT)
   try {
     console.log(`[HOME-MEALS-7DAY] 🚀 Trying Phase 2: Plan+Parallel architecture...`);
-    const result = await generateHomeMealsParallel(homeMeals, surveyData, nutritionTargets, weeklyNutritionTargets);
+    const result = await generateHomeMealsParallel(homeMeals, surveyData, nutritionTargets, weeklyNutritionTargets, feedbackContext);
     const totalTime = Date.now() - startTime;
     console.log(`[HOME-MEALS-7DAY] ✅ Phase 2 completed successfully in ${totalTime}ms`);
     return result;
@@ -284,7 +370,7 @@ async function generateHomeMealsForSchedule(
     console.warn(`[HOME-MEALS-7DAY] ⚠️ Phase 2 failed, falling back to Phase 1:`, (phase2Error as Error).message);
 
     // Fallback to Phase 1 (original single-call approach)
-    return await generateHomeMealsLegacy(homeMeals, surveyData, nutritionTargets, weeklyNutritionTargets);
+    return await generateHomeMealsLegacy(homeMeals, surveyData, nutritionTargets, weeklyNutritionTargets, feedbackContext);
   }
 }
 
@@ -293,7 +379,8 @@ async function generateHomeMealsLegacy(
   homeMeals: Array<{day: string, mealType: string}>,
   surveyData: any,
   nutritionTargets: any,
-  weeklyNutritionTargets?: any
+  weeklyNutritionTargets?: any,
+  feedbackContext?: MealFeedbackContext | null
 ): Promise<any> {
   const startTime = Date.now();
   let restrictionViolations: any[] = [];
@@ -318,7 +405,7 @@ async function generateHomeMealsLegacy(
       nutritionTargets,
       scheduleText,
       weeklyNutritionTargets: weeklyNutritionTargets
-    });
+    }, feedbackContext ?? undefined);
 
     // Replace the direct fetch with retry wrapper:
     console.log(`[HOME-MEALS-LEGACY] 🤖 Using model: gpt-4o, max_tokens: 16384`);
@@ -409,7 +496,7 @@ async function generateHomeMealsLegacy(
 
     console.log('[HOME-MEALS-7DAY] 🔍 Raw GPT response (first 500 chars):', content.substring(0, 500));
 
-    let parsedResult;
+    let parsedResult: any;
     try {
       parsedResult = JSON.parse(content);
       console.log('[HOME-MEALS-7DAY] ✅ Successfully parsed JSON:', {
@@ -486,11 +573,23 @@ async function generateHomeMealsLegacy(
       }
 
       if (parsedResult.homeMeals && Array.isArray(parsedResult.homeMeals)) {
+        const requiredCategories = ['proteins', 'vegetables', 'grains', 'dairy', 'pantryStaples', 'snacks'];
         if (parsedResult.groceryList) {
           parsedResult.groceryList = enhanceGroceryListWithUsage(
             parsedResult.groceryList,
             parsedResult.homeMeals
           );
+          // Post-parse guard: backfill any missing categories
+          const missingCategories = requiredCategories.filter(
+            cat => !parsedResult.groceryList[cat] || parsedResult.groceryList[cat].length === 0
+          );
+          if (missingCategories.length > 0) {
+            console.warn(`[HOME-MEALS-LEGACY] ⚠️ Grocery list missing categories: ${missingCategories.join(', ')} — backfilling from ingredients`);
+            const fallback = buildFallbackGroceryList(parsedResult.homeMeals);
+            missingCategories.forEach(cat => {
+              parsedResult.groceryList[cat] = fallback[cat] || [];
+            });
+          }
         } else {
           parsedResult.groceryList = buildFallbackGroceryList(parsedResult.homeMeals);
         }
@@ -696,7 +795,8 @@ async function planWeekMeals(
   homeMeals: Array<{day: string, mealType: string}>,
   surveyData: any,
   nutritionTargets: any,
-  weeklyNutritionTargets?: any
+  weeklyNutritionTargets?: any,
+  feedbackContext?: MealFeedbackContext | null
 ): Promise<any> {
   console.log(`[HOME-MEALS-7DAY] 📋 Phase 1: Planning ${homeMeals.length} meals...`);
   const startTime = Date.now();
@@ -719,7 +819,7 @@ async function planWeekMeals(
     nutritionTargets,
     scheduleText,
     weeklyNutritionTargets
-  });
+  }, feedbackContext ?? undefined);
 
   const gptResult = await withGPTRetry(async (signal) => {
     const response = await fetch('https://api.openai.com/v1/chat/completions', {
@@ -936,14 +1036,15 @@ async function generateHomeMealsParallel(
   homeMeals: Array<{day: string, mealType: string}>,
   surveyData: any,
   nutritionTargets: any,
-  weeklyNutritionTargets?: any
+  weeklyNutritionTargets?: any,
+  feedbackContext?: MealFeedbackContext | null
 ): Promise<any> {
   const startTime = Date.now();
   console.log(`[HOME-MEALS-7DAY] 🚀 Starting plan+parallel generation for ${homeMeals.length} home meals...`);
 
   try {
     // Phase 1: Plan all meals
-    const planningResult = await planWeekMeals(homeMeals, surveyData, nutritionTargets, weeklyNutritionTargets);
+    const planningResult = await planWeekMeals(homeMeals, surveyData, nutritionTargets, weeklyNutritionTargets, feedbackContext);
 
     // Defensive parsing - try multiple possible response shapes
     const plannedMeals = planningResult.plannedMeals || planningResult.mealPlan || planningResult.meals || [];
@@ -1001,12 +1102,33 @@ async function generateHomeMealsParallel(
     console.log(`[HOME-MEALS-7DAY] 📋 Phase 4: Grocery consolidation...`);
     const groceryResult = await generateGroceryList(allMeals, surveyData);
 
+    // Post-parse guard: ensure all 6 required categories are present
+    const requiredCategories = ['proteins', 'vegetables', 'grains', 'dairy', 'pantryStaples', 'snacks'];
+    let groceryList = groceryResult.groceryList || null;
+    if (groceryList) {
+      const missingCategories = requiredCategories.filter(cat => !groceryList[cat] || groceryList[cat].length === 0);
+      if (missingCategories.length > 0) {
+        console.warn(`[HOME-MEALS-7DAY] ⚠️ Grocery list missing categories: ${missingCategories.join(', ')} — backfilling from ingredients`);
+        const fallback = buildFallbackGroceryList(allMeals);
+        missingCategories.forEach(cat => {
+          if (fallback[cat] && fallback[cat].length > 0) {
+            groceryList[cat] = fallback[cat];
+          } else {
+            groceryList[cat] = [];
+          }
+        });
+      }
+    } else {
+      console.warn(`[HOME-MEALS-7DAY] ⚠️ No grocery list from GPT — using fallback`);
+      groceryList = buildFallbackGroceryList(allMeals);
+    }
+
     const totalTime = Date.now() - startTime;
     console.log(`[HOME-MEALS-7DAY] 🏁 Total plan+parallel generation: ${totalTime}ms`);
 
     return {
       homeMeals: allMeals,
-      groceryList: groceryResult.groceryList || null,
+      groceryList,
       metadata: {
         generationTime: totalTime,
         totalHomeMeals: allMeals.length,

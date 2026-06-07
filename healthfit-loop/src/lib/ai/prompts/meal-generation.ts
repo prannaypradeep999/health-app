@@ -17,6 +17,15 @@ export interface MealGenerationContext {
   weeklyNutritionTargets?: any; // NEW: Optional detailed weekly targets
 }
 
+export interface MealFeedbackContext {
+  lovedDishes: string[];
+  dislikedDishes: string[];
+  lovedCuisines: string[];
+  skippedMealTypes: string[];
+  preferredOptionType: 'primary' | 'alternative' | 'mixed';
+  avgCalorieAdherence: number;
+}
+
 export interface RestaurantMealContext {
   restaurantMealsSchedule: Array<{day: string, mealType: string}>;
   restaurantMenuData: any[];
@@ -123,7 +132,10 @@ ${allExclusions.map(item => `  - ${item}`).join('\n')}
 }
 
 // Home meal generation prompt for 7-day system (NOW INCLUDES GROCERY LIST)
-export function createHomeMealGenerationPrompt(context: MealGenerationContext): string {
+export function createHomeMealGenerationPrompt(
+  context: MealGenerationContext,
+  feedbackContext?: MealFeedbackContext
+): string {
   const { homeMeals, nutritionTargets, scheduleText, surveyData } = context;
 
   // Get strict exclusions warning
@@ -896,6 +908,13 @@ Return a JSON object with this EXACT structure:
   }
 }
 
+${feedbackContext ? `
+PAST MEAL BEHAVIOR (incorporate into this week's plan):
+${feedbackContext.lovedDishes.length > 0 ? `- Include similar meals to these loved dishes: ${feedbackContext.lovedDishes.join(', ')}` : ''}
+${feedbackContext.dislikedDishes.length > 0 ? `- NEVER repeat or closely imitate these disliked dishes: ${feedbackContext.dislikedDishes.join(', ')}` : ''}
+${feedbackContext.skippedMealTypes.length > 0 ? `- Keep ${feedbackContext.skippedMealTypes.join(' and ')} meals simple — user often skips them` : ''}
+
+` : ''}
 GROCERY LIST RULES:
 1. Consolidate duplicate ingredients across all meals (combine amounts)
 2. Round up quantities for practical shopping (e.g., can't buy 1.5 eggs)
@@ -1162,7 +1181,10 @@ Return JSON with this EXACT structure - include placeId for matching:
 // PHASE 2: PLAN+PARALLEL ARCHITECTURE PROMPTS
 
 // Planning prompt for high-level meal structure (Phase 1 of 3)
-export function createPlanningPrompt(context: MealGenerationContext): string {
+export function createPlanningPrompt(
+  context: MealGenerationContext,
+  feedbackContext?: MealFeedbackContext
+): string {
   const { homeMeals, nutritionTargets, scheduleText, surveyData } = context;
 
   return `Plan a high-level 7-day home meal structure for ${homeMeals.length} meals.
@@ -1211,7 +1233,15 @@ Return JSON with this EXACT structure:
       "batchCookingNotes": "Can prep vegetables night before"
     }
   ]
-}`;
+}
+${feedbackContext ? `
+
+PAST MEAL BEHAVIOR (use this to improve variety and adherence):
+${feedbackContext.lovedDishes.length > 0 ? `- LOVED dishes — include similar meals or these proteins/flavors again: ${feedbackContext.lovedDishes.join(', ')}` : ''}
+${feedbackContext.dislikedDishes.length > 0 ? `- DISLIKED dishes — do NOT repeat these or similar variations: ${feedbackContext.dislikedDishes.join(', ')}` : ''}
+${feedbackContext.skippedMealTypes.length > 0 ? `- Often skipped: ${feedbackContext.skippedMealTypes.join(', ')} — keep these slots simpler, quicker, or smaller` : ''}
+${feedbackContext.preferredOptionType !== 'mixed' ? `- User usually picks the ${feedbackContext.preferredOptionType} option — make that option stronger` : ''}
+${feedbackContext.avgCalorieAdherence < 80 ? `- User eats below calorie targets — consider slightly smaller portions or simpler meals` : ''}` : ''}`;
 }
 
 // Detail prompt for specific recipe generation (Phase 2 of 3)
@@ -1343,6 +1373,14 @@ REQUIREMENTS:
 4. Each item needs: name, quantity, uses
 5. Include ONLY primary recipe ingredients
 6. Be specific with quantities (package sizes)
+7. ⚠️ MINIMUM ITEMS PER CATEGORY (REQUIRED — never return fewer):
+   - proteins: at least 2 items
+   - vegetables: at least 3 items
+   - grains: at least 2 items
+   - dairy: at least 1 item (use "N/A - no dairy in plan" only if diet forbids all dairy)
+   - pantryStaples: at least 2 items (oils, spices, condiments)
+   - snacks: at least 1 item
+8. ALL SIX CATEGORIES must be present in the response, even if some have only 1 item
 
 Return JSON:
 {
