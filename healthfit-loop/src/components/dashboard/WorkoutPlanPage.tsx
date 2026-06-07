@@ -59,6 +59,7 @@ export function WorkoutPlanPage({ onNavigate, generationStatus }: WorkoutPlanPag
   const [loading, setLoading] = useState(true);
   const [showSuccessMessage, setShowSuccessMessage] = useState(false);
   const [workoutRatings, setWorkoutRatings] = useState<Record<string, number>>({});
+  const [exerciseWeights, setExerciseWeights] = useState<Record<string, string>>({});
 
   const [userTimezone] = useState(() => getBrowserTimezone());
   const workoutStorageKey = getWorkoutStorageKey(workoutData?.workoutPlan?.id);
@@ -305,7 +306,10 @@ export function WorkoutPlanPage({ onNavigate, generationStatus }: WorkoutPlanPag
           focus: todaysWorkoutData?.focus || 'General',
           completed: newCompletedState,
           estimatedCalories: exercise?.calories || 0,
-          duration: exercise?.duration || null
+          duration: exercise?.duration || null,
+          weightUsedLbs: exerciseWeights[exerciseId]
+            ? parseFloat(exerciseWeights[exerciseId])
+            : undefined
         })
       }).catch(err => console.error('[WORKOUT-LOG] API Error:', err));
     }
@@ -506,6 +510,23 @@ export function WorkoutPlanPage({ onNavigate, generationStatus }: WorkoutPlanPag
                   <span className="font-bold text-purple-600 ml-1">{exercise.tempo}</span>
                 </div>
               )}
+            </div>
+
+            {/* Weight Used Input */}
+            <div className="flex items-center gap-2 mt-2 mb-2">
+              <input
+                type="number"
+                min="0"
+                step="2.5"
+                placeholder="Weight (lbs)"
+                className="w-28 px-2 py-1 text-sm border border-gray-200 rounded-md focus:outline-none focus:ring-1 focus:ring-blue-400"
+                value={exerciseWeights[exercise.name] || ''}
+                onChange={(e) => setExerciseWeights(prev => ({
+                  ...prev,
+                  [exercise.name]: e.target.value
+                }))}
+              />
+              <span className="text-xs text-gray-500">lbs</span>
             </div>
 
             {/* Weight Guidance - Prominent */}
