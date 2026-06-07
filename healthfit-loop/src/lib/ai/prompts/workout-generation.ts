@@ -72,6 +72,8 @@ export interface WorkoutFeedbackContext {
   completionRateByDay: Record<string, number>;
   savedCustomExercises: string[];
   favoriteExercises: string[];
+  weightProgressionByExercise: Record<string, { lastWeightLbs: number; suggestedWeightLbs: number }>;
+  repCompletionByExercise: Record<string, number[]>;
 }
 
 export interface WorkoutPlan {
@@ -117,6 +119,181 @@ const getCurrentDayInfo = () => {
     orderedDays,
     dayIndex: todayIndex
   };
+};
+
+// Planning prompt for high-level workout structure (Phase 1 of plan+parallel)
+export const createWorkoutPlanningPrompt = (
+  surveyData: SurveyResponse,
+  workoutPrefs: WorkoutPreferences,
+  feedbackContext?: WorkoutFeedbackContext
+): string => {
+  const dayInfo = getCurrentDayInfo();
+
+  return `You are an expert fitness trainer. Create a high-level 7-day workout plan outline.
+
+USER PROFILE:
+- Name: ${surveyData.firstName || 'User'}
+- Age: ${surveyData.age}, Sex: ${surveyData.sex}
+- Primary Goal: ${surveyData.goal}
+- Fitness Level: ${surveyData.fitnessLevel || workoutPrefs.fitnessExperience || 'intermediate'}
+- Activity Level: ${surveyData.activityLevel}
+
+WORKOUT PREFERENCES:
+- Available Days: ${workoutPrefs.availableDays?.join(', ') || 'flexible'} (${workoutPrefs.availableDays?.length || 5} days/week)
+- Session Duration: ${workoutPrefs.preferredDuration || 45} minutes
+- Gym Access: ${workoutPrefs.gymAccess || 'no_gym'}
+- Preferred Types: ${workoutPrefs.workoutTypes?.join(', ') || 'varied'}
+- Injuries: ${(workoutPrefs.injuryConsiderations || []).join(', ') || 'none'}
+
+GOAL CONTEXT: ${getWorkoutGoalContext(surveyData.goal)}
+
+Select the best training split and outline all 7 days. For rest days, mark restDay: true and set exercises to an empty array.
+Start the week from today (${dayInfo.orderedDays[0]}) and go through ${dayInfo.orderedDays[6]}.
+
+Return ONLY this JSON:
+{
+  "splitType": "Push/Pull/Legs",
+  "description": "Why this split suits the user",
+  "whyThisSplit": "Science-based reasoning",
+  "expectedResults": ["result1", "result2"],
+  "progressionTips": ["tip1", "tip2"],
+  "safetyReminders": ["reminder1"],
+  "equipmentNeeded": ["equipment1"],
+  "weeklyPlan": [
+    {
+      "day": "monday",
+      "restDay": false,
+      "focus": "Upper Body Push (Chest, Shoulders, Triceps)",
+      "estimatedTime": "45 minutes",
+      "estimatedCalories": 280,
+      "targetMuscles": ["chest", "shoulders", "triceps"],
+      "description": "Motivating 2-3 sentence description referencing user goals"
+    },
+    {
+      "day": "tuesday",
+      "restDay": true,
+      "focus": "Active Recovery",
+      "estimatedTime": "20-30 minutes",
+      "estimatedCalories": 100,
+      "targetMuscles": [],
+      "description": "Rest day description"
+    }
+  ]
+}
+
+Include ALL 7 days. No markdown, pure JSON.${feedbackContext ? `
+
+PAST PERFORMANCE DATA (use this to improve the plan):
+${feedbackContext.poorlyRatedExercises.length > 0 ? `- Avoid or substitute (rated too hard): ${feedbackContext.poorlyRatedExercises.slice(0, 8).join(', ')}` : ''}
+${feedbackContext.wellRatedExercises.length > 0 ? `- Include variations of (rated great form): ${feedbackContext.wellRatedExercises.slice(0, 8).join(', ')}` : ''}
+${Object.keys(feedbackContext.completionRateByDay).length > 0 ? `- Completion by day: ${Object.entries(feedbackContext.completionRateByDay).map(([d, r]) => `${d} ${r}%`).join(', ')} — reduce volume on low-completion days` : ''}
+${Object.keys(feedbackContext.weightProgressionByExercise).length > 0 ? `- Weight progression targets this week:\n${Object.entries(feedbackContext.weightProgressionByExercise).slice(0, 10).map(([ex, w]) => `  * ${ex}: last used ${w.lastWeightLbs} lbs → suggest ${w.suggestedWeightLbs} lbs`).join('\n')}` : ''}
+${feedbackContext.favoriteExercises.length > 0 ? `- Favourite exercises (include progressions): ${feedbackContext.favoriteExercises.slice(0, 8).join(', ')}` : ''}` : ''}`;
+};
+
+// Detail prompt for a chunk of workout days (Phase 2 of plan+parallel)
+export const createWorkoutDetailPrompt = (
+  dayOutlines: Array<{
+    day: string;
+    restDay: boolean;
+    focus: string;
+    estimatedTime: string;
+    estimatedCalories: number;
+    targetMuscles: string[];
+    description: string;
+  }>,
+  surveyData: SurveyResponse,
+  workoutPrefs: WorkoutPreferences
+): string => {
+  const gymAccess = workoutPrefs.gymAccess || 'no_gym';
+  let equipmentConstraint = '';
+  if (gymAccess === 'no_gym') {
+    equipmentConstraint = 'USER HAS NO GYM - bodyweight/resistance bands ONLY. No barbells, cables, machines.';
+  } else if (gymAccess === 'free_weights') {
+    equipmentConstraint = 'USER HAS FREE WEIGHTS ONLY - dumbbells, barbells, kettlebells. No cable machines.';
+  } else if (gymAccess === 'full_gym') {
+    equipmentConstraint = 'USER HAS FULL GYM - all equipment available.';
+  } else if (gymAccess === 'calisthenics') {
+    equipmentConstraint = 'USER PREFERS CALISTHENICS - bodyweight progressions, pull-ups, dips.';
+  }
+
+  const injuryConstraint = (workoutPrefs.injuryConsiderations || []).length > 0
+    ? `AVOID exercises that stress: ${workoutPrefs.injuryConsiderations!.join(', ')}`
+    : 'No injuries - full exercise selection.';
+
+  const dayList = dayOutlines
+    .map(d => `- ${d.day}: ${d.restDay ? 'REST DAY' : `${d.focus} (${d.estimatedTime}, ${d.estimatedCalories} cal, muscles: ${d.targetMuscles.join(', ')})`}`)
+    .join('\n');
+
+  return `You are an expert fitness trainer. Generate FULL exercise details for these specific workout days.
+
+DAYS TO FILL IN:
+${dayList}
+
+USER CONSTRAINTS:
+- Goal: ${surveyData.goal}
+- Fitness Level: ${surveyData.fitnessLevel || workoutPrefs.fitnessExperience || 'intermediate'}
+- Session Duration: ${workoutPrefs.preferredDuration || 45} minutes
+- ${equipmentConstraint}
+- ${injuryConstraint}
+- Preferred Activities: ${surveyData.preferredActivities?.join(', ') || 'none'}
+
+For each TRAINING day, generate 3-7 exercises with full detail.
+For each REST day, generate only the activeRecovery block.
+
+Return ONLY this JSON:
+{
+  "days": [
+    {
+      "day": "monday",
+      "restDay": false,
+      "warmup": [
+        {"name": "Arm Circles", "duration": "30 seconds", "instructions": "..."}
+      ],
+      "exercises": [
+        {
+          "name": "Push-ups",
+          "sets": 3,
+          "reps": "8-12",
+          "restTime": "90 seconds",
+          "tempo": "2-1-2",
+          "description": "Foundation of upper body push strength",
+          "instructions": "Full instructions here",
+          "formTips": ["tip1", "tip2"],
+          "commonMistakes": ["mistake1"],
+          "breathingCue": "Exhale on push, inhale on lower",
+          "weightGuidance": {
+            "method": "bodyweight",
+            "suggestion": "Focus on form. Progress to decline when you can do 15+",
+            "rpeTarget": 7,
+            "warmupSets": "5-10 easy reps before working sets"
+          },
+          "modifications": {
+            "beginner": "Knee push-ups",
+            "intermediate": "Standard push-ups",
+            "advanced": "Decline or weighted push-ups"
+          },
+          "muscleTargets": ["chest", "shoulders", "triceps"]
+        }
+      ],
+      "cooldown": [
+        {"name": "Chest Stretch", "duration": "30 seconds", "instructions": "..."}
+      ]
+    },
+    {
+      "day": "tuesday",
+      "restDay": true,
+      "activeRecovery": {
+        "suggestedActivity": "Gentle yoga flow",
+        "duration": "25 minutes",
+        "description": "Recovery session to reduce soreness",
+        "alternatives": ["20-min walk", "foam rolling", "light stretching"]
+      }
+    }
+  ]
+}
+
+IMPORTANT: Return ALL ${dayOutlines.length} days. No markdown, pure JSON.`;
 };
 
 // Fitness Profile Generation Prompt
@@ -177,7 +354,8 @@ ${feedbackContext.poorlyRatedExercises.length > 0 ? `- Exercises rated poorly �
 ${feedbackContext.wellRatedExercises.length > 0 ? `- Exercises rated well — include variations: ${feedbackContext.wellRatedExercises.slice(0, 10).join(', ')}` : ''}
 ${Object.keys(feedbackContext.completionRateByDay).length > 0 ? `- Completion rate by day: ${Object.entries(feedbackContext.completionRateByDay).map(([d, r]) => `${d} ${r}%`).join(', ')} — reduce volume on low-completion days` : ''}
 ${feedbackContext.savedCustomExercises.length > 0 ? `- User's saved exercises (reference their style): ${feedbackContext.savedCustomExercises.slice(0, 10).join(', ')}` : ''}
-${feedbackContext.favoriteExercises.length > 0 ? `- User's favourite exercises — include variations or progressions: ${feedbackContext.favoriteExercises.slice(0, 10).join(', ')}` : ''}` : '';
+${feedbackContext.favoriteExercises.length > 0 ? `- User's favourite exercises — include variations or progressions: ${feedbackContext.favoriteExercises.slice(0, 10).join(', ')}` : ''}
+${Object.keys(feedbackContext.weightProgressionByExercise).length > 0 ? `- Progressive overload targets:\n${Object.entries(feedbackContext.weightProgressionByExercise).slice(0, 10).map(([ex, w]) => `  * ${ex}: last ${w.lastWeightLbs} lbs → suggest ${w.suggestedWeightLbs} lbs`).join('\n')}` : ''}` : '';
 
   return `You are an expert fitness trainer with decades of experience in exercise science, biomechanics, and program design. You create science-based workout programs following established methodologies from top fitness professionals and research institutions.
 
