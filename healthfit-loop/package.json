@@ -11,6 +11,7 @@
   },
   "dependencies": {
     "@anthropic-ai/claude-code": "^1.0.113",
+    "@anthropic-ai/sdk": "^0.102.0",
     "@phosphor-icons/react": "^2.1.10",
     "@prisma/client": "^6.13.0",
     "@radix-ui/react-accordion": "^1.2.12",
@@ -49,6 +50,8 @@
     "framer-motion": "^12.24.0",
     "input-otp": "^1.4.2",
     "jose": "^6.0.13",
+    "lightningcss": "^1.32.0",
+    "lightningcss-darwin-arm64": "^1.32.0",
     "lucide-react": "^0.540.0",
     "nanoid": "^5.1.5",
     "next": "^16.1.0",

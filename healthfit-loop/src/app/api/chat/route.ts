@@ -78,6 +78,8 @@ async function getUserContext() {
   const userId = cookieStore.get('user_id')?.value;
   const guestSession = cookieStore.get('guest_session')?.value;
   const surveyId = cookieStore.get('survey_id')?.value;
+  const mealPlanId = cookieStore.get('meal_plan_id')?.value;
+  const workoutPlanId = cookieStore.get('workout_plan_id')?.value;
 
   let surveyData = null;
   let currentUserId = null;
@@ -108,18 +110,18 @@ async function getUserContext() {
     throw new Error('No user session found');
   }
 
-  return { surveyData, userId: currentUserId, guestSession };
+  return { surveyData, userId: currentUserId, guestSession, surveyId, mealPlanId, workoutPlanId };
 }
 
 async function executeToolCall(functionName: string, args: any, userContext: any) {
-  const { surveyData, userId, guestSession } = userContext;
+  const { surveyData, userId, guestSession, surveyId, mealPlanId, workoutPlanId } = userContext;
 
   switch (functionName) {
     case 'get_current_meal_plan':
       try {
         const response = await fetch('http://localhost:3000/api/ai/meals/current', {
           headers: {
-            'Cookie': `auth_session=${userId}; user_id=${userId}; guest_session=${guestSession}`
+            'Cookie': `user_id=${userId}; guest_session=${guestSession}; survey_id=${surveyId}; meal_plan_id=${mealPlanId}`
           }
         });
         if (response.ok) {
@@ -141,7 +143,7 @@ async function executeToolCall(functionName: string, args: any, userContext: any
       try {
         const response = await fetch('http://localhost:3000/api/ai/workouts/current', {
           headers: {
-            'Cookie': `auth_session=${userId}; user_id=${userId}; guest_session=${guestSession}`
+            'Cookie': `user_id=${userId}; guest_session=${guestSession}; survey_id=${surveyId}; workout_plan_id=${workoutPlanId}`
           }
         });
         if (response.ok) {
@@ -192,7 +194,7 @@ async function executeToolCall(functionName: string, args: any, userContext: any
       try {
         const response = await fetch('http://localhost:3000/api/user/nutrition-targets', {
           headers: {
-            'Cookie': `auth_session=${userId}; user_id=${userId}; guest_session=${guestSession}`
+            'Cookie': `user_id=${userId}; guest_session=${guestSession}; survey_id=${surveyId}`
           }
         });
         if (response.ok) {

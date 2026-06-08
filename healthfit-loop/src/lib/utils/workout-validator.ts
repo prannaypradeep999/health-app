@@ -135,10 +135,6 @@ export function validateWorkoutPlan(
           errors.push(`[WORKOUT-VALIDATOR] ${prefix}: missing name`);
           issues.push('Exercise missing name');
         }
-        if (!exercise?.equipment) {
-          errors.push(`[WORKOUT-VALIDATOR] ${prefix}: missing equipment`);
-          issues.push('Exercise missing equipment');
-        }
 
         const sets = toNumber(exercise?.sets);
         const reps = toNumber(exercise?.reps);

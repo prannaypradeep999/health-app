@@ -60,7 +60,16 @@
       "Bash(npx next lint:*)",
       "Bash(yarn lint:*)",
       "Bash(open http://localhost:3000)",
-      "Bash(open \"http://localhost:3000/survey\")"
+      "Bash(open \"http://localhost:3000/survey\")",
+      "Bash(git add *)",
+      "Bash(git commit -m ' *)",
+      "Bash(git commit *)",
+      "Bash(git -C /Users/Prannay/Desktop/2025/health/health-app/healthfit-loop add prisma/schema.prisma prisma/seed.ts package.json prisma/migrations/20260525181408_add_exercise_library_custom_workouts/)",
+      "Bash(git -C /Users/Prannay/Desktop/2025/health/health-app/healthfit-loop commit -m ' *)",
+      "Bash(npx ts-node *)",
+      "Bash(npx tsx *)",
+      "Bash(git stash *)",
+      "Bash(npm rebuild *)"
     ],
     "deny": [],
     "ask": []
