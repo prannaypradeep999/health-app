@@ -94,7 +94,6 @@ export function DashboardContainer({ initialScreen = 'dashboard' }: DashboardCon
 
     if (justCompleted === 'true') {
       console.log('[DashboardContainer] Survey just completed, waiting for fresh meal plan...');
-      setShouldShowInitialPreview(true);
       setIsWaitingForFreshData(true);
 
       // Don't clean up URL yet - we need to know we're waiting
