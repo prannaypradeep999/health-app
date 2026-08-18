@@ -1,5 +1,6 @@
 // src/lib/external/perplexity-client.ts
 import { withPerplexityRetry, withGPTRetry } from '@/lib/utils/retry';
+import { MODELS } from '@/lib/ai/models';
 
 export interface PerplexityMenuResponse {
   menuItems: Array<{
@@ -111,7 +112,7 @@ export class PerplexityClient {
       console.log(`[PERPLEXITY] 📝 Query: ${query.substring(0, 200)}...`);
 
       const requestBody = {
-        model: 'sonar',
+        model: MODELS.SEARCH,
         messages: [
           {
             role: 'system',
@@ -277,7 +278,7 @@ Return as JSON only, no other text:
             'Content-Type': 'application/json'
           },
           body: JSON.stringify({
-            model: 'sonar',
+            model: MODELS.SEARCH,
             messages: [
               {
                 role: 'system',
@@ -413,7 +414,7 @@ Return as JSON only:
             'Content-Type': 'application/json'
           },
           body: JSON.stringify({
-            model: 'sonar',
+            model: MODELS.SEARCH,
             messages: [
               {
                 role: 'system',
@@ -638,7 +639,7 @@ Extract 6-12 menu items maximum. Return ONLY valid JSON.`;
             'Content-Type': 'application/json',
           },
           body: JSON.stringify({
-            model: 'gpt-4o',
+            model: MODELS.DETAIL,
             messages: [{ role: 'user', content: gptPrompt }],
             response_format: { type: "json_object" },
             temperature: 0.1

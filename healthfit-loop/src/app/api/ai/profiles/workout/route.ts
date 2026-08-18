@@ -3,6 +3,7 @@ import { cookies } from 'next/headers';
 import { prisma } from '@/lib/db';
 import { withGPTRetry } from '@/lib/utils/retry';
 import { getAuthUserId } from '@/lib/auth';
+import { MODELS } from '@/lib/ai/models';
 
 export const runtime = 'nodejs';
 
@@ -251,7 +252,7 @@ Make it feel personal, specific to their situation, and motivating. Use their na
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({
-        model: 'gpt-4o-mini',
+        model: MODELS.FAST,
         messages: [
           {
             role: 'system',

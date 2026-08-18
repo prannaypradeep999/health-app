@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createWorkoutAnalysisPrompt } from '@/lib/ai/prompts';
+import { MODELS } from '@/lib/ai/models';
 
 export const runtime = 'nodejs';
 
@@ -24,7 +25,7 @@ export async function POST(request: NextRequest) {
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({
-        model: 'gpt-4o-mini', // Fast model for quick analysis
+        model: MODELS.FAST, // Fast model for quick analysis
         messages: [
           { role: 'system', content: 'You are a fitness expert. Respond with ONLY valid JSON.' },
           { role: 'user', content: prompt }

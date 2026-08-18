@@ -3,6 +3,7 @@ import { OpenAI } from 'openai';
 import { cookies } from 'next/headers';
 import { prisma } from '@/lib/db';
 import { getAuthUserId } from '@/lib/auth';
+import { MODELS } from '@/lib/ai/models';
 
 const openai = new OpenAI({
   apiKey: process.env.GPT_KEY,
@@ -275,7 +276,7 @@ Guidelines:
 
     while (toolCallRounds < maxToolRounds) {
       const completion = await openai.chat.completions.create({
-        model: 'gpt-4o-mini',
+        model: MODELS.FAST,
         messages: conversationMessages,
         tools: tools,
         tool_choice: 'auto',

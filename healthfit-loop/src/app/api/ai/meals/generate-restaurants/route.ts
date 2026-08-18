@@ -13,6 +13,7 @@ import { buildNutritionTargets } from '@/lib/utils/nutrition-targets';
 import { withGPTRetry } from '@/lib/utils/retry';
 import { getStartOfWeek } from '@/lib/utils/date-utils';
 import { validateRestrictions } from '@/lib/utils/restriction-validator';
+import { MODELS } from '@/lib/ai/models';
 
 export const runtime = 'nodejs';
 
@@ -199,7 +200,7 @@ async function findAndSelectBestRestaurants(surveyData: any): Promise<Restaurant
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
-          model: 'gpt-4o',
+          model: MODELS.PLANNING,
           messages: [{ role: 'user', content: selectionPrompt }],
           response_format: { type: "json_object" },
           temperature: 0.3
@@ -452,7 +453,7 @@ async function selectRestaurantMealsForSchedule(
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
-          model: 'gpt-4o',
+          model: MODELS.DETAIL,
           messages: [{ role: 'user', content: prompt }],
           response_format: { type: "json_object" },
           temperature: 0.4

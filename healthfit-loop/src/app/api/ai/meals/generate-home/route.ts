@@ -12,6 +12,7 @@ import { pexelsClient } from '@/lib/external/pexels-client';
 import { withGPTRetry } from '@/lib/utils/retry';
 import { getStartOfWeek } from '@/lib/utils/date-utils';
 import { getAuthUserId } from '@/lib/auth';
+import { MODELS } from '@/lib/ai/models';
 
 export const runtime = 'nodejs';
 
@@ -418,7 +419,7 @@ async function generateHomeMealsLegacy(
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
-          model: 'gpt-4o',
+          model: MODELS.DETAIL,
           messages: [{ role: 'system', content: prompt }],
           temperature: 0.5,
           max_tokens: 16384,
@@ -830,7 +831,7 @@ async function planWeekMeals(
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({
-        model: 'gpt-4o',
+        model: MODELS.PLANNING,
         messages: [{ role: 'system', content: planningPrompt }],
         temperature: 0.7,
         max_tokens: 2000,
@@ -908,7 +909,7 @@ async function generateMealDetails(
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({
-        model: 'gpt-4o',
+        model: MODELS.DETAIL,
         messages: [{ role: 'system', content: detailPrompt }],
         temperature: 0.5,
         max_tokens: 8000,
@@ -976,7 +977,7 @@ async function generateGroceryList(allMeals: any[], surveyData: any): Promise<an
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({
-        model: 'gpt-4o',
+        model: MODELS.DETAIL,
         messages: [{ role: 'system', content: groceryPrompt }],
         temperature: 0.3,
         max_tokens: 4000,

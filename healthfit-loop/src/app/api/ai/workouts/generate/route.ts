@@ -7,6 +7,7 @@ import { withGPTRetry } from '@/lib/utils/retry';
 import { validateWorkoutPlan } from '@/lib/utils/workout-validator';
 import { getStartOfWeek } from '@/lib/utils/date-utils';
 import { getAuthUserId } from '@/lib/auth';
+import { MODELS } from '@/lib/ai/models';
 
 export const runtime = 'nodejs';
 
@@ -352,7 +353,7 @@ async function planWorkout(
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({
-        model: 'gpt-4o',
+        model: MODELS.PLANNING,
         messages: [
           { role: 'system', content: 'You must respond with valid JSON only. No markdown.' },
           { role: 'user', content: planningPrompt }
@@ -396,7 +397,7 @@ async function generateDayDetails(
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({
-        model: 'gpt-4o',
+        model: MODELS.DETAIL,
         messages: [
           { role: 'system', content: 'You must respond with valid JSON only. No markdown.' },
           { role: 'user', content: detailPrompt }

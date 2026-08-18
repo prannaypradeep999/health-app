@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/db';
 import { createRecipeGenerationPrompt } from '@/lib/ai/prompts';
 import { validateIngredientSums } from '@/lib/utils/ingredient-validator';
+import { MODELS } from '@/lib/ai/models';
 
 export async function POST(req: NextRequest) {
   try {
@@ -91,7 +92,7 @@ export async function POST(req: NextRequest) {
         'Content-Type': 'application/json'
       },
       body: JSON.stringify({
-        model: 'gpt-4o-mini',
+        model: MODELS.FAST,
         messages: [
           {
             role: 'system',

@@ -4,6 +4,7 @@ import { prisma } from '@/lib/db';
 import { createFoodProfilePrompt } from '@/lib/ai/prompts/profile-generation';
 import { withGPTRetry } from '@/lib/utils/retry';
 import { getAuthUserId } from '@/lib/auth';
+import { MODELS } from '@/lib/ai/models';
 
 /**
  * Food Profile API Route
@@ -155,7 +156,7 @@ export async function POST(request: NextRequest) {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
-          model: 'gpt-4o-mini',
+          model: MODELS.FAST,
           messages: [
             {
               role: 'system',
