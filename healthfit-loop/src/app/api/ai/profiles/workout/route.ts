@@ -243,7 +243,7 @@ Write a comprehensive fitness profile (300-400 words) that includes:
 
 Make it feel personal, specific to their situation, and motivating. Use their name naturally throughout.`;
 
-  const gptResult = await withGPTRetry(async () => {
+  const gptResult = await withGPTRetry(async (signal) => {
     const response = await fetch('https://api.openai.com/v1/chat/completions', {
       method: 'POST',
       headers: {
@@ -260,7 +260,8 @@ Make it feel personal, specific to their situation, and motivating. Use their na
           { role: 'user', content: prompt }
         ],
         temperature: 0.7
-      })
+      }),
+      signal
     });
 
     if (!response.ok) {

@@ -128,14 +128,15 @@ export class PerplexityClient {
 
       console.log(`[PERPLEXITY] 🚀 Making API request to ${this.baseUrl}`);
 
-      const perplexityResult = await withPerplexityRetry(async () => {
+      const perplexityResult = await withPerplexityRetry(async (signal) => {
         const response = await fetch(this.baseUrl, {
           method: 'POST',
           headers: {
             'Authorization': `Bearer ${this.apiKey}`,
             'Content-Type': 'application/json',
           },
-          body: JSON.stringify(requestBody)
+          body: JSON.stringify(requestBody),
+          signal
         });
 
         if (!response.ok) {
@@ -237,7 +238,8 @@ export class PerplexityClient {
     streetAddress: string,
     city: string,
     state: string,
-    zipcode: string
+    zipcode: string,
+    outerSignal?: AbortSignal
   ): Promise<GroceryStoreSearchResponse> {
     console.log(`[PERPLEXITY-GROCERY] 🏪 Finding grocery stores near ${streetAddress}, ${city}...`);
 
@@ -266,7 +268,8 @@ Return as JSON only, no other text:
   ]
 }`;
 
-      const storeResult = await withPerplexityRetry(async () => {
+      const storeResult = await withPerplexityRetry(async (signal) => {
+        const fetchSignal = outerSignal ? AbortSignal.any([signal, outerSignal]) : signal;
         const response = await fetch(this.baseUrl, {
           method: 'POST',
           headers: {
@@ -283,7 +286,8 @@ Return as JSON only, no other text:
               { role: 'user', content: query }
             ],
             temperature: 0.1
-          })
+          }),
+          signal: fetchSignal
         });
 
         if (!response.ok) {
@@ -333,7 +337,8 @@ Return as JSON only, no other text:
     items: Array<{ name: string; quantity: string; uses: string; category: string }>,
     stores: GroceryStore[],
     city: string,
-    userGoal: string
+    userGoal: string,
+    outerSignal?: AbortSignal
   ): Promise<GroceryPriceResponse> {
     console.log(`[PERPLEXITY-GROCERY] 💰 Getting prices for ${items.length} items at ${stores.length} stores...`);
 
@@ -399,7 +404,8 @@ Return as JSON only:
   "savings": "Save $8.80 vs Store2"
 }`;
 
-      const priceResult = await withPerplexityRetry(async () => {
+      const priceResult = await withPerplexityRetry(async (signal) => {
+        const fetchSignal = outerSignal ? AbortSignal.any([signal, outerSignal]) : signal;
         const response = await fetch(this.baseUrl, {
           method: 'POST',
           headers: {
@@ -416,7 +422,8 @@ Return as JSON only:
               { role: 'user', content: query }
             ],
             temperature: 0.2
-          })
+          }),
+          signal: fetchSignal
         });
 
         if (!response.ok) {
@@ -623,7 +630,7 @@ REQUIRED JSON FORMAT:
 IMPORTANT: For orderingLinks, use "" (empty string) if not found. Do not use null, undefined, or made-up URLs.
 Extract 6-12 menu items maximum. Return ONLY valid JSON.`;
 
-      const gptResult = await withGPTRetry(async () => {
+      const gptResult = await withGPTRetry(async (signal) => {
         const response = await fetch('https://api.openai.com/v1/chat/completions', {
           method: 'POST',
           headers: {
@@ -635,7 +642,8 @@ Extract 6-12 menu items maximum. Return ONLY valid JSON.`;
             messages: [{ role: 'user', content: gptPrompt }],
             response_format: { type: "json_object" },
             temperature: 0.1
-          })
+          }),
+          signal
         });
 
         if (!response.ok) {

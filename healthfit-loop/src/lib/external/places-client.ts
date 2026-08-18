@@ -37,7 +37,7 @@ export class GooglePlacesClient {
   }
 
   async geocodeAddress(address: string): Promise<{ lat: number; lng: number } | null> {
-    const geocodeResult = await withPlacesRetry(async () => {
+    const geocodeResult = await withPlacesRetry(async (signal) => {
       const url = `${this.geocodeBaseUrl}/json?` + new URLSearchParams({
         address: address,
         key: this.apiKey,
@@ -45,7 +45,7 @@ export class GooglePlacesClient {
 
       console.log(`[GooglePlaces] 📍 Geocoding address: "${address}"`);
 
-      const response = await fetch(url);
+      const response = await fetch(url, { signal });
       const data = await response.json();
 
       if (data.status === 'OK' && data.results?.[0]?.geometry?.location) {
@@ -71,10 +71,10 @@ export class GooglePlacesClient {
   }
 
   async getRestaurantDetails(placeId: string): Promise<any> {
-    const detailsResult = await withPlacesRetry(async () => {
+    const detailsResult = await withPlacesRetry(async (signal) => {
       const detailsUrl = `${this.placesBaseUrl}/details/json?place_id=${placeId}&fields=name,formatted_address,formatted_phone_number,opening_hours,price_level,rating,reviews,website,business_status,editorial_summary,types,user_ratings_total&key=${this.apiKey}`;
 
-      const response = await fetch(detailsUrl);
+      const response = await fetch(detailsUrl, { signal });
       const data = await response.json();
 
       if (data.status !== 'OK') {
@@ -150,8 +150,8 @@ export class GooglePlacesClient {
 
       console.log(`[GooglePlaces] 🔍 Nearby search: "${keyword}" within ${radiusMiles} miles (${radiusMeters}m) of (${lat.toFixed(4)}, ${lng.toFixed(4)})`);
 
-      const searchResult = await withPlacesRetry(async () => {
-        const response = await fetch(searchUrl);
+      const searchResult = await withPlacesRetry(async (signal) => {
+        const response = await fetch(searchUrl, { signal });
         const data = await response.json();
 
         if (data.status === 'ZERO_RESULTS') {
@@ -221,8 +221,8 @@ export class GooglePlacesClient {
 
       console.log(`[GooglePlaces] 🔄 Fallback search: "${keyword}"`);
 
-      const fallbackResult = await withPlacesRetry(async () => {
-        const response = await fetch(searchUrl);
+      const fallbackResult = await withPlacesRetry(async (signal) => {
+        const response = await fetch(searchUrl, { signal });
         const data = await response.json();
 
         if (data.status === 'ZERO_RESULTS') {

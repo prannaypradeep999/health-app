@@ -147,7 +147,7 @@ export async function POST(request: NextRequest) {
     console.log('[Food Profile API] Generating new food profile with AI');
     const profilePrompt = createFoodProfilePrompt(surveyData);
 
-    const gptResult = await withGPTRetry(async () => {
+    const gptResult = await withGPTRetry(async (signal) => {
       const response = await fetch('https://api.openai.com/v1/chat/completions', {
         method: 'POST',
         headers: {
@@ -168,6 +168,7 @@ export async function POST(request: NextRequest) {
           ],
           temperature: 0.7
         }),
+        signal,
       });
 
       if (!response.ok) {

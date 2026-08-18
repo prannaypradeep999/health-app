@@ -232,11 +232,12 @@ export class PexelsClient {
    * Makes actual API call to Pexels with retry logic
    */
   private async searchPexels(query: string): Promise<string | null> {
-    const pexelsResult = await withPexelsRetry(async () => {
+    const pexelsResult = await withPexelsRetry(async (signal) => {
       const response = await fetch(`${this.baseUrl}?query=${encodeURIComponent(query)}&per_page=1&orientation=landscape`, {
         headers: {
           'Authorization': this.apiKey
-        }
+        },
+        signal
       });
 
       if (!response.ok) {
