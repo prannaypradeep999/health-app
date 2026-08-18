@@ -1,11 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { cookies } from 'next/headers';
 import { prisma } from '@/lib/db';
+import { getAuthUserId } from '@/lib/auth';
 
 export async function GET(req: NextRequest) {
   try {
     const cookieStore = await cookies();
-    const userId = cookieStore.get('user_id')?.value;
+    const userId = await getAuthUserId();
     const surveyId = cookieStore.get('survey_id')?.value;
     const { searchParams } = new URL(req.url);
     const exerciseName = searchParams.get('exerciseName');

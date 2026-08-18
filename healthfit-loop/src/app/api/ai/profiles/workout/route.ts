@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { cookies } from 'next/headers';
 import { prisma } from '@/lib/db';
 import { withGPTRetry } from '@/lib/utils/retry';
+import { getAuthUserId } from '@/lib/auth';
 
 export const runtime = 'nodejs';
 
@@ -24,7 +25,7 @@ export async function GET(req: NextRequest) {
     console.log('[Workout Profile API] Checking for existing workout profile');
 
     const cookieStore = await cookies();
-    const userId = cookieStore.get('user_id')?.value;
+    const userId = await getAuthUserId();
     const sessionId = cookieStore.get('guest_session')?.value;
     const surveyId = cookieStore.get('survey_id')?.value;
 
@@ -77,7 +78,7 @@ export async function POST(req: NextRequest) {
     console.log('[Workout Profile API] Starting workout profile generation');
 
     const cookieStore = await cookies();
-    const userId = cookieStore.get('user_id')?.value;
+    const userId = await getAuthUserId();
     const sessionId = cookieStore.get('guest_session')?.value;
     const surveyId = cookieStore.get('survey_id')?.value;
 

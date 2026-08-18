@@ -175,6 +175,40 @@ export async function deleteSession(sessionId: string): Promise<void> {
 }
 
 /**
+ * Resolve the authenticated user's ID from the request cookies.
+ *
+ * This is the single source of identity for API routes. It validates the
+ * `auth_session` cookie against the database and returns null when there is no
+ * valid, unexpired session.
+ *
+ * Never read the `user_id` cookie for identity: it is unsigned and unvalidated,
+ * so any known user ID could be replayed to impersonate that user. User IDs are
+ * cuids that appear in URLs, logs, and API responses, so they are not secret.
+ *
+ * Returns null for anonymous/guest visitors. Callers that support guests should
+ * keep pairing this with `surveyId`/`guest_session` as they already do.
+ */
+export async function getAuthUserId(): Promise<string | null> {
+  const cookieStore = await cookies();
+  const sessionId = cookieStore.get('auth_session')?.value;
+
+  if (!sessionId) {
+    return null;
+  }
+
+  const session = await prisma.userSession.findUnique({
+    where: { sessionId },
+    select: { userId: true, expiresAt: true }
+  });
+
+  if (!session || session.expiresAt < new Date()) {
+    return null;
+  }
+
+  return session.userId;
+}
+
+/**
  * Get current user from cookies
  */
 export async function getCurrentUser(): Promise<AuthUser | null> {

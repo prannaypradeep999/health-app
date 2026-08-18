@@ -9,10 +9,16 @@ export async function middleware(request: NextRequest) {
     return NextResponse.next();
   }
 
-  // Check for auth session cookie
+  // NOTE: This middleware is a UX redirect, NOT an authorization boundary.
+  // It runs on the edge and cannot reach Prisma, so it can only check that a
+  // session cookie is *present* — not that it is valid. Real enforcement is
+  // getAuthUserId() in src/lib/auth.ts, called by each API route.
+  //
+  // The unsigned `user_id` cookie is deliberately not consulted: it was
+  // previously accepted as proof of login, which let anyone reach the dashboard
+  // by supplying any known user ID.
   const sessionId = request.cookies.get('auth_session')?.value;
-  const userId = request.cookies.get('user_id')?.value;
-  const isLoggedIn = !!(sessionId || userId);
+  const isLoggedIn = !!sessionId;
 
   // Also check for guest session (completed survey but not registered)
   const guestSession = request.cookies.get('guest_session')?.value;

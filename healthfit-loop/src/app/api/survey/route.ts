@@ -7,6 +7,7 @@ import { nanoid } from 'nanoid';
 import { getStartOfWeek } from '@/lib/utils/date-utils';
 import { checkPreferenceConflicts } from '@/lib/utils/preference-conflict-checker';
 import { sendEmail, generateDashboardReadyEmail } from '@/lib/email';
+import { getAuthUserId } from '@/lib/auth';
 
 export const runtime = 'nodejs';
 
@@ -386,7 +387,7 @@ export async function GET(req: Request) {
     const cookieStore = await cookies();
     const sessionId = cookieStore.get('guest_session')?.value;
     const surveyId = cookieStore.get('survey_id')?.value;
-    const userId = cookieStore.get('user_id')?.value;
+    const userId = await getAuthUserId();
 
     console.log(`[SURVEY-GET] 🔍 Looking up survey: userId="${userId}", sessionId="${sessionId}", surveyId="${surveyId}"`);
 

@@ -1,11 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { cookies } from 'next/headers';
 import { prisma } from '@/lib/db';
+import { getAuthUserId } from '@/lib/auth';
 
 export async function POST(req: NextRequest) {
   try {
     const cookieStore = await cookies();
-    const userId = cookieStore.get('user_id')?.value;
+    const userId = await getAuthUserId();
     const surveyId = cookieStore.get('survey_id')?.value;
 
     const { workoutPlanId, day, additionType, source, exerciseLibraryId, customData, weightUsedLbs } =
@@ -39,7 +40,7 @@ export async function POST(req: NextRequest) {
 
 export async function GET(req: NextRequest) {
   const cookieStore = await cookies();
-  const userId = cookieStore.get('user_id')?.value;
+  const userId = await getAuthUserId();
   const surveyId = cookieStore.get('survey_id')?.value;
   const { searchParams } = new URL(req.url);
   const workoutPlanId = searchParams.get('workoutPlanId');

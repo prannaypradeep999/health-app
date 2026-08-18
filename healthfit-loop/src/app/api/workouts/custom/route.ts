@@ -1,11 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { cookies } from 'next/headers';
 import { prisma } from '@/lib/db';
+import { getAuthUserId } from '@/lib/auth';
 
 async function getIdentifiers() {
   const cookieStore = await cookies();
   return {
-    userId: cookieStore.get('user_id')?.value || null,
+    userId: await getAuthUserId(),
     surveyId: cookieStore.get('survey_id')?.value || null,
   };
 }

@@ -2,13 +2,14 @@ import { NextRequest, NextResponse } from 'next/server';
 import { cookies } from 'next/headers';
 import { prisma } from '@/lib/db';
 import { sendEmail, generateDashboardReadyEmail } from '@/lib/email';
+import { getAuthUserId } from '@/lib/auth';
 
 export async function POST(request: NextRequest) {
   try {
     const cookieStore = await cookies();
     const surveyId = cookieStore.get('survey_id')?.value;
     const guestSession = cookieStore.get('guest_session')?.value;
-    const userId = cookieStore.get('user_id')?.value;
+    const userId = await getAuthUserId();
 
     // Must have survey_id to send dashboard email
     if (!surveyId) {

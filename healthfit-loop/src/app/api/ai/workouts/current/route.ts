@@ -2,11 +2,12 @@ import { NextResponse } from 'next/server';
 import { cookies } from 'next/headers';
 import { prisma } from '@/lib/db';
 import { formatDateKey, getStartOfWeek } from '@/lib/utils/date-utils';
+import { getAuthUserId } from '@/lib/auth';
 
 export async function GET() {
   try {
     const cookieStore = await cookies();
-    const userId = cookieStore.get('user_id')?.value;
+    const userId = await getAuthUserId();
     const sessionId = cookieStore.get('guest_session')?.value;
     const surveyId = cookieStore.get('survey_id')?.value;
     const workoutPlanId = cookieStore.get('workout_plan_id')?.value;

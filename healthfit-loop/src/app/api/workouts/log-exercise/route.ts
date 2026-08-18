@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { cookies } from 'next/headers';
 import { prisma } from '@/lib/db';
+import { getAuthUserId } from '@/lib/auth';
 
 export async function POST(req: Request) {
   try {
@@ -20,7 +21,7 @@ export async function POST(req: Request) {
     } = await req.json();
 
     const cookieStore = await cookies();
-    const userId = cookieStore.get('user_id')?.value;
+    const userId = await getAuthUserId();
 
     if (!workoutPlanId || !day || !exerciseName) {
       return NextResponse.json({ error: 'Missing required fields' }, { status: 400 });

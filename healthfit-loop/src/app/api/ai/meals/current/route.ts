@@ -3,13 +3,14 @@ import { cookies } from 'next/headers';
 import { prisma } from '@/lib/db';
 import { formatDateKey, getStartOfWeek } from '@/lib/utils/date-utils';
 import { calculateMacroTargets, getMealCalorieDistribution, UserProfile } from '@/lib/utils/nutrition';
+import { getAuthUserId } from '@/lib/auth';
 
 const shouldLog = true; // Enable logging for debugging
 
 export async function GET() {
   try {
     const cookieStore = await cookies();
-    const userId = cookieStore.get('user_id')?.value;
+    const userId = await getAuthUserId();
     const sessionId = cookieStore.get('guest_session')?.value;
     const surveyId = cookieStore.get('survey_id')?.value;
     const mealPlanId = cookieStore.get('meal_plan_id')?.value;
@@ -146,7 +147,7 @@ export async function GET() {
     let surveyData = null;
     if (cleanUserId) {
       const user = await prisma.user.findUnique({
-        where: { id: userId },
+        where: { id: cleanUserId },
         include: { activeSurvey: true }
       });
       surveyData = user?.activeSurvey;

@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { cookies } from 'next/headers';
 import { prisma } from '@/lib/db';
+import { getAuthUserId } from '@/lib/auth';
 
 export const runtime = 'nodejs';
 
@@ -9,7 +10,7 @@ export async function POST(req: Request) {
     const { day, exerciseName, completed } = await req.json();
 
     const cookieStore = await cookies();
-    const userId = cookieStore.get('user_id')?.value;
+    const userId = await getAuthUserId();
     const sessionId = cookieStore.get('guest_session')?.value;
     const surveyId = cookieStore.get('survey_id')?.value;
 
@@ -138,7 +139,7 @@ export async function POST(req: Request) {
 export async function GET(req: Request) {
   try {
     const cookieStore = await cookies();
-    const userId = cookieStore.get('user_id')?.value;
+    const userId = await getAuthUserId();
     const sessionId = cookieStore.get('guest_session')?.value;
     const surveyId = cookieStore.get('survey_id')?.value;
 

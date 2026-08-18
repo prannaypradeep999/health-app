@@ -3,6 +3,7 @@ import { cookies } from 'next/headers';
 import { prisma } from '@/lib/db';
 import { createFoodProfilePrompt } from '@/lib/ai/prompts/profile-generation';
 import { withGPTRetry } from '@/lib/utils/retry';
+import { getAuthUserId } from '@/lib/auth';
 
 /**
  * Food Profile API Route
@@ -23,7 +24,7 @@ export async function GET(request: NextRequest) {
     console.log('[Food Profile API] Checking for existing food profile');
 
     const cookieStore = await cookies();
-    const userId = cookieStore.get('user_id')?.value;
+    const userId = await getAuthUserId();
     const sessionId = cookieStore.get('guest_session')?.value;
     const surveyId = cookieStore.get('survey_id')?.value;
 
@@ -79,7 +80,7 @@ export async function POST(request: NextRequest) {
     console.log('[Food Profile API] Starting food profile generation');
 
     const cookieStore = await cookies();
-    const userId = cookieStore.get('user_id')?.value;
+    const userId = await getAuthUserId();
     const sessionId = cookieStore.get('guest_session')?.value;
     const surveyId = cookieStore.get('survey_id')?.value;
 

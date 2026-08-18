@@ -6,6 +6,7 @@ import { createWorkoutPlanPrompt, createWorkoutPlanningPrompt, createWorkoutDeta
 import { withGPTRetry } from '@/lib/utils/retry';
 import { validateWorkoutPlan } from '@/lib/utils/workout-validator';
 import { getStartOfWeek } from '@/lib/utils/date-utils';
+import { getAuthUserId } from '@/lib/auth';
 
 export const runtime = 'nodejs';
 
@@ -33,7 +34,7 @@ export async function POST(req: NextRequest) {
     }
 
     const cookieStore = await cookies();
-    const userId = cookieStore.get('user_id')?.value;
+    const userId = await getAuthUserId();
     const sessionId = cookieStore.get('guest_session')?.value;
     const surveyId = cookieStore.get('survey_id')?.value;
 

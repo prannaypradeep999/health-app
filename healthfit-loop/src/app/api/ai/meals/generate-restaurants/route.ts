@@ -3,6 +3,7 @@ import { cookies } from 'next/headers';
 import { prisma } from '@/lib/db';
 import { googlePlacesClient, Restaurant } from '@/lib/external/places-client';
 import { perplexityClient } from '@/lib/external/perplexity-client';
+import { getAuthUserId } from '@/lib/auth';
 import {
   createRestaurantMealGenerationPrompt,
   createRestaurantSelectionPrompt
@@ -605,7 +606,7 @@ export async function POST(req: NextRequest) {
     });
 
     const cookieStore = await cookies();
-    const userId = cookieStore.get('user_id')?.value;
+    const userId = await getAuthUserId();
     const sessionId = cookieStore.get('guest_session')?.value;
     const surveyId = cookieStore.get('survey_id')?.value;
     

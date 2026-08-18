@@ -1,13 +1,14 @@
 import { NextResponse } from 'next/server';
 import { cookies } from 'next/headers';
 import { prisma } from '@/lib/db';
+import { getAuthUserId } from '@/lib/auth';
 
 export async function POST(req: Request) {
   try {
     const { surveyId, restaurantName, cuisine, address, isFavorite } = await req.json();
 
     const cookieStore = await cookies();
-    const userId = cookieStore.get('user_id')?.value;
+    const userId = await getAuthUserId();
 
     if (!surveyId || !restaurantName) {
       return NextResponse.json({ error: 'surveyId and restaurantName required' }, { status: 400 });

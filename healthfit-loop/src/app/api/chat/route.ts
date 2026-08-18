@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { OpenAI } from 'openai';
 import { cookies } from 'next/headers';
 import { prisma } from '@/lib/db';
+import { getAuthUserId } from '@/lib/auth';
 
 const openai = new OpenAI({
   apiKey: process.env.GPT_KEY,
@@ -75,7 +76,7 @@ const tools: OpenAI.Chat.Completions.ChatCompletionTool[] = [
 
 async function getUserContext() {
   const cookieStore = await cookies();
-  const userId = cookieStore.get('user_id')?.value;
+  const userId = await getAuthUserId();
   const guestSession = cookieStore.get('guest_session')?.value;
   const surveyId = cookieStore.get('survey_id')?.value;
   const mealPlanId = cookieStore.get('meal_plan_id')?.value;
