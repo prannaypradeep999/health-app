@@ -13,6 +13,7 @@ import { withGPTRetry } from '@/lib/utils/retry';
 import { getStartOfWeek } from '@/lib/utils/date-utils';
 import { getAuthUserId } from '@/lib/auth';
 import { MODELS } from '@/lib/ai/models';
+import { logUsage } from '@/lib/ai/usage';
 
 export const runtime = 'nodejs';
 
@@ -447,6 +448,7 @@ async function generateHomeMealsLegacy(
     }
 
     const data = gptResult.data;
+    logUsage('home-meals-legacy', 16384, data);
 
     // Store token usage for later logging
     const tokenUsage = data.usage;
@@ -832,9 +834,12 @@ async function planWeekMeals(
       },
       body: JSON.stringify({
         model: MODELS.PLANNING,
+        // 21 home meals costs ~2900 output tokens at ~138/meal. The old 2000
+        // ceiling truncated 10/10 in measurement, which threw in JSON.parse and
+        // silently dropped every full-home-meal week to the legacy fallback.
         messages: [{ role: 'system', content: planningPrompt }],
         temperature: 0.7,
-        max_tokens: 2000,
+        max_tokens: 8000,
         response_format: { type: "json_object" }
       }),
       signal: signal
@@ -853,6 +858,7 @@ async function planWeekMeals(
   }
 
   const data = gptResult.data;
+  logUsage('home-meals-planning', 8000, data);
   const content = data.choices?.[0]?.message?.content;
 
   if (!content) {
@@ -912,7 +918,9 @@ async function generateMealDetails(
         model: MODELS.DETAIL,
         messages: [{ role: 'system', content: detailPrompt }],
         temperature: 0.5,
-        max_tokens: 8000,
+        // Measured p95 6283 against the old 8000 ceiling — 79%, too close to
+        // truncate safely once strict mode makes a cut-off response a hard fail.
+        max_tokens: 12000,
         response_format: { type: "json_object" }
       }),
       signal: signal
@@ -931,6 +939,7 @@ async function generateMealDetails(
   }
 
   const data = gptResult.data;
+  logUsage(`home-meals-detail:${chunkName}`, 12000, data);
   const content = data.choices?.[0]?.message?.content;
 
   if (!content) {
@@ -999,6 +1008,7 @@ async function generateGroceryList(allMeals: any[], surveyData: any): Promise<an
   }
 
   const data = gptResult.data;
+  logUsage('home-meals-grocery', 4000, data);
   const content = data.choices?.[0]?.message?.content;
 
   if (!content) {

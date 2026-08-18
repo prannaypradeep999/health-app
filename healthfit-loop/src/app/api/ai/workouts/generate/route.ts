@@ -8,6 +8,7 @@ import { validateWorkoutPlan } from '@/lib/utils/workout-validator';
 import { getStartOfWeek } from '@/lib/utils/date-utils';
 import { getAuthUserId } from '@/lib/auth';
 import { MODELS } from '@/lib/ai/models';
+import { logUsage } from '@/lib/ai/usage';
 
 export const runtime = 'nodejs';
 
@@ -370,6 +371,7 @@ async function planWorkout(
 
   if (!gptResult.success) throw new Error(`Workout planning failed: ${gptResult.error}`);
 
+  logUsage('workout-planning', 2000, gptResult.data);
   const content = gptResult.data.choices?.[0]?.message?.content;
   if (!content) throw new Error('No content from workout planning call');
 
@@ -404,7 +406,8 @@ async function generateDayDetails(
         ],
         response_format: { type: 'json_object' },
         temperature: 0.4,
-        max_tokens: 6000
+        // Measured p95 4135 against the old 6000 ceiling — 69%, no useful margin.
+        max_tokens: 9000
       }),
       signal
     });
@@ -414,6 +417,7 @@ async function generateDayDetails(
 
   if (!gptResult.success) throw new Error(`Workout detail failed for ${chunkLabel}: ${gptResult.error}`);
 
+  logUsage(`workout-detail:${chunkLabel}`, 9000, gptResult.data);
   const content = gptResult.data.choices?.[0]?.message?.content;
   if (!content) throw new Error(`No content for ${chunkLabel}`);
 
