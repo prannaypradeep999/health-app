@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/db';
+import { createSession } from '@/lib/auth';
 
 export const runtime = 'nodejs';
 
@@ -59,25 +60,26 @@ export async function GET(request: NextRequest) {
       });
     }
 
-    // Check if this survey is linked to a user and set user_id cookie if so
+    // If this survey belongs to a registered user, issue a real session.
+    // Previously this set an unsigned `user_id` cookie with no session row, which
+    // meant identity could be forged by supplying any known user ID. Sessions are
+    // validated against the database and expire, so they cannot be forged.
     const surveyWithUser = await prisma.surveyResponse.findUnique({
       where: { id: survey.id },
       select: { userId: true }
     });
 
     if (surveyWithUser?.userId) {
-      if (!surveyWithUser.userId) {
-        console.error(`[Magic Link API] ❌ CRITICAL: surveyWithUser.userId is undefined/null for survey: ${survey.id}`);
-      } else {
-        response.cookies.set('user_id', surveyWithUser.userId, {
-          httpOnly: true,
-          secure: process.env.NODE_ENV === 'production',
-          sameSite: 'lax',
-          maxAge: 30 * 24 * 60 * 60, // 30 days
-          path: '/'
-        });
-        console.log(`[Magic Link API] 🍪 Set user_id cookie: ${surveyWithUser.userId}`);
-      }
+      const sessionId = await createSession(surveyWithUser.userId);
+
+      response.cookies.set('auth_session', sessionId, {
+        httpOnly: true,
+        secure: process.env.NODE_ENV === 'production',
+        sameSite: 'lax',
+        maxAge: 30 * 24 * 60 * 60, // 30 days
+        path: '/'
+      });
+      console.log(`[Magic Link API] 🔐 Created session for user: ${surveyWithUser.userId}`);
     }
 
     console.log(`[Magic Link API] ✅ Cookies set for survey: ${survey.id}`);
