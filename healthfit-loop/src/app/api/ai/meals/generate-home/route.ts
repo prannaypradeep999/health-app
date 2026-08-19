@@ -14,6 +14,14 @@ import { getStartOfWeek } from '@/lib/utils/date-utils';
 import { getAuthUserId } from '@/lib/auth';
 import { MODELS } from '@/lib/ai/models';
 import { logUsage } from '@/lib/ai/usage';
+import {
+  MealPlanSchema,
+  MealDetailSchema,
+  GroceryListSchema,
+  HomeMealsLegacySchema,
+  toStrictJsonSchema,
+} from '@/lib/ai/schemas';
+import { parseChoice } from '@/lib/ai/validate';
 
 export const runtime = 'nodejs';
 
@@ -373,8 +381,63 @@ async function generateHomeMealsForSchedule(
     console.warn(`[HOME-MEALS-7DAY] ⚠️ Phase 2 failed, falling back to Phase 1:`, (phase2Error as Error).message);
 
     // Fallback to Phase 1 (original single-call approach)
-    return await generateHomeMealsLegacy(homeMeals, surveyData, nutritionTargets, weeklyNutritionTargets, feedbackContext);
+    return await generateHomeMealsLegacyChunked(homeMeals, surveyData, nutritionTargets, weeklyNutritionTargets, feedbackContext);
   }
+}
+
+/**
+ * A full 21-meal legacy week measures at 15424 output tokens — 94% of 16384,
+ * which is gpt-4o's hard output maximum, so the ceiling cannot simply be
+ * raised. Under strict mode a truncated response is a total loss rather than a
+ * short one, so anything past this many slots goes out as two calls and gets
+ * merged. Two ~8k calls cost the same as one ~15k call and cannot truncate.
+ *
+ * The old behaviour hid this: the model returned 1-3 of 21 meals well under
+ * the ceiling and nothing checked the count.
+ */
+const LEGACY_MEALS_PER_CALL = 12;
+
+async function generateHomeMealsLegacyChunked(
+  homeMeals: Array<{day: string, mealType: string}>,
+  surveyData: any,
+  nutritionTargets: any,
+  weeklyNutritionTargets?: any,
+  feedbackContext?: MealFeedbackContext | null
+): Promise<any> {
+  if (homeMeals.length <= LEGACY_MEALS_PER_CALL) {
+    return generateHomeMealsLegacy(homeMeals, surveyData, nutritionTargets, weeklyNutritionTargets, feedbackContext);
+  }
+
+  const mid = Math.ceil(homeMeals.length / 2);
+  const halves = [homeMeals.slice(0, mid), homeMeals.slice(mid)];
+  console.log(`[HOME-MEALS-LEGACY] ✂️ Splitting ${homeMeals.length} meals into ${halves.map(h => h.length).join('+')} to stay clear of the 16384 output ceiling`);
+
+  const results = await Promise.all(
+    halves.map(half => generateHomeMealsLegacy(half, surveyData, nutritionTargets, weeklyNutritionTargets, feedbackContext))
+  );
+
+  const mergedMeals = results.flatMap(r => r.homeMeals || []);
+
+  // Rebuild the grocery list over the merged meals rather than concatenating
+  // two half-lists, which would double-count anything used in both halves.
+  const groceryList = mergedMeals.length > 0 ? buildFallbackGroceryList(mergedMeals) : null;
+
+  const errors = results.map(r => r.error).filter(Boolean);
+  console.log(`[HOME-MEALS-LEGACY] ✂️ Merged ${mergedMeals.length}/${homeMeals.length} meals from ${halves.length} calls` +
+    (errors.length > 0 ? ` (${errors.length} half failed: ${errors.join('; ')})` : ''));
+
+  return {
+    homeMeals: mergedMeals,
+    groceryList,
+    restrictionViolations: results.flatMap(r => r.restrictionViolations || []),
+    ...(errors.length > 0 && mergedMeals.length === 0 ? { error: errors.join('; ') } : {}),
+    metadata: {
+      generationTime: Math.max(...results.map(r => r.metadata?.generationTime || 0)),
+      totalHomeMeals: homeMeals.length,
+      nutritionTargets,
+      legacySplit: halves.map(h => h.length),
+    },
+  };
 }
 
 // Phase 1: Legacy single-call approach (FALLBACK)
@@ -424,7 +487,7 @@ async function generateHomeMealsLegacy(
           messages: [{ role: 'system', content: prompt }],
           temperature: 0.5,
           max_tokens: 16384,
-          response_format: { type: "json_object" }
+          response_format: toStrictJsonSchema('home_meals_legacy', HomeMealsLegacySchema)
         }),
         signal: signal
       });
@@ -453,61 +516,20 @@ async function generateHomeMealsLegacy(
     // Store token usage for later logging
     const tokenUsage = data.usage;
 
-    // Check for OpenAI refusal or content filtering
-    if (data.choices?.[0]?.finish_reason === 'content_filter') {
-      console.error('[HOME-MEALS-7DAY] ❌ Content filtered by OpenAI');
-      return {
-        homeMeals: [],
-        groceryList: null,
-        error: 'Content filtered by OpenAI - please try rephrasing your meal preferences',
-        retryAttempts: gptResult.attempts
-      };
-    }
-
-    if (data.choices?.[0]?.message?.refusal) {
-      console.error('[HOME-MEALS-7DAY] ❌ OpenAI refused request:', data.choices[0].message.refusal);
-      return {
-        homeMeals: [],
-        groceryList: null,
-        error: `OpenAI refused request: ${data.choices[0].message.refusal}`,
-        retryAttempts: gptResult.attempts
-      };
-    }
-
-    // Validate response structure
-    if (!data.choices || !Array.isArray(data.choices) || data.choices.length === 0) {
-      console.error('[HOME-MEALS-7DAY] ❌ Invalid response structure - no choices');
-      return {
-        homeMeals: [],
-        groceryList: null,
-        error: 'Invalid response structure from OpenAI',
-        retryAttempts: gptResult.attempts
-      };
-    }
-
-    if (!data.choices[0]?.message?.content) {
-      console.error('[HOME-MEALS-7DAY] ❌ Invalid response structure - no content');
-      return {
-        homeMeals: [],
-        groceryList: null,
-        error: 'No content in OpenAI response',
-        retryAttempts: gptResult.attempts
-      };
-    }
-
     console.log(`[HOME-MEALS-7DAY] ✅ Succeeded after ${gptResult.attempts} attempt(s)`);
-    const content = data.choices[0].message.content;
 
-    console.log('[HOME-MEALS-7DAY] 🔍 Raw GPT response (first 500 chars):', content.substring(0, 500));
+    // Refusal, content filtering, truncation, bad JSON and shape drift all land
+    // here. The four hand-rolled structural checks this replaces did not cover
+    // truncation, which was the failure that actually happened in measurement.
+    const legacyParsed = parseChoice(HomeMealsLegacySchema, data.choices?.[0], 'home-meals-legacy');
 
     let parsedResult: any;
-    try {
-      parsedResult = JSON.parse(content);
-      console.log('[HOME-MEALS-7DAY] ✅ Successfully parsed JSON:', {
-        homeMealsCount: parsedResult.homeMeals?.length || 0,
-        hasGroceryList: !!parsedResult.groceryList,
-        totalEstimatedCost: parsedResult.totalEstimatedCost || 0
-      });
+    if (legacyParsed.ok) {
+      parsedResult = legacyParsed.data;
+      console.log(`[HOME-MEALS-LEGACY] ✅ Parsed ${parsedResult.homeMeals.length}/${homeMeals.length} meals, grocery list present`);
+      if (parsedResult.homeMeals.length < homeMeals.length) {
+        console.error(`[HOME-MEALS-LEGACY] ⚠️ Short week: ${parsedResult.homeMeals.length}/${homeMeals.length} meals requested`);
+      }
 
       // Validate meal plan against nutrition targets
       if (parsedResult.homeMeals && weeklyNutritionTargets) {
@@ -642,15 +664,15 @@ async function generateHomeMealsLegacy(
       } else {
         console.log(`[RESTRICTION-VALIDATOR] ✅ All meals pass restriction checks`);
       }
-    } catch (parseError) {
-      console.error('[HOME-MEALS-7DAY] JSON parse failed:', parseError);
-      console.error('[HOME-MEALS-7DAY] Raw content (full):', content);
+    } else {
+      console.error(`[HOME-MEALS-LEGACY] ❌ ${legacyParsed.reason}: ${legacyParsed.detail}`);
+      console.error('[HOME-MEALS-LEGACY] Raw content (first 1000):', legacyParsed.raw.substring(0, 1000));
       parsedResult = {
         homeMeals: [],
         groceryList: null,
         totalEstimatedCost: 0,
         weeklyBudgetUsed: "0%",
-        error: 'Failed to parse meal data'
+        error: `Failed to parse meal data (${legacyParsed.reason})`
       };
     }
 
@@ -840,7 +862,7 @@ async function planWeekMeals(
         messages: [{ role: 'system', content: planningPrompt }],
         temperature: 0.7,
         max_tokens: 8000,
-        response_format: { type: "json_object" }
+        response_format: toStrictJsonSchema('meal_plan', MealPlanSchema)
       }),
       signal: signal
     });
@@ -859,11 +881,6 @@ async function planWeekMeals(
 
   const data = gptResult.data;
   logUsage('home-meals-planning', 8000, data);
-  const content = data.choices?.[0]?.message?.content;
-
-  if (!content) {
-    throw new Error('No planning content received');
-  }
 
   const planningTime = Date.now() - startTime;
   const tokenUsage = data.usage;
@@ -874,17 +891,13 @@ async function planWeekMeals(
     console.log(`[HOME-MEALS-7DAY] ✅ Planning complete in ${planningTime}ms`);
   }
 
-  try {
-    const planningResult = JSON.parse(content);
-    console.log(`[HOME-MEALS-7DAY] 📝 Planning raw response (first 500 chars):`, content.substring(0, 500));
-    console.log(`[HOME-MEALS-7DAY] 📝 Planning response structure:`, Object.keys(planningResult));
-
-    return planningResult;
-  } catch (parseError) {
-    console.error('[HOME-MEALS-7DAY] Planning JSON parse failed:', parseError);
-    console.error('[HOME-MEALS-7DAY] Raw content:', content.substring(0, 1000));
-    throw new Error('Failed to parse meal planning response');
+  const parsed = parseChoice(MealPlanSchema, data.choices?.[0], 'home-meals-planning');
+  if (!parsed.ok) {
+    throw new Error(`Meal planning ${parsed.reason}: ${parsed.detail}`);
   }
+
+  console.log(`[HOME-MEALS-7DAY] 📝 Planning parsed: ${parsed.data.mealPlan.length}/${homeMeals.length} meals`);
+  return parsed.data;
 }
 
 /**
@@ -921,7 +934,7 @@ async function generateMealDetails(
         // Measured p95 6283 against the old 8000 ceiling — 79%, too close to
         // truncate safely once strict mode makes a cut-off response a hard fail.
         max_tokens: 12000,
-        response_format: { type: "json_object" }
+        response_format: toStrictJsonSchema('meal_detail', MealDetailSchema)
       }),
       signal: signal
     });
@@ -934,17 +947,15 @@ async function generateMealDetails(
     return response.json();
   }, `Detail generation ${chunkName}`);
 
+  // A failed chunk is not fatal. Its meals come back missing and the top-up
+  // pass in generateHomeMealsParallel gets a second attempt at just those slots.
   if (!gptResult.success) {
-    throw new Error(`Detail generation failed for ${chunkName}: ${gptResult.error}`);
+    console.error(`[HOME-MEALS-7DAY] ❌ ${chunkName} failed: ${gptResult.error} — deferring to top-up`);
+    return { meals: [] };
   }
 
   const data = gptResult.data;
   logUsage(`home-meals-detail:${chunkName}`, 12000, data);
-  const content = data.choices?.[0]?.message?.content;
-
-  if (!content) {
-    throw new Error(`No detail content received for ${chunkName}`);
-  }
 
   const detailTime = Date.now() - startTime;
   const tokenUsage = data.usage;
@@ -955,17 +966,14 @@ async function generateMealDetails(
     console.log(`[HOME-MEALS-7DAY] ✅ ${chunkName} complete in ${detailTime}ms`);
   }
 
-  try {
-    const detailResult = JSON.parse(content);
-    console.log(`[HOME-MEALS-7DAY] 📝 ${chunkName} raw response (first 500 chars):`, content.substring(0, 500));
-    console.log(`[HOME-MEALS-7DAY] 📝 ${chunkName} parsed: ${detailResult.meals?.length || 0} meals with recipes`);
-
-    return detailResult;
-  } catch (parseError) {
-    console.error(`[HOME-MEALS-7DAY] ${chunkName} JSON parse failed:`, parseError);
-    console.error(`[HOME-MEALS-7DAY] ${chunkName} raw content:`, content.substring(0, 1000));
-    throw new Error(`Failed to parse detail response for ${chunkName}`);
+  const parsed = parseChoice(MealDetailSchema, data.choices?.[0], `home-meals-detail:${chunkName}`);
+  if (!parsed.ok) {
+    console.error(`[HOME-MEALS-7DAY] ❌ ${chunkName} ${parsed.reason}: ${parsed.detail} — deferring to top-up`);
+    return { meals: [] };
   }
+
+  console.log(`[HOME-MEALS-7DAY] 📝 ${chunkName} parsed: ${parsed.data.meals.length}/${plannedMealsChunk.length} meals with recipes`);
+  return parsed.data;
 }
 
 /**
@@ -990,7 +998,7 @@ async function generateGroceryList(allMeals: any[], surveyData: any): Promise<an
         messages: [{ role: 'system', content: groceryPrompt }],
         temperature: 0.3,
         max_tokens: 4000,
-        response_format: { type: "json_object" }
+        response_format: toStrictJsonSchema('grocery_list', GroceryListSchema)
       }),
       signal: signal
     });
@@ -1003,17 +1011,15 @@ async function generateGroceryList(allMeals: any[], surveyData: any): Promise<an
     return response.json();
   }, 'Grocery list generation');
 
+  // The caller already backfills a null list from the meals' own ingredients,
+  // so a grocery failure costs polish, not the meal plan.
   if (!gptResult.success) {
-    throw new Error(`Grocery list generation failed: ${gptResult.error}`);
+    console.error(`[HOME-MEALS-7DAY] ❌ Grocery generation failed: ${gptResult.error} — backfilling from ingredients`);
+    return { groceryList: null };
   }
 
   const data = gptResult.data;
   logUsage('home-meals-grocery', 4000, data);
-  const content = data.choices?.[0]?.message?.content;
-
-  if (!content) {
-    throw new Error('No grocery content received');
-  }
 
   const groceryTime = Date.now() - startTime;
   const tokenUsage = data.usage;
@@ -1024,21 +1030,18 @@ async function generateGroceryList(allMeals: any[], surveyData: any): Promise<an
     console.log(`[HOME-MEALS-7DAY] ✅ Grocery list complete in ${groceryTime}ms`);
   }
 
-  try {
-    const groceryResult = JSON.parse(content);
-    console.log(`[HOME-MEALS-7DAY] 📝 Grocery raw response (first 500 chars):`, content.substring(0, 500));
-
-    const list = groceryResult.groceryList || groceryResult;
-    const categories = Object.keys(list || {});
-    const totalItems = categories.reduce((sum, cat) => sum + (list[cat]?.length || 0), 0);
-    console.log(`[HOME-MEALS-7DAY] ✅ Grocery list: ${totalItems} items across ${categories.length} categories (${categories.join(', ')})`);
-
-    return groceryResult;
-  } catch (parseError) {
-    console.error('[HOME-MEALS-7DAY] Grocery JSON parse failed:', parseError);
-    console.error('[HOME-MEALS-7DAY] Raw grocery content:', content.substring(0, 1000));
-    throw new Error('Failed to parse grocery list response');
+  const parsed = parseChoice(GroceryListSchema, data.choices?.[0], 'home-meals-grocery');
+  if (!parsed.ok) {
+    console.error(`[HOME-MEALS-7DAY] ❌ Grocery ${parsed.reason}: ${parsed.detail} — backfilling from ingredients`);
+    return { groceryList: null };
   }
+
+  const list = parsed.data.groceryList as Record<string, unknown[]>;
+  const categories = Object.keys(list);
+  const totalItems = categories.reduce((sum, cat) => sum + (list[cat]?.length || 0), 0);
+  console.log(`[HOME-MEALS-7DAY] ✅ Grocery list: ${totalItems} items across ${categories.length} categories (${categories.join(', ')})`);
+
+  return parsed.data;
 }
 
 /**
@@ -1058,10 +1061,10 @@ async function generateHomeMealsParallel(
     // Phase 1: Plan all meals
     const planningResult = await planWeekMeals(homeMeals, surveyData, nutritionTargets, weeklyNutritionTargets, feedbackContext);
 
-    // Defensive parsing - try multiple possible response shapes
-    const plannedMeals = planningResult.plannedMeals || planningResult.mealPlan || planningResult.meals || [];
+    // The grammar pins the response to { mealPlan: [...] }, so the old
+    // plannedMeals || mealPlan || meals guessing is dead weight.
+    const plannedMeals: any[] = planningResult.mealPlan;
 
-    console.log(`[HOME-MEALS-7DAY] 📝 Planning parsed: ${plannedMeals.length} meals found`);
     if (plannedMeals.length > 0) {
       console.log(`[HOME-MEALS-7DAY] 📝 Sample meal:`, {
         day: plannedMeals[0].day,
@@ -1073,8 +1076,32 @@ async function generateHomeMealsParallel(
     }
 
     if (plannedMeals.length === 0) {
-      console.error('[HOME-MEALS-7DAY] ❌ Unexpected planning response shape:', Object.keys(planningResult));
-      throw new Error(`No meals planned - planning phase failed. Response keys: ${Object.keys(planningResult).join(', ')}`);
+      throw new Error('No meals planned - planning phase returned an empty mealPlan');
+    }
+
+    // Planning top-up. The model routinely returns fewer slots than asked for —
+    // measurement caught 3 of 21 — and nothing downstream noticed, so the user
+    // got a seven-day plan with three meals in it. Ask again for just the gaps
+    // rather than failing or re-running the whole phase.
+    const slotKey = (m: { day: string; mealType: string }) =>
+      `${m.day?.toLowerCase()}|${m.mealType?.toLowerCase()}`;
+    const plannedKeys = new Set(plannedMeals.map(slotKey));
+    const unplanned = homeMeals.filter(m => !plannedKeys.has(slotKey(m)));
+
+    if (unplanned.length > 0) {
+      console.warn(`[HOME-MEALS-7DAY] 🔁 Planning top-up: ${unplanned.length}/${homeMeals.length} slots unplanned (${unplanned.map(slotKey).join(', ')})`);
+      try {
+        const topUp = await planWeekMeals(unplanned, surveyData, nutritionTargets, weeklyNutritionTargets, feedbackContext);
+        for (const m of topUp.mealPlan as any[]) {
+          if (!plannedKeys.has(slotKey(m))) {
+            plannedKeys.add(slotKey(m));
+            plannedMeals.push(m);
+          }
+        }
+        console.log(`[HOME-MEALS-7DAY] 🔁 Planning top-up recovered ${plannedMeals.length}/${homeMeals.length} slots`);
+      } catch (e) {
+        console.error(`[HOME-MEALS-7DAY] ❌ Planning top-up failed: ${(e as Error).message} — continuing with ${plannedMeals.length} slots`);
+      }
     }
 
     // Phase 2: Split planned meals into chunks for parallel processing
@@ -1092,9 +1119,32 @@ async function generateHomeMealsParallel(
     );
 
     // Merge all detail results
-    const allMeals = detailResults.flatMap(result => result.meals || []);
+    const allMeals: any[] = detailResults.flatMap(result => result.meals);
 
     console.log(`[HOME-MEALS-7DAY] 📋 Phase 3: Merging ${allMeals.length} meals...`);
+
+    // Detail top-up, same reasoning as planning: one extra call over just the
+    // slots a chunk dropped or failed on, instead of shipping a short week.
+    const detailedKeys = new Set(allMeals.map(slotKey));
+    const undetailed = plannedMeals.filter(m => !detailedKeys.has(slotKey(m)));
+
+    if (undetailed.length > 0) {
+      console.warn(`[HOME-MEALS-7DAY] 🔁 Detail top-up: ${undetailed.length}/${plannedMeals.length} meals missing detail (${undetailed.map(slotKey).join(', ')})`);
+      const topUp = await generateMealDetails(undetailed, surveyData, nutritionTargets, 'top-up');
+      for (const m of topUp.meals as any[]) {
+        if (!detailedKeys.has(slotKey(m))) {
+          detailedKeys.add(slotKey(m));
+          allMeals.push(m);
+        }
+      }
+      const stillMissing = plannedMeals.filter(m => !detailedKeys.has(slotKey(m)));
+      console.log(`[HOME-MEALS-7DAY] 🔁 Detail top-up: now ${allMeals.length}/${homeMeals.length} meals` +
+        (stillMissing.length > 0 ? `, unrecovered: ${stillMissing.map(slotKey).join(', ')}` : ''));
+    }
+
+    if (allMeals.length < homeMeals.length) {
+      console.error(`[HOME-MEALS-7DAY] ⚠️ Delivering ${allMeals.length}/${homeMeals.length} home meals — the week is short`);
+    }
 
     // Count meals by day for verification
     const mealsByDay = allMeals.reduce((acc: any, meal: any) => {

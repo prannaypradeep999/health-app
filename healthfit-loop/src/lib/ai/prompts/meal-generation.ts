@@ -1290,7 +1290,7 @@ FATS & OILS (per serving):
 - Avocado (1/4): 80 cal, 1g protein, 4g carbs, 7g fat
 
 REQUIREMENTS:
-1. Generate detailed recipes for ALL planned meals listed above
+1. Return exactly ${plannedMealsChunk.length} entries in "meals" — one for every planned meal listed above, in the same order. Do not stop early and do not merge two planned meals into one entry.
 2. Use EXACT nutrition values from the reference table
 3. Calculate by summing all ingredients - verify math
 4. Include both primary AND alternative recipes for each meal
@@ -1299,7 +1299,7 @@ REQUIREMENTS:
 7. Do NOT change the meal names - use the exact planned names provided
 8. Do NOT change the primary proteins - use the exact proteins specified
 
-Return JSON with ALL meals:
+Return JSON with all ${plannedMealsChunk.length} meals:
 {
   "meals": [
     {
