@@ -13,6 +13,55 @@ import { withGPTRetry, HttpError } from '@/lib/utils/retry';
 // under what a model call needs. RetryPresets budgets the inner calls to fit.
 export const maxDuration = 60;
 
+/**
+ * The client sends `nutritionTargets` straight through, and it is not always
+ * complete. Measured 2026-08-19: a shakshuka request arrived as
+ * `{ calories: 0, protein: 85, carbs: 105, fat: 42 }`.
+ *
+ * Zero calories is not a soft problem here. The prompt renders those numbers
+ * as "EXACT NUTRITION REQUIREMENTS (NON-NEGOTIABLE)" and separately demands
+ * "Sum of ingredient calories = nutrition.calories", so the model was ordered
+ * to build a 0-calorie dish containing 85g of protein — 340 calories of
+ * protein alone. The constraint is arithmetically unsatisfiable, and the model
+ * did not give up on it: it spent the ENTIRE output budget reasoning and
+ * emitted nothing.
+ *
+ *   [USAGE] recipe-generation out=4000/4000 (100%) [visible=0 reasoning=4000]
+ *           in=8196 finish=length  ⚠️ TRUNCATED
+ *
+ * visible=0 is the tell. This was not a recipe too long to fit; it was a
+ * recipe that never started. Truncation then correctly refuses to cache, and
+ * the route 502s.
+ *
+ * So repair the targets before they reach the prompt: calories are recomputed
+ * from the macros (4/4/9) whenever they are missing or non-positive, which for
+ * the case above yields 1138 — the number the caller should have sent. If not
+ * even the macros are usable, return undefined so the prompt omits the
+ * nutrition section entirely rather than stating an impossible one.
+ */
+function sanitizeNutritionTargets(raw: any):
+  { calories: number; protein: number; carbs: number; fat: number } | undefined {
+  if (!raw || typeof raw !== 'object') return undefined;
+
+  const num = (v: unknown) => (typeof v === 'number' && Number.isFinite(v) && v > 0 ? v : 0);
+  const protein = num(raw.protein);
+  const carbs = num(raw.carbs);
+  const fat = num(raw.fat);
+  let calories = num(raw.calories);
+
+  if (calories === 0) {
+    const derived = Math.round(protein * 4 + carbs * 4 + fat * 9);
+    if (derived <= 0) {
+      console.warn('[RECIPE] Nutrition targets unusable (no positive calories or macros) — generating without targets');
+      return undefined;
+    }
+    console.warn(`[RECIPE] Nutrition targets arrived with calories=${raw.calories}; derived ${derived} cal from ${protein}p/${carbs}c/${fat}f`);
+    calories = derived;
+  }
+
+  return { calories, protein, carbs, fat };
+}
+
 export async function POST(req: NextRequest) {
   try {
     const {
@@ -20,10 +69,12 @@ export async function POST(req: NextRequest) {
       description,
       mealType,
       // NEW parameters
-      nutritionTargets,
+      nutritionTargets: rawNutritionTargets,
       existingGroceryItems,
       dietaryRestrictions
     } = await req.json();
+
+    const nutritionTargets = sanitizeNutritionTargets(rawNutritionTargets);
 
     if (!dishName) {
       return NextResponse.json({ error: 'Dish name is required' }, { status: 400 });
@@ -90,7 +141,12 @@ export async function POST(req: NextRequest) {
       dietaryRestrictions
     });
 
-    const RECIPE_MAX_TOKENS = 4000;
+    // Reasoning tokens are billed inside completion_tokens, so they draw from
+    // this same ceiling (see the note in ai/models.ts). At 4000 a single bad
+    // prompt consumed the whole budget on reasoning and left nothing for the
+    // answer. Fixing the impossible target is the real repair; this is the
+    // margin that keeps a merely hard recipe from failing the same way.
+    const RECIPE_MAX_TOKENS = 6000;
 
     const gptResult = await withGPTRetry(async (signal) => {
       const response = await fetch('https://api.openai.com/v1/chat/completions', {

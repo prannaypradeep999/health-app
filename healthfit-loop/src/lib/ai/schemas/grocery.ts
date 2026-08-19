@@ -33,11 +33,21 @@ export const GroceryStoreSearchSchema = z.object({
   stores: z.array(GroceryStoreObject),
 }).strict();
 
+/**
+ * `storeAddress` is deliberately absent. It used to be here, and the model was
+ * asked to supply it for every option — while the caller already held verified
+ * Google Places addresses for exactly these stores. Measured 2026-08-19: two
+ * of three came back "No San Francisco address verified in gathered data", and
+ * the third came back "399 4th St" for a Whole Foods whose real address, sitting
+ * in a variable a few lines away, is "1765 California St". Asking a model for a
+ * fact you already have is how you turn a correct value into a wrong one. The
+ * field is rejoined from the stores array after parsing, so the shape the app
+ * sees is unchanged.
+ */
 export const GroceryStoreOption = z.object({
   store: z.string(),
   displayName: z.string(),
   price: z.number(),
-  storeAddress: z.string(),
   priceConfidence: z.enum(PRICE_CONFIDENCE),
   isRecommended: z.boolean(),
   reason: z.string().nullable(),
@@ -61,12 +71,15 @@ export const GroceryItemPrices = z.object({
  * response is a total loss rather than a short one. Items the model skips are
  * recovered in generate-groceries/route.ts instead, priced or not.
  */
+/**
+ * Items only. `storeTotals`, `recommendedStore` and `savings` were removed once
+ * pricing was split into parallel chunks: each request sees a fraction of the
+ * list, so any total it produces is a total of the wrong thing. The caller sums
+ * across all chunks and picks the cheapest store arithmetically. Leaving the
+ * fields in the schema meant every chunk spent output tokens computing a
+ * number that was then discarded — and grammar-constrained decoding made
+ * producing it mandatory.
+ */
 export const GroceryPricesSchema = z.object({
   items: z.array(GroceryItemPrices),
-  storeTotals: z.array(z.object({
-    store: z.string(),
-    total: z.number(),
-  }).strict()),
-  recommendedStore: z.string(),
-  savings: z.string(),
 }).strict();

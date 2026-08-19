@@ -563,29 +563,31 @@ Return as JSON only, no other text:
     outerSignal?: AbortSignal
   ): Promise<GroceryItemWithPrices[]> {
     const storeNames = stores.map(s => s.name).join(', ');
+    const addressByStore = new Map(
+      stores.map(s => [s.name.trim().toLowerCase(), s.address])
+    );
 
     {
       // Build item list for query
       const itemList = items.map(i => `- ${i.name} (${i.quantity})`).join('\n');
 
-      const query = `Find current grocery prices for these items at ${storeNames} in ${city}:
+      const query = `Search the web for what these products actually cost right now at ${storeNames} in ${city}:
 
 ${itemList}
 
+Search each store's own listings before answering. These are real chains with published prices and named house brands; prefer what you can find over what you can assume.
+
 For each item at each store:
-1. displayName: Include brand name ONLY if it matters for health/quality (e.g., "Organic Chicken Breast", "Cage-Free Eggs"). Generic items like milk, bananas, rice should NOT have brand names - just use the item name.
-2. price: Current approximate price for the quantity specified based on typical ${city} grocery prices.
-3. storeAddress: The store's street address only (e.g., "123 Main St") - NO city, state, or zip
-4. priceConfidence: Set to "exact" if you found actual store data/website prices, "estimate" if using typical market pricing
-5. isRecommended: Mark ONE option per item as recommended (best value for a "${userGoal}" health goal)
-6. reason: Brief reason if recommended (e.g., "Best value", "Best quality")
+1. displayName: The product as that store actually sells it, using the store's own house brand where that is what a shopper would find on the shelf — "365 Organic Whole Milk" at Whole Foods, "Trader Joe's Organic Bananas" at Trader Joe's. A shopper should be able to read this name and recognise the product in the aisle. Do not flatten every option to the same generic word; if two stores sell it under different names, say so.
+2. price: What the item costs at THAT store for the quantity listed. Prices for the same item must differ between stores unless they genuinely match — identical prices across three stores is a sign you estimated instead of checking.
+3. priceConfidence: "exact" ONLY when you found this store's actual current listing for this product. "estimate" when you are inferring from typical ${city} pricing. Be strict about this distinction — it is shown to the user, and marking a guess as exact is worse than admitting the guess.
+4. isRecommended: Mark exactly ONE option per item as recommended, the best value for a "${userGoal}" goal.
+5. reason: Brief reason for the recommended one (e.g. "Best value", "Best quality"). Use null for the others.
 
 User's health goal: ${userGoal}
-Prioritize: Quality ingredients that support their goals, balanced with good value
+Prioritize: quality ingredients that support that goal, balanced against good value.
 
-Calculate storeTotals by summing all item prices for each store.
-Identify recommendedStore (best overall value with good quality).
-Calculate savings vs the most expensive store option.
+Price every item listed above. Do not add items, and do not compute any totals — only the per-store options for each item.
 
 Return as JSON only:
 {
@@ -598,30 +600,23 @@ Return as JSON only:
       "storeOptions": [
         {
           "store": "Store1",
-          "displayName": "Organic Chicken Breast",
+          "displayName": "365 Organic Boneless Skinless Chicken Breast",
           "price": 7.49,
-          "storeAddress": "123 Main St",
           "priceConfidence": "exact",
           "isRecommended": true,
           "reason": "Best value"
         },
         {
           "store": "Store2",
-          "displayName": "Chicken Breast",
+          "displayName": "Trader Joe's Air Chilled Chicken Breast",
           "price": 8.99,
-          "storeAddress": "456 Oak Ave",
           "priceConfidence": "estimate",
-          "isRecommended": false
+          "isRecommended": false,
+          "reason": null
         }
       ]
     }
-  ],
-  "storeTotals": [
-    {"store": "Store1", "total": 52.40},
-    {"store": "Store2", "total": 61.20}
-  ],
-  "recommendedStore": "Store1",
-  "savings": "Save $8.80 vs Store2"
+  ]
 }`;
 
       const priceResult = await perplexityLimit(() => withPerplexityRetry(async (signal) => {
@@ -637,7 +632,15 @@ Return as JSON only:
             messages: [
               {
                 role: 'system',
-                content: 'You are a grocery price expert. Provide accurate, current grocery prices based on typical prices in the specified city. Include brand descriptors only when they matter for health/quality. Always return valid JSON only, no markdown or explanation.'
+                // This used to read "Provide accurate, current grocery prices
+                // based on typical prices in the specified city" and "Include
+                // brand descriptors only when they matter". Every item then
+                // came back as priceConfidence "estimate" with displayName
+                // "Bananas" — which was the prompt working exactly as written.
+                // The complaint that results looked generic was a complaint
+                // about this sentence. Sonar is a live-search model; it was
+                // being told not to search.
+                content: 'You are a grocery pricing researcher with live web search. Look up what products actually cost at the specific named stores before answering, and name products the way those stores name them on the shelf. Distinguish honestly between a price you found and a price you inferred. Always return valid JSON only, no markdown or explanation.'
               },
               { role: 'user', content: query }
             ],
@@ -681,14 +684,16 @@ Return as JSON only:
           price: o.price,
           isRecommended: o.isRecommended,
           reason: o.reason ?? undefined,
-          storeAddress: o.storeAddress,
+          // Joined from the Google Places result rather than asked of the
+          // model. Matched case-insensitively because the model echoes the
+          // store name back in whatever casing it likes, and an exact-match
+          // lookup here would silently reproduce the empty-address bug this
+          // change exists to fix.
+          storeAddress: addressByStore.get(o.store.trim().toLowerCase()) ?? '',
           priceConfidence: o.priceConfidence
         }))
       }));
 
-      // storeTotals / recommendedStore / savings are still requested by the
-      // schema but discarded: a chunk can only total its own slice, so the
-      // caller recomputes them across every chunk that succeeded.
       return pricedItems;
     }
   }
