@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { cookies } from 'next/headers';
 import { prisma } from '@/lib/db';
 import { pexelsClient } from '@/lib/external/pexels-client';
-import { createWorkoutPlanPrompt, createWorkoutPlanningPrompt, createWorkoutDetailPrompt, type WorkoutPlan, type WorkoutDay, type WorkoutFeedbackContext, type WorkoutPreferences } from '@/lib/ai/prompts';
+import { createWorkoutPlanningPrompt, createWorkoutDetailPrompt, type WorkoutPlan, type WorkoutDay, type WorkoutFeedbackContext, type WorkoutPreferences } from '@/lib/ai/prompts';
 import { withGPTRetry, HttpError } from '@/lib/utils/retry';
 import { validateWorkoutPlan } from '@/lib/utils/workout-validator';
 import { getStartOfWeek } from '@/lib/utils/date-utils';

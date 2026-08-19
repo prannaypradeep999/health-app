@@ -1,6 +1,6 @@
 import { z } from 'zod';
 
-/** Plan phase: createWorkoutPlanPrompt in workout-generation.ts */
+/** Plan phase: createWorkoutPlanningPrompt in workout-generation.ts */
 export const WorkoutDayOutline = z.object({
   day: z.string(),
   restDay: z.boolean(),
