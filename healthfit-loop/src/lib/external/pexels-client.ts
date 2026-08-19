@@ -339,6 +339,16 @@ export class PexelsClient {
     }, `Pexels image search: "${query}"`));
 
     if (!pexelsResult.success) {
+      // The breaker used to open only on an explicit 429, which missed the
+      // failure mode that actually cost us the 4.3min run. Pexels tarpits
+      // excess connections rather than rejecting them: the request never gets
+      // a socket, so it never returns a status and surfaces only as our own
+      // abort timer. Those runs looked healthy to the breaker while every
+      // remaining search still paid the full 25s retry budget. A timeout is
+      // throttling until proven otherwise — treat it as one.
+      if (/timed out/i.test(pexelsResult.error || '')) {
+        openThrottleBreaker(THROTTLE_COOLDOWN_MS);
+      }
       console.error(`[PEXELS] API error for query "${query}" after retries:`, pexelsResult.error);
       return null;
     }

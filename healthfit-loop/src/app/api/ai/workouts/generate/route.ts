@@ -658,6 +658,26 @@ async function enhanceWorkoutPlanWithImages(workoutPlan: WorkoutPlan, surveyData
   const workoutPrefs = surveyData.workoutPreferencesJson || {};
   const equipmentContext = workoutPrefs.gymAccess || 'bodyweight';
 
+  /**
+   * Hard ceiling on the whole image phase.
+   *
+   * This runs on the critical path — it is awaited before the Prisma write and
+   * before the response — and it fans out over days × exercises with no cap: a
+   * 6-day plan of 7 exercises is 42 lookups, each of which can spend up to
+   * `RetryPresets.pexels.maxTotalMs` (25s). The 2026-08-18 run returned in
+   * 4.3 minutes with a storm of Pexels timeouts on "chest exercise",
+   * "resistance workout", "legs exercise". Decorative photography must not be
+   * what makes a user wait minutes for their training plan.
+   *
+   * Exercises that miss the deadline simply keep whatever they had. That is
+   * already a supported state — the per-exercise catch below returns the bare
+   * exercise on failure, so `imageUrl` being absent is a path the UI has always
+   * had to handle. Nothing about the response shape changes here.
+   */
+  const IMAGE_PHASE_BUDGET_MS = 20_000;
+  const imageDeadline = Date.now() + IMAGE_PHASE_BUDGET_MS;
+  let skippedForTime = 0;
+
   // Process each day's exercises in parallel
   const enhancedDays = await Promise.all(
     workoutPlan.weeklyPlan.map(async (day: WorkoutDay) => {
@@ -676,6 +696,14 @@ async function enhanceWorkoutPlanWithImages(workoutPlan: WorkoutPlan, surveyData
           try {
             const exerciseName = exercise.name;
             if (!exerciseName) {
+              return exercise;
+            }
+
+            // Checked per exercise rather than racing the phase as a whole, so
+            // the images that already resolved are kept instead of being thrown
+            // away wholesale when the budget runs out.
+            if (Date.now() > imageDeadline) {
+              skippedForTime++;
               return exercise;
             }
 
@@ -724,7 +752,10 @@ async function enhanceWorkoutPlanWithImages(workoutPlan: WorkoutPlan, surveyData
   );
 
   const enhanceTime = Date.now() - enhanceStartTime;
-  console.log(`[WORKOUT-IMAGES] All workout images enhanced in ${enhanceTime}ms`);
+  if (skippedForTime > 0) {
+    console.warn(`[WORKOUT-IMAGES] ⏱️ Budget of ${IMAGE_PHASE_BUDGET_MS}ms spent — ${skippedForTime} exercise(s) shipped without an image rather than delaying the plan`);
+  }
+  console.log(`[WORKOUT-IMAGES] Image phase finished in ${enhanceTime}ms`);
 
   return {
     ...workoutPlan,
