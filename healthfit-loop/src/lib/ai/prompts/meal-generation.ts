@@ -179,6 +179,7 @@ PROTEINS (per serving):
 - Pork tenderloin (4 oz): 135 cal, 24g protein, 0g carbs, 4g fat
 - Salmon (4 oz): 210 cal, 23g protein, 0g carbs, 12g fat
 - Scallops (4 oz): 100 cal, 20g protein, 3g carbs, 1g fat
+- Paneer (3 oz): 265 cal, 18g protein, 4g carbs, 20g fat
 - Seitan (4 oz): 150 cal, 30g protein, 4g carbs, 2g fat
 - Shrimp (4 oz): 120 cal, 23g protein, 1g carbs, 2g fat
 - Tempeh (4 oz): 220 cal, 21g protein, 9g carbs, 13g fat
@@ -1299,32 +1300,19 @@ USER CONSTRAINTS:
 
 ${strictExclusionsWarning}
 
-NUTRITION REFERENCE TABLE (use exact values):
-[Include the same nutrition table from createHomeMealGenerationPrompt - abbreviated here for brevity]
-PROTEINS (per serving):
-- Chicken breast (4 oz): 190 cal, 35g protein, 0g carbs, 4g fat
-- Eggs (large): 70 cal, 6g protein, 1g carbs, 5g fat
-- Salmon (4 oz): 210 cal, 23g protein, 0g carbs, 12g fat
-- Greek yogurt plain 2% (1 cup): 150 cal, 17g protein, 8g carbs, 4g fat
-
-VEGETABLES (per serving):
-- Spinach raw (1 cup): 5 cal, 1g protein, 1g carbs, 0g fat
-- Broccoli (1 cup): 55 cal, 4g protein, 11g carbs, 1g fat
-- Bell pepper (1 medium): 30 cal, 1g protein, 6g carbs, 0g fat
-
-GRAINS & CARBS (per serving):
-- Rice brown (1 cup cooked): 215 cal, 5g protein, 45g carbs, 2g fat
-- Oats rolled (1/2 cup dry): 155 cal, 5g protein, 27g carbs, 3g fat
-- Whole wheat bread (1 slice): 80 cal, 4g protein, 15g carbs, 1g fat
-
-FATS & OILS (per serving):
-- Olive oil (1 tbsp): 120 cal, 0g protein, 0g carbs, 14g fat
-- Avocado (1/4): 80 cal, 1g protein, 4g carbs, 7g fat
+${HOME_MEAL_NUTRITION_METHOD}
 
 REQUIREMENTS:
 1. Return exactly ${plannedMealsChunk.length} entries in "meals" — one for every planned meal listed above, in the same order. Do not stop early and do not merge two planned meals into one entry.
-2. Use EXACT nutrition values from the reference table
+2. Use exact values from the reference table where the ingredient appears in it. For any ingredient NOT in the table, use your own accurate nutritional knowledge (USDA values). The table is an aid, never a limit on what you may cook with.
 3. Calculate by summing all ingredients - verify math
+3a. NEVER refuse a meal. Every entry must contain a real recipe with a populated
+    ingredients list, populated instructions, and non-zero calories and macros.
+    Do not return 0 for any nutrition field, do not return empty arrays, and
+    never put an explanation or apology in the "description" field — description
+    is shown directly to the user, so text about tables, missing data, or what
+    you could not do is always wrong there. If an ingredient is unfamiliar,
+    estimate from the closest comparable whole food and carry on.
 4. Include both primary AND alternative recipes for each meal
 5. Alternative must be meaningfully different (different protein OR cuisine)
 6. Both recipes must hit their specific nutrition targets (±25 calories)

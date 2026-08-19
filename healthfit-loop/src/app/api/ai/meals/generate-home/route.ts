@@ -1179,16 +1179,49 @@ async function generateHomeMealsParallel(
 
     console.log(`[HOME-MEALS-7DAY] 📋 Phase 3: Merging ${allMeals.length} meals...`);
 
+    // A meal that arrived but carries no recipe is not a delivered meal.
+    //
+    // The 2026-08-18 run shipped four meals at 0 cal / 0 protein and ten with
+    // empty ingredients and instructions, because the top-up below keyed on
+    // `day|mealType` alone: the slot was present, so it counted as detailed and
+    // was never retried. Presence was standing in for content. The schema could
+    // not catch it either — `z.array(z.string())` is satisfied by `[]` and
+    // `z.number()` by `0`, so strict mode passed all of it.
+    const isUsableMeal = (m: any): boolean => {
+      const opts = [m?.primary, m?.alternative].filter(Boolean);
+      if (opts.length === 0) return false;
+      // The primary is what fills the slot; an empty alternative is a lesser
+      // problem, so only the primary gates a retry.
+      const o = opts[0];
+      return Number(o.estimatedCalories) > 0
+        && Number(o.protein) > 0
+        && Array.isArray(o.ingredients) && o.ingredients.length > 0
+        && Array.isArray(o.instructions) && o.instructions.length > 0;
+    };
+
     // Detail top-up, same reasoning as planning: one extra call over just the
     // slots a chunk dropped or failed on, instead of shipping a short week.
-    const detailedKeys = new Set(allMeals.map(slotKey));
+    const detailedKeys = new Set(allMeals.filter(isUsableMeal).map(slotKey));
     const undetailed = plannedMeals.filter(m => !detailedKeys.has(slotKey(m)));
+
+    const hollow = allMeals.filter(m => !isUsableMeal(m));
+    if (hollow.length > 0) {
+      console.warn(`[HOME-MEALS-7DAY] ⚠️ ${hollow.length} meals came back hollow (no recipe or zero macros): ${hollow.map(slotKey).join(', ')}`);
+      // Drop them so the top-up's results replace rather than collide with them.
+      for (let i = allMeals.length - 1; i >= 0; i--) {
+        if (!isUsableMeal(allMeals[i])) allMeals.splice(i, 1);
+      }
+    }
 
     if (undetailed.length > 0) {
       console.warn(`[HOME-MEALS-7DAY] 🔁 Detail top-up: ${undetailed.length}/${plannedMeals.length} meals missing detail (${undetailed.map(slotKey).join(', ')})`);
       const topUp = await generateMealDetails(undetailed, surveyData, nutritionTargets, 'top-up');
       for (const m of topUp.meals as any[]) {
-        if (!detailedKeys.has(slotKey(m))) {
+        // Same content bar on the way back in. A hollow meal is worse than an
+        // absent one: it renders as a card reading "0 cal / 0g protein" with no
+        // recipe behind it, which reads as a broken product rather than a gap.
+        // The week being short is logged loudly just below.
+        if (!detailedKeys.has(slotKey(m)) && isUsableMeal(m)) {
           detailedKeys.add(slotKey(m));
           allMeals.push(m);
         }

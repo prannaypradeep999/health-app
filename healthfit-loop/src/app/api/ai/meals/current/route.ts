@@ -4,6 +4,7 @@ import { prisma } from '@/lib/db';
 import { formatDateKey, getStartOfWeek } from '@/lib/utils/date-utils';
 import { calculateMacroTargets, getMealCalorieDistribution, UserProfile } from '@/lib/utils/nutrition';
 import { getAuthUserId } from '@/lib/auth';
+import { normalizeOrderingLinks } from '@/lib/ai/schemas';
 
 const shouldLog = true; // Enable logging for debugging
 
@@ -194,6 +195,24 @@ export async function GET() {
 
     // Always convert to 7-day structured format
     const userContext = finalMealPlan.userContext as any;
+
+    // Sanitize ordering links on the way out.
+    //
+    // The write path normalizes these now, but plans generated before that fix
+    // are already in the database carrying the literal string "null" where a
+    // URL should be. The dashboard only tests truthiness, so "null" renders an
+    // enabled "Order Now" button that opens the relative path `null` — a 404 —
+    // and inflates the "N platforms found" count. Repairing on read fixes every
+    // stored plan without a migration, and is a no-op once the data is clean.
+    if (Array.isArray(userContext?.restaurantMeals)) {
+      for (const meal of userContext.restaurantMeals) {
+        for (const option of [meal?.primary, meal?.alternative]) {
+          if (option?.orderingLinks) {
+            option.orderingLinks = normalizeOrderingLinks(option.orderingLinks);
+          }
+        }
+      }
+    }
 
     // Add per-meal targets when available (prefer stored, fallback to calculated)
     if (nutritionTargets) {
