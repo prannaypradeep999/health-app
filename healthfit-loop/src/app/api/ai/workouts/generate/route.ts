@@ -511,19 +511,23 @@ async function generateWorkoutPlan(surveyData: any): Promise<WorkoutPlan> {
   const gymAccess = workoutPrefs.gymAccess || 'no_gym';
   const fitnessLevel = (surveyData as any).fitnessLevel || workoutPrefs.fitnessExperience || 'intermediate';
 
+  // `equipmentType` is stored Title-Case in the DB ("Bodyweight", "Dumbbells",
+  // "Kettlebell", "Bands", "Equipment") while every caller here thinks in
+  // lowercase. A Prisma `in` is case-SENSITIVE, so the old lowercase filter
+  // matched zero of the 48 rows and the model was silently planning workouts
+  // with no library at all. `in` has no insensitive mode, and the table is
+  // small enough to filter in memory, so we fetch it once and compare
+  // lowercased — which also survives the casing changing again later.
   const equipmentFilter: Record<string, string[]> = {
     no_gym: ['bodyweight'],
     calisthenics: ['bodyweight'],
-    free_weights: ['bodyweight', 'dumbbells', 'barbell', 'kettlebell'],
+    free_weights: ['bodyweight', 'dumbbells', 'barbell', 'kettlebell', 'bands'],
     full_gym: [],
   };
   const allowedEquipment = equipmentFilter[gymAccess] || [];
 
-  const libraryExercises = await prisma.exerciseLibrary.findMany({
+  const allLibraryExercises = await prisma.exerciseLibrary.findMany({
     where: {
-      ...(allowedEquipment.length > 0
-        ? { equipmentType: { in: allowedEquipment } }
-        : {}),
       ...(fitnessLevel === 'beginner'
         ? { difficulty: { in: ['beginner', 'intermediate'] } }
         : {}),
@@ -537,9 +541,22 @@ async function generateWorkoutPlan(surveyData: any): Promise<WorkoutPlan> {
       difficulty: true,
       weightGuidance: true,
     },
-    take: 60,
     orderBy: { name: 'asc' },
   }).catch(() => []);
+
+  const libraryExercises = (allowedEquipment.length > 0
+    ? allLibraryExercises.filter((ex) =>
+        allowedEquipment.includes((ex.equipmentType || '').trim().toLowerCase()))
+    : allLibraryExercises
+  ).slice(0, 60);
+
+  if (allLibraryExercises.length > 0 && libraryExercises.length === 0) {
+    console.warn(
+      `[GPT-WORKOUT] ⚠️ Equipment filter for "${gymAccess}" matched none of ` +
+      `${allLibraryExercises.length} rows. Distinct equipmentType values present: ` +
+      `${[...new Set(allLibraryExercises.map((e) => e.equipmentType))].join(', ')}`
+    );
+  }
 
   console.log(`[GPT-WORKOUT] 📚 Exercise library: ${libraryExercises.length} exercises available for ${gymAccess}`);
 
