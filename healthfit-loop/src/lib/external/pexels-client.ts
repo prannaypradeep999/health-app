@@ -1,6 +1,7 @@
 import { prisma } from '@/lib/db';
 import { withPexelsRetry, HttpError } from '@/lib/utils/retry';
 import { createLimiter } from '@/lib/utils/concurrency';
+import { routeRemainingMs } from '@/lib/utils/route-budget';
 
 /**
  * Process-wide, deliberately not per-instance: Pexels counts concurrent
@@ -41,6 +42,21 @@ function openThrottleBreaker(cooldownMs: number) {
   console.warn(
     `[PEXELS] ⚠️ Throttled by Pexels — serving fallback images for the next ${Math.round(cooldownMs / 1000)}s`
   );
+}
+
+/**
+ * A search needs roughly 2s to be worth starting: one request plus the caller's
+ * own handling. Below that we would spend the route's last moments on a call we
+ * cannot finish, and the write to Prisma is what actually has to happen.
+ *
+ * Returns false outside a route budget (scripts, background jobs), so nothing
+ * off the request path changes behaviour.
+ */
+const MIN_MS_TO_START_A_SEARCH = 2_000;
+
+function isOutOfRouteTime(): boolean {
+  const remaining = routeRemainingMs();
+  return remaining !== null && remaining < MIN_MS_TO_START_A_SEARCH;
 }
 
 /**
@@ -308,7 +324,25 @@ export class PexelsClient {
       return null;
     }
 
-    const pexelsResult = await pexelsLimit(() => withPexelsRetry(async (signal) => {
+    // Images are the most disposable thing any route produces — every caller
+    // falls back to a static image — so they are the first thing to drop when
+    // the route is out of time.
+    //
+    // Checked twice, and the second check is the one that matters. On the
+    // 2026-08-19 run `generate-home` finished in 83s, past the 60s Vercel
+    // ceiling, with ~25s of that inside the image phase *after* the budget was
+    // already spent. Clamping the phase's own ceiling did not help: the cost
+    // was not the requests, it was `pexelsLimit(2, 350ms)` pacing the queue.
+    // A refused call still has to reach the front of that queue to be refused.
+    // So: the pre-check stops new work being enqueued, and the post-slot check
+    // catches whatever was already waiting when the budget ran out.
+    if (isOutOfRouteTime()) {
+      return null;
+    }
+
+    const pexelsResult = await pexelsLimit(async () => {
+      if (isOutOfRouteTime()) return null;
+      return withPexelsRetry(async (signal) => {
       const response = await fetch(`${this.baseUrl}?query=${encodeURIComponent(query)}&per_page=1&orientation=landscape`, {
         headers: {
           'Authorization': this.apiKey
@@ -336,7 +370,13 @@ export class PexelsClient {
       }
 
       return null;
-    }, `Pexels image search: "${query}"`));
+    }, `Pexels image search: "${query}"`);
+    });
+
+    // Null only when the budget ran out while this search sat in the queue.
+    // Not an error, and deliberately not logged as one — a spent budget is an
+    // expected outcome, and 84 lines of it would bury the real failures.
+    if (pexelsResult === null) return null;
 
     if (!pexelsResult.success) {
       // The breaker used to open only on an explicit 429, which missed the

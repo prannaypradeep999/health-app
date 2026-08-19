@@ -1,0 +1,87 @@
+import { AsyncLocalStorage } from 'node:async_hooks';
+
+/**
+ * One wall-clock deadline shared by every external call inside a route.
+ *
+ * The problem this exists to solve: `RetryPresets.gpt.maxTotalMs` is 52s, but
+ * it is applied *per `withGPTRetry` invocation*, and the AI routes make several
+ * of those in sequence. The workout route alone chains a planning call, a
+ * widened planning retry, the parallel detail chunks, and a top-up pass — four
+ * independent 52s budgets, ~208s worst case, inside a route that declares
+ * `maxDuration = 60`.
+ *
+ * Locally that surfaced as `POST /api/ai/workouts/generate 200 in 4.3min`,
+ * because `next dev` does not enforce `maxDuration`. On Vercel the same run is
+ * killed at 60s and the user gets a 504 with nothing written to the database —
+ * strictly worse, because the work is lost rather than merely slow.
+ *
+ * Rather than thread a budget parameter through every call site (invasive, and
+ * easy to forget at exactly the site that needs it), the deadline lives in
+ * AsyncLocalStorage. `withRetry` reads it and clamps its own `maxTotalMs` to
+ * whatever is actually left, so a call that starts 40s in gets 10s, not a
+ * fresh 52s. Nested calls inherit it for free, including ones added later.
+ *
+ * All AI routes are `runtime = 'nodejs'`, so ALS is available. Outside a
+ * budgeted route `remaining()` returns null and every caller keeps its existing
+ * behaviour unchanged.
+ */
+const budgetStore = new AsyncLocalStorage<{ deadline: number }>();
+
+/**
+ * 60s is the Vercel Hobby ceiling and is accepted on every plan, so it is the
+ * one value safe to assume without knowing the account's plan. We claim 53s of
+ * it and leave the rest for the work that happens around the external calls:
+ * request parsing, the Prisma read and write, and serialising the response.
+ * Those are not free — the write in particular crosses the network to Neon.
+ */
+export const ROUTE_TOTAL_BUDGET_MS = 53_000;
+
+/**
+ * Run `fn` under a shared deadline. Wrap the whole body of a route handler.
+ */
+export function withRouteBudget<T>(fn: () => Promise<T>, totalMs = ROUTE_TOTAL_BUDGET_MS): Promise<T> {
+  return budgetStore.run({ deadline: Date.now() + totalMs }, fn);
+}
+
+/**
+ * Milliseconds left in the enclosing route budget, or null when there is no
+ * budget in scope (background jobs, scripts, tests). Can go negative; callers
+ * decide what to do about that.
+ */
+export function routeRemainingMs(): number | null {
+  const ctx = budgetStore.getStore();
+  return ctx ? ctx.deadline - Date.now() : null;
+}
+
+/**
+ * Run `fn` under a deadline that stops `reserveMs` short of the route's, so
+ * whatever runs *after* it is guaranteed that much time.
+ *
+ * Needed because a plain shared deadline is first-come-first-served, and the
+ * greedy phase is rarely the important one. Measured on the 2026-08-19 run:
+ * restaurant menu extraction spent all 53s enriching 10 restaurants, so the
+ * selection call that actually picks the meals started with `-82ms` left and
+ * was refused. The route returned 200 with **0 restaurant meals** — every menu
+ * fetched, nothing chosen. Enrichment starved the deliverable.
+ *
+ * Reserving inverts that: the enrichment phase gets "everything except what the
+ * finisher needs" rather than "everything".
+ */
+export function reservingBudget<T>(reserveMs: number, fn: () => Promise<T>): Promise<T> {
+  const outer = budgetStore.getStore();
+  if (!outer) return fn();
+  return budgetStore.run({ deadline: outer.deadline - reserveMs }, fn);
+}
+
+/**
+ * Clamp a phase's own budget to what the route has left.
+ *
+ * Use for phases that are time-boxed but not routed through `withRetry` — the
+ * Pexels image pass, for instance, which has its own ceiling but should not
+ * spend 20s when only 6s remain.
+ */
+export function clampToRouteBudget(desiredMs: number): number {
+  const remaining = routeRemainingMs();
+  if (remaining === null) return desiredMs;
+  return Math.max(0, Math.min(desiredMs, remaining));
+}

@@ -4,6 +4,7 @@ import { prisma } from '@/lib/db';
 import { pexelsClient } from '@/lib/external/pexels-client';
 import { createWorkoutPlanningPrompt, createWorkoutDetailPrompt, type WorkoutPlan, type WorkoutDay, type WorkoutFeedbackContext, type WorkoutPreferences } from '@/lib/ai/prompts';
 import { withGPTRetry, HttpError } from '@/lib/utils/retry';
+import { withRouteBudget, clampToRouteBudget } from '@/lib/utils/route-budget';
 import { validateWorkoutPlan } from '@/lib/utils/workout-validator';
 import { getStartOfWeek } from '@/lib/utils/date-utils';
 import { getAuthUserId } from '@/lib/auth';
@@ -29,7 +30,17 @@ export const maxDuration = 60;
  * - Fixed template literal syntax errors
  */
 
+/**
+ * The budget wrapper is the whole point of this indirection: every retry
+ * anywhere beneath it — planning, the widened planning retry, the detail
+ * chunks, the top-up pass, Pexels, Perplexity — now shares one 53s deadline
+ * instead of each claiming a fresh 52s. See lib/utils/route-budget.ts.
+ */
 export async function POST(req: NextRequest) {
+  return withRouteBudget(() => handleGenerateWorkout(req));
+}
+
+async function handleGenerateWorkout(req: NextRequest) {
   const startTime = Date.now();
   console.log(`[WORKOUT-GENERATION] 🚀 Starting workout generation at ${new Date().toISOString()}`);
 
@@ -674,8 +685,16 @@ async function enhanceWorkoutPlanWithImages(workoutPlan: WorkoutPlan, surveyData
    * exercise on failure, so `imageUrl` being absent is a path the UI has always
    * had to handle. Nothing about the response shape changes here.
    */
-  const IMAGE_PHASE_BUDGET_MS = 20_000;
+  // Clamped to the route budget as well as its own ceiling: images are the last
+  // phase, so by the time we get here the model calls may have eaten most of
+  // the 53s. Taking a flat 20s then would be what pushes the route past 60s and
+  // turns a complete plan into a 504 with nothing saved. Whatever is left, we
+  // leave 3s of it for the Prisma write and the response.
+  const IMAGE_PHASE_BUDGET_MS = clampToRouteBudget(20_000) - 3_000;
   const imageDeadline = Date.now() + IMAGE_PHASE_BUDGET_MS;
+  if (IMAGE_PHASE_BUDGET_MS <= 0) {
+    console.warn(`[WORKOUT-IMAGES] ⏱️ No route budget left — shipping the plan without images rather than risking a platform timeout`);
+  }
   let skippedForTime = 0;
 
   // Process each day's exercises in parallel

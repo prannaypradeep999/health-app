@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { withRouteBudget } from '@/lib/utils/route-budget';
 import { cookies } from 'next/headers';
 import { prisma } from '@/lib/db';
 import { perplexityClient } from '@/lib/external/perplexity-client';
@@ -15,6 +16,10 @@ export const maxDuration = 60; // Allow up to 60 seconds for price lookups
  */
 
 export async function POST(req: NextRequest) {
+  return withRouteBudget(() => handleGenerate_groceries(req));
+}
+
+async function handleGenerate_groceries(req: NextRequest) {
   const startTime = Date.now();
   console.log('[GROCERY-PRICES] 🛒 Starting grocery price lookup...');
 

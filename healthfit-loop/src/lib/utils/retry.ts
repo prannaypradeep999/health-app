@@ -3,6 +3,8 @@
  * Used across all external API calls: GPT, Perplexity, Pexels, Google Places
  */
 
+import { routeRemainingMs } from './route-budget';
+
 export interface RetryOptions {
   maxAttempts?: number;
   initialDelayMs?: number;
@@ -99,18 +101,41 @@ function isRetryableError(error: unknown): boolean {
  */
 async function withTimeout<T>(fn: (signal: AbortSignal) => Promise<T>, timeoutMs: number): Promise<T> {
   const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
+  let timeoutId: ReturnType<typeof setTimeout>;
+
+  // A race, not an abort-and-then-await.
+  //
+  // The previous version fired `controller.abort()` and kept awaiting `fn`.
+  // That only produces a timeout if `fn` honours the signal — and the known
+  // trap recorded in CLAUDE.md is precisely that several call sites build the
+  // signal and never hand it to `fetch`. For those, aborting changed nothing
+  // and the await ran until the operation finished on its own. That is how a
+  // route declaring `maxDuration = 60` reached 4.3 minutes.
+  //
+  // Racing makes the ceiling unconditional. The signal is still passed, so
+  // cooperating callers still free their socket promptly; the timeout just no
+  // longer depends on that cooperation. Everything layered above — the retry
+  // deadline, the shared route budget — is only as strong as this function,
+  // because those are checked *between* attempts and cannot interrupt one that
+  // is already in flight.
+  const timeout = new Promise<never>((_, reject) => {
+    timeoutId = setTimeout(() => {
+      controller.abort();
+      reject(new Error(`Operation timed out after ${timeoutMs}ms`));
+    }, timeoutMs);
+  });
 
   try {
-    const result = await fn(controller.signal);
-    clearTimeout(timeoutId);
-    return result;
+    // `race` subscribes to both promises, so an abandoned operation that
+    // rejects later is still handled and never becomes an unhandled rejection.
+    return await Promise.race([fn(controller.signal), timeout]);
   } catch (error) {
-    clearTimeout(timeoutId);
     if (controller.signal.aborted) {
       throw new Error(`Operation timed out after ${timeoutMs}ms`);
     }
     throw error;
+  } finally {
+    clearTimeout(timeoutId!);
   }
 }
 
@@ -127,7 +152,22 @@ export async function withRetry<T>(
   let lastError: Error | null = null;
   let currentDelay = opts.initialDelayMs;
 
-  const deadline = options.maxTotalMs !== undefined ? startTime + options.maxTotalMs : null;
+  // `maxTotalMs` is per-invocation, and the AI routes make several invocations
+  // in sequence — so each one confidently claimed a fresh 52s inside a route
+  // the platform kills at 60s. When a route budget is in scope, clamp to what
+  // the route actually has left so the sequence as a whole stays inside it.
+  const routeRemaining = routeRemainingMs();
+  const effectiveTotalMs = routeRemaining === null
+    ? options.maxTotalMs
+    : Math.min(options.maxTotalMs ?? Infinity, routeRemaining);
+
+  if (routeRemaining !== null && effectiveTotalMs !== options.maxTotalMs) {
+    console.log(`[RETRY] 🕒 ${context} - route budget leaves ${routeRemaining}ms, clamping from ${options.maxTotalMs ?? 'unbounded'}ms`);
+  }
+
+  const deadline = effectiveTotalMs !== undefined && Number.isFinite(effectiveTotalMs)
+    ? startTime + effectiveTotalMs
+    : null;
 
   for (let attempt = 1; attempt <= opts.maxAttempts; attempt++) {
     // Never hand an attempt more time than the sequence has left, or it will be
@@ -136,10 +176,10 @@ export async function withRetry<T>(
     if (deadline !== null) {
       const remaining = deadline - Date.now();
       if (remaining < MIN_USEFUL_ATTEMPT_MS) {
-        console.log(`[RETRY] ⌛ ${context} - ${remaining}ms left of the ${options.maxTotalMs}ms budget, stopping`);
+        console.log(`[RETRY] ⌛ ${context} - ${remaining}ms left of the ${effectiveTotalMs}ms budget, stopping`);
         return {
           success: false,
-          error: lastError?.message || `Retry budget of ${options.maxTotalMs}ms exhausted`,
+          error: lastError?.message || `Retry budget of ${effectiveTotalMs}ms exhausted`,
           attempts: attempt - 1,
           totalTimeMs: Date.now() - startTime
         };

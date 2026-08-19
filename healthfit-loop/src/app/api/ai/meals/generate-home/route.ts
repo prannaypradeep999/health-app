@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { withRouteBudget } from '@/lib/utils/route-budget';
 import { cookies } from 'next/headers';
 import { prisma } from '@/lib/db';
 import { calculateMacroTargets, UserProfile } from '@/lib/utils/nutrition';
@@ -1296,6 +1297,10 @@ async function generateHomeMealsParallel(
 }
 
 export async function POST(req: NextRequest) {
+  return withRouteBudget(() => handleGenerate_home(req));
+}
+
+async function handleGenerate_home(req: NextRequest) {
   const startTime = Date.now();
   console.log(`[HOME-GENERATION] 🚀 Starting home meal generation at ${new Date().toISOString()}`);
 

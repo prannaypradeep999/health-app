@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { withRouteBudget, reservingBudget } from '@/lib/utils/route-budget';
 import { cookies } from 'next/headers';
 import { prisma } from '@/lib/db';
 import { googlePlacesClient, Restaurant } from '@/lib/external/places-client';
@@ -559,6 +560,10 @@ function validateRestaurantMeals(
 }
 
 export async function POST(req: NextRequest) {
+  return withRouteBudget(() => handleGenerate_restaurants(req));
+}
+
+async function handleGenerate_restaurants(req: NextRequest) {
   const startTime = Date.now();
   console.log(`[RESTAURANT-GENERATION] 🚀 Starting restaurant meal generation at ${new Date().toISOString()}`);
 
@@ -647,8 +652,21 @@ export async function POST(req: NextRequest) {
     }
     
     // Phase 2: Extract menus (filters out restaurants without ordering links)
+    //
+    // Reserved rather than plain-budgeted. On the 2026-08-19 run this fan-out
+    // spent the whole route budget enriching 10 restaurants, and Phase 3 — the
+    // call that actually picks the meals — started with -82ms and was refused.
+    // The route returned 200 with 0 restaurant meals: every menu fetched,
+    // nothing chosen. Enrichment is worthless without the selection that
+    // consumes it, so it gets "everything except what Phase 3 needs".
+    //
+    // 22s for Phase 3: one DETAIL-model call with maxTokens 12000, whose prompt
+    // measured 9357 chars (~2340 tokens) on the same run. Fewer enriched menus
+    // is a smaller loss than no meals at all.
     const menuExtractionStart = Date.now();
-    const restaurantMenuData = await extractMenuInformation(selectedRestaurants, surveyData);
+    const restaurantMenuData = await reservingBudget(22_000, () =>
+      extractMenuInformation(selectedRestaurants, surveyData)
+    );
     const menuExtractionTime = Date.now() - menuExtractionStart;
     
     // Check if we have any restaurants with ordering links
