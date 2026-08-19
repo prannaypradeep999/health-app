@@ -9,6 +9,8 @@ import { getStartOfWeek } from '@/lib/utils/date-utils';
 import { getAuthUserId } from '@/lib/auth';
 import { MODELS } from '@/lib/ai/models';
 import { logUsage } from '@/lib/ai/usage';
+import { WorkoutPlanSchema, WorkoutDetailShape, toStrictJsonSchema } from '@/lib/ai/schemas';
+import { parseChoice } from '@/lib/ai/validate';
 
 export const runtime = 'nodejs';
 
@@ -359,7 +361,7 @@ async function planWorkout(
           { role: 'system', content: 'You must respond with valid JSON only. No markdown.' },
           { role: 'user', content: planningPrompt }
         ],
-        response_format: { type: 'json_object' },
+        response_format: toStrictJsonSchema('workout_plan', WorkoutPlanSchema),
         temperature: 0.3,
         max_tokens: 2000
       }),
@@ -372,12 +374,12 @@ async function planWorkout(
   if (!gptResult.success) throw new Error(`Workout planning failed: ${gptResult.error}`);
 
   logUsage('workout-planning', 2000, gptResult.data);
-  const content = gptResult.data.choices?.[0]?.message?.content;
-  if (!content) throw new Error('No content from workout planning call');
 
-  const plan = JSON.parse(content);
-  console.log(`[GPT-WORKOUT] ✅ Planning complete: ${plan.weeklyPlan?.length || 0} days outlined`);
-  return plan;
+  const parsed = parseChoice(WorkoutPlanSchema, gptResult.data.choices?.[0], 'workout-planning');
+  if (!parsed.ok) throw new Error(`Workout planning ${parsed.reason}: ${parsed.detail}`);
+
+  console.log(`[GPT-WORKOUT] ✅ Planning complete: ${parsed.data.weeklyPlan.length} days outlined`);
+  return parsed.data;
 }
 
 // ─── Phase 2: Detail call for one chunk ─────────────────────────────────────
@@ -404,7 +406,7 @@ async function generateDayDetails(
           { role: 'system', content: 'You must respond with valid JSON only. No markdown.' },
           { role: 'user', content: detailPrompt }
         ],
-        response_format: { type: 'json_object' },
+        response_format: toStrictJsonSchema('workout_detail', WorkoutDetailShape),
         temperature: 0.4,
         // Measured p95 4135 against the old 6000 ceiling — 69%, no useful margin.
         max_tokens: 9000
@@ -415,15 +417,37 @@ async function generateDayDetails(
     return response.json();
   }, `Workout detail ${chunkLabel}`);
 
-  if (!gptResult.success) throw new Error(`Workout detail failed for ${chunkLabel}: ${gptResult.error}`);
+  // A chunk that fails does not sink the week. Its days come back missing and
+  // the top-up pass in generateWorkoutPlan gets another shot at them.
+  if (!gptResult.success) {
+    console.error(`[GPT-WORKOUT] ❌ ${chunkLabel} failed: ${gptResult.error} — deferring to top-up`);
+    return [];
+  }
 
   logUsage(`workout-detail:${chunkLabel}`, 9000, gptResult.data);
-  const content = gptResult.data.choices?.[0]?.message?.content;
-  if (!content) throw new Error(`No content for ${chunkLabel}`);
 
-  const result = JSON.parse(content);
-  const days = result.days || [];
-  console.log(`[GPT-WORKOUT] ✅ ${chunkLabel}: ${days.length} days detailed`);
+  const parsed = parseChoice(WorkoutDetailShape, gptResult.data.choices?.[0], `workout-detail:${chunkLabel}`);
+  if (!parsed.ok) {
+    console.error(`[GPT-WORKOUT] ❌ ${chunkLabel} ${parsed.reason}: ${parsed.detail} — deferring to top-up`);
+    return [];
+  }
+
+  // The grammar guarantees the four branch keys exist; it cannot express "a
+  // training day has exercises". Drop the days that came back hollow so the
+  // top-up pass treats them as missing rather than shipping an empty workout.
+  const days = parsed.data.days.filter(d => {
+    if (!d.restDay && (!d.exercises || d.exercises.length === 0)) {
+      console.warn(`[GPT-WORKOUT] ⚠️ ${chunkLabel}: training day "${d.day}" came back with no exercises, dropping`);
+      return false;
+    }
+    if (d.restDay && !d.activeRecovery) {
+      console.warn(`[GPT-WORKOUT] ⚠️ ${chunkLabel}: rest day "${d.day}" came back with no activeRecovery, dropping`);
+      return false;
+    }
+    return true;
+  });
+
+  console.log(`[GPT-WORKOUT] ✅ ${chunkLabel}: ${days.length}/${dayOutlines.length} days detailed`);
   return days;
 }
 
@@ -506,15 +530,44 @@ async function generateWorkoutPlan(surveyData: any): Promise<WorkoutPlan> {
   const detailMap = new Map<string, any>();
   detailArrays.flat().forEach(d => { if (d?.day) detailMap.set(d.day.toLowerCase(), d); });
 
+  // Top-up: one extra call for whatever the parallel chunks did not deliver.
+  // A dropped or failed chunk otherwise costs the user a blank day, and a
+  // second attempt over a smaller day set is both cheaper and likelier to
+  // succeed than re-running the whole phase.
+  const missing = weeklyOutline.filter(o => !detailMap.has(o.day?.toLowerCase()));
+  if (missing.length > 0) {
+    console.warn(`[GPT-WORKOUT] 🔁 Top-up: ${missing.length} day(s) missing detail (${missing.map(m => m.day).join(', ')})`);
+    const topUp = await generateDayDetails(missing, surveyData, workoutPrefs, 'top-up');
+    topUp.forEach(d => { if (d?.day) detailMap.set(d.day.toLowerCase(), d); });
+    const stillMissing = weeklyOutline.filter(o => !detailMap.has(o.day?.toLowerCase()));
+    if (stillMissing.length > 0) {
+      console.error(`[GPT-WORKOUT] ❌ Top-up did not recover: ${stillMissing.map(m => m.day).join(', ')}`);
+    }
+  }
+
   const weeklyPlan = weeklyOutline.map(outline => {
     const detail = detailMap.get(outline.day?.toLowerCase());
     if (detail) {
       // Merge: plan outline fields + exercise detail fields
       return { ...outline, ...detail };
     }
-    // Fallback: outline-only day (shouldn't happen)
-    console.warn(`[GPT-WORKOUT] ⚠️ No detail for ${outline.day}, using outline only`);
-    return { ...outline, exercises: outline.restDay ? [] : [] };
+    // Last resort after the top-up: present the day as active recovery rather
+    // than as a training day with an empty exercise list. The outline still
+    // carries focus, targetMuscles and a description, so the day is not blank.
+    console.warn(`[GPT-WORKOUT] ⚠️ No detail for ${outline.day} after top-up, degrading to active recovery`);
+    return {
+      ...outline,
+      restDay: true,
+      warmup: null,
+      exercises: null,
+      cooldown: null,
+      activeRecovery: {
+        suggestedActivity: 'Light activity of your choice',
+        duration: '20-30 minutes',
+        description: `We could not build a full session for ${outline.day}. Take a walk, stretch, or repeat a session you enjoyed this week.`,
+        alternatives: ['20-minute walk', 'Foam rolling', 'Light stretching'],
+      },
+    };
   });
 
   // Sanitize all days

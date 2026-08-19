@@ -258,6 +258,11 @@ USER CONSTRAINTS:
 For each TRAINING day, generate 3-7 exercises with full detail.
 For each REST day, generate only the activeRecovery block.
 
+Every day object must carry all four of warmup, exercises, cooldown and
+activeRecovery. Use null for the ones that do not apply: a training day has
+activeRecovery: null, a rest day has warmup: null, exercises: null and
+cooldown: null. Never omit a key.
+
 Return ONLY this JSON:
 {
   "days": [
@@ -295,11 +300,15 @@ Return ONLY this JSON:
       ],
       "cooldown": [
         {"name": "Chest Stretch", "duration": "30 seconds", "instructions": "..."}
-      ]
+      ],
+      "activeRecovery": null
     },
     {
       "day": "tuesday",
       "restDay": true,
+      "warmup": null,
+      "exercises": null,
+      "cooldown": null,
       "activeRecovery": {
         "suggestedActivity": "Gentle yoga flow",
         "duration": "25 minutes",
