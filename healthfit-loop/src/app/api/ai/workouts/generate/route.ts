@@ -381,7 +381,12 @@ async function planWorkout(
   // the model to choose from — the response grew, the ceiling never did. Under
   // strict mode a truncated response is a total loss, not a short one, so this
   // failed as a 500 with no plan rather than as a slightly thin week.
-  const PLANNING_TOKENS = 4000;
+  // 6000, not 4000: on gpt-5 the reasoning tokens bill inside completion_tokens,
+  // so a 7-day outline can spend most of a 4000 ceiling before emitting a byte.
+  // max_tokens is a ceiling and not a charge, so the only cost of raising it is
+  // avoiding the widened retry below — which costs a whole extra round trip
+  // inside the route's 53s budget.
+  const PLANNING_TOKENS = 6000;
 
   async function attempt(maxTokens: number, label: string) {
     const gptResult = await withGPTRetry(async (signal) => {
@@ -534,6 +539,9 @@ async function generateWorkoutPlan(surveyData: any): Promise<WorkoutPlan> {
   const equipmentFilter: Record<string, string[]> = {
     no_gym: ['bodyweight'],
     calisthenics: ['bodyweight'],
+    // Picked "recommend a gym near me" — they have not joined one yet, so give
+    // them what they can actually do today.
+    recommend_gym: ['bodyweight', 'bands'],
     free_weights: ['bodyweight', 'dumbbells', 'barbell', 'kettlebell', 'bands'],
     full_gym: [],
   };
@@ -623,8 +631,29 @@ async function generateWorkoutPlan(surveyData: any): Promise<WorkoutPlan> {
   const weeklyPlan = weeklyOutline.map(outline => {
     const detail = detailMap.get(outline.day?.toLowerCase());
     if (detail) {
-      // Merge: plan outline fields + exercise detail fields
-      return { ...outline, ...detail };
+      // Merge: plan outline fields + exercise detail fields.
+      const merged: any = { ...outline, ...detail };
+
+      // The outline is authoritative on WHICH days are training days — it is the
+      // phase that was constrained by the days the user said they can train.
+      // Spreading detail last let a Phase 2 slip silently delete a training day.
+      const detailExercises = Array.isArray((detail as any).exercises)
+        ? (detail as any).exercises
+        : [];
+
+      if (outline.restDay === false && merged.restDay === true) {
+        if (detailExercises.length > 0) {
+          console.warn(`[GPT-WORKOUT] ⚠️ ${outline.day}: detail marked restDay but returned ${detailExercises.length} exercises — honouring the schedule`);
+          merged.restDay = false;
+        } else {
+          console.error(`[GPT-WORKOUT] ❌ ${outline.day} was a scheduled training day but detail returned rest with no exercises`);
+        }
+      } else if (outline.restDay === true && merged.restDay === false) {
+        console.warn(`[GPT-WORKOUT] ⚠️ ${outline.day} is a rest day in the schedule but detail returned a workout — keeping it as rest`);
+        merged.restDay = true;
+      }
+
+      return merged;
     }
     // Last resort after the top-up: present the day as active recovery rather
     // than as a training day with an empty exercise list. The outline still

@@ -228,7 +228,9 @@ PREFER exercises from this library. Add exercises not in the library only if the
 ` : ''}
 GOAL CONTEXT: ${getWorkoutGoalContext(surveyData.goal)}
 
-Select the best training split and outline all 7 days. For rest days, mark restDay: true and set exercises to an empty array.
+Select the best training split and outline all 7 days. This is the OUTLINE only —
+do not list individual exercises here; a later step fills those in. For rest days,
+mark restDay: true and leave targetMuscles empty.
 Start the week from today (${dayInfo.orderedDays[0]}) and go through ${dayInfo.orderedDays[6]}.
 ${trainingDays.length > 0 ? `
 DAY SCHEDULE — THIS IS A HARD CONSTRAINT, NOT A PREFERENCE:
@@ -324,6 +326,8 @@ export const createWorkoutDetailPrompt = (
     equipmentConstraint = 'USER HAS FULL GYM - all equipment available.';
   } else if (gymAccess === 'calisthenics') {
     equipmentConstraint = 'USER PREFERS CALISTHENICS - bodyweight progressions, pull-ups, dips.';
+  } else if (gymAccess === 'recommend_gym') {
+    equipmentConstraint = 'USER IS LOOKING FOR A GYM AND HAS NOT JOINED ONE YET - prescribe bodyweight and resistance-band work they can start today. No barbells, cables or machines.';
   }
 
   const injuryConstraint = (workoutPrefs.injuryConsiderations || []).length > 0
