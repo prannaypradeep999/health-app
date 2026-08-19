@@ -1,0 +1,198 @@
+{
+  "ranAt": "2026-08-19T02:52:39.575Z",
+  "models": {
+    "FAST": "gpt-4o-mini",
+    "PLANNING": "gpt-4o",
+    "DETAIL": "gpt-4o",
+    "SEARCH": "sonar"
+  },
+  "rates": {
+    "gpt-4o": {
+      "in": 2.5,
+      "out": 10
+    },
+    "gpt-4o-mini": {
+      "in": 0.15,
+      "out": 0.6
+    },
+    "gpt-4.1": {
+      "in": 2,
+      "out": 8
+    },
+    "gpt-4.1-mini": {
+      "in": 0.4,
+      "out": 1.6
+    }
+  },
+  "n": 1,
+  "results": [
+    {
+      "site": "meal-planning",
+      "fixture": "high-protein-gym",
+      "model": "gpt-4o",
+      "n": 1,
+      "schemaPassRate": 1,
+      "finishReasons": {
+        "stop": 1
+      },
+      "latencyP50Ms": 19486,
+      "latencyP95Ms": 19486,
+      "avgPromptTokens": 639,
+      "avgCompletionTokens": 2005,
+      "maxTokens": 8000,
+      "peakCeilingPct": 25,
+      "estCostPer1000Runs": 21.65,
+      "failures": [],
+      "notes": [
+        "21/21 entries, 21 distinct slots"
+      ]
+    },
+    {
+      "site": "meal-detail",
+      "fixture": "high-protein-gym",
+      "model": "gpt-4o",
+      "n": 1,
+      "schemaPassRate": 1,
+      "finishReasons": {
+        "stop": 1
+      },
+      "latencyP50Ms": 27745,
+      "latencyP95Ms": 27745,
+      "avgPromptTokens": 2797,
+      "avgCompletionTokens": 3787,
+      "maxTokens": 12000,
+      "peakCeilingPct": 32,
+      "estCostPer1000Runs": 44.86,
+      "failures": [],
+      "notes": [
+        "6 entries, 6 distinct slots"
+      ]
+    },
+    {
+      "site": "grocery-list",
+      "fixture": "high-protein-gym",
+      "model": "gpt-4o",
+      "n": 1,
+      "schemaPassRate": 1,
+      "finishReasons": {
+        "stop": 1
+      },
+      "latencyP50Ms": 2644,
+      "latencyP95Ms": 2644,
+      "avgPromptTokens": 1150,
+      "avgCompletionTokens": 232,
+      "maxTokens": 4000,
+      "peakCeilingPct": 6,
+      "estCostPer1000Runs": 5.2,
+      "failures": [],
+      "notes": [
+        "proteins=2 vegetables=3 grains=2 dairy=1 pantryStaples=2 snacks=1"
+      ]
+    },
+    {
+      "site": "meal-legacy",
+      "fixture": "high-protein-gym",
+      "model": "gpt-4o",
+      "n": 1,
+      "schemaPassRate": 1,
+      "finishReasons": {
+        "stop": 1
+      },
+      "latencyP50Ms": 79354,
+      "latencyP95Ms": 79354,
+      "avgPromptTokens": 11939,
+      "avgCompletionTokens": 7247,
+      "maxTokens": 16384,
+      "peakCeilingPct": 44,
+      "estCostPer1000Runs": 102.32,
+      "failures": [],
+      "notes": [
+        "11 meals, grocery present"
+      ]
+    },
+    {
+      "site": "workout-planning",
+      "fixture": "high-protein-gym",
+      "model": "gpt-4o",
+      "n": 1,
+      "schemaPassRate": 1,
+      "finishReasons": {
+        "stop": 1
+      },
+      "latencyP50Ms": 8073,
+      "latencyP95Ms": 8073,
+      "avgPromptTokens": 629,
+      "avgCompletionTokens": 735,
+      "maxTokens": 4000,
+      "peakCeilingPct": 18,
+      "estCostPer1000Runs": 8.92,
+      "failures": [],
+      "notes": [
+        "7 days, 2 rest"
+      ]
+    },
+    {
+      "site": "workout-detail",
+      "fixture": "high-protein-gym",
+      "model": "gpt-4o",
+      "n": 1,
+      "schemaPassRate": 1,
+      "finishReasons": {
+        "stop": 1
+      },
+      "latencyP50Ms": 9841,
+      "latencyP95Ms": 9841,
+      "avgPromptTokens": 1619,
+      "avgCompletionTokens": 1125,
+      "maxTokens": 12000,
+      "peakCeilingPct": 9,
+      "estCostPer1000Runs": 15.3,
+      "failures": [],
+      "notes": [
+        "2 days, 0 violating the rest/train branch"
+      ]
+    },
+    {
+      "site": "recipe",
+      "fixture": "high-protein-gym",
+      "model": "gpt-4o-mini",
+      "n": 1,
+      "schemaPassRate": 1,
+      "finishReasons": {
+        "stop": 1
+      },
+      "latencyP50Ms": 19403,
+      "latencyP95Ms": 19403,
+      "avgPromptTokens": 8278,
+      "avgCompletionTokens": 1378,
+      "maxTokens": 4000,
+      "peakCeilingPct": 34,
+      "estCostPer1000Runs": 2.07,
+      "failures": [],
+      "notes": [
+        "12 ingredients, 850 cal (0% off target)"
+      ]
+    },
+    {
+      "site": "menu-extraction",
+      "fixture": "high-protein-gym",
+      "model": "gpt-4o",
+      "n": 1,
+      "schemaPassRate": 1,
+      "finishReasons": {
+        "stop": 1
+      },
+      "latencyP50Ms": 2671,
+      "latencyP95Ms": 2671,
+      "avgPromptTokens": 530,
+      "avgCompletionTokens": 283,
+      "maxTokens": 4000,
+      "peakCeilingPct": 7,
+      "estCostPer1000Runs": 4.16,
+      "failures": [],
+      "notes": [
+        "6 items, 2 usable links"
+      ]
+    }
+  ]
+}

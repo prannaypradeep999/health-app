@@ -57,7 +57,60 @@ const RATES: Record<string, { in: number; out: number }> = {
   'gpt-4o-mini': { in: 0.15, out: 0.6 },
   'gpt-4.1': { in: 2.0, out: 8 },
   'gpt-4.1-mini': { in: 0.4, out: 1.6 },
+  // GPT-5.6 family, for Phase 1 A/B runs. Reasoning tokens bill at the output
+  // rate, so a model that reasons before answering can cost more than a
+  // cheaper-looking sticker price implies. `reasoningTokens` below is the
+  // number that decides it.
+  'gpt-5.6-luna': { in: 0.2, out: 1.2 },
+  'gpt-5.6-terra': { in: 1.25, out: 10 },
+  'gpt-5.6-sol': { in: 5, out: 30 },
 };
+
+/**
+ * Models that reject `max_tokens` and `temperature`. Verified against the live
+ * API 2026-08-18: the 5.6 family returns HTTP 400
+ * "Unsupported parameter: 'max_tokens' ... Use 'max_completion_tokens'" and
+ * "'temperature' does not support 0.5 ... Only the default (1) value is
+ * supported". Both are code changes, not config changes — which is the whole
+ * reason Phase 1 cannot be "just flip an environment variable".
+ */
+function isReasoningModel(model: string): boolean {
+  return /^(gpt-5|o[1-9])/.test(model);
+}
+
+/**
+ * Role → model ID, with `--override ROLE=id` applied (repeatable). Phase 1
+ * Task 3 A/Bs one role at a time; this lets a run do that without touching
+ * .env or restarting the app.
+ */
+type Role = 'FAST' | 'PLANNING' | 'DETAIL';
+
+function resolveModels(): Record<Role, string> {
+  const out: Record<Role, string> = {
+    FAST: MODELS.FAST, PLANNING: MODELS.PLANNING, DETAIL: MODELS.DETAIL,
+  };
+  const argv = process.argv;
+  for (let i = 0; i < argv.length; i++) {
+    let spec: string | undefined;
+    if (argv[i] === '--override') spec = argv[i + 1];
+    else if (argv[i].startsWith('--override=')) spec = argv[i].slice('--override='.length);
+    if (!spec) continue;
+    for (const pair of spec.split(',')) {
+      const idx = pair.indexOf('=');
+      const role = pair.slice(0, idx).toUpperCase() as Role;
+      const id = pair.slice(idx + 1);
+      if (!(role in out) || !id) {
+        console.error(`Bad --override "${pair}". Expected one of FAST/PLANNING/DETAIL=<model-id>.`);
+        process.exit(1);
+      }
+      out[role] = id;
+    }
+  }
+  return out;
+}
+
+/** Resolved once at load. Sites read this instead of MODELS directly. */
+const M = resolveModels();
 
 // ---------------------------------------------------------------- sites
 
@@ -89,7 +142,7 @@ async function planFor(f: Fixture): Promise<any> {
     scheduleText: scheduleTextFrom(homeMeals),
   });
   const schema = pinnedMealPlan(homeMeals.length);
-  const res = await callOnce(MODELS.PLANNING, prompt, schema, 'meal_plan', 8000, 0.7);
+  const res = await callOnce(M.PLANNING, prompt, schema, 'meal_plan', 8000, 0.7);
   if (!res.parsed) throw new Error(`Could not seed a plan for fixture ${f.name}: ${res.error}`);
   planCache.set(f.name, res.parsed);
   return res.parsed;
@@ -98,7 +151,7 @@ async function planFor(f: Fixture): Promise<any> {
 const SITES: Site[] = [
   {
     name: 'meal-planning',
-    model: MODELS.PLANNING, maxTokens: 8000, temperature: 0.7,
+    model: M.PLANNING, maxTokens: 8000, temperature: 0.7,
     build: async (f) => {
       const homeMeals = homeMealsFrom(f.surveyData.weeklyMealSchedule);
       return {
@@ -117,7 +170,7 @@ const SITES: Site[] = [
   },
   {
     name: 'meal-detail',
-    model: MODELS.DETAIL, maxTokens: 12000, temperature: 0.5,
+    model: M.DETAIL, maxTokens: 12000, temperature: 0.5,
     build: async (f) => {
       const plan = await planFor(f);
       // One chunk, the way the route splits it: two days at a time.
@@ -140,7 +193,7 @@ const SITES: Site[] = [
   },
   {
     name: 'grocery-list',
-    model: MODELS.DETAIL, maxTokens: 4000, temperature: 0.3,
+    model: M.DETAIL, maxTokens: 4000, temperature: 0.3,
     build: async (f) => {
       const plan = await planFor(f);
       return {
@@ -153,7 +206,7 @@ const SITES: Site[] = [
   },
   {
     name: 'meal-legacy',
-    model: MODELS.DETAIL, maxTokens: 16384, temperature: 0.5,
+    model: M.DETAIL, maxTokens: 16384, temperature: 0.5,
     build: async (f) => {
       // The route splits this at 12; benchmark the half, which is what now runs.
       const homeMeals = homeMealsFrom(f.surveyData.weeklyMealSchedule)
@@ -170,7 +223,7 @@ const SITES: Site[] = [
   },
   {
     name: 'workout-planning',
-    model: MODELS.PLANNING, maxTokens: 4000, temperature: 0.7,
+    model: M.PLANNING, maxTokens: 4000, temperature: 0.7,
     build: async (f) => ({
       prompt: createWorkoutPlanningPrompt(f.surveyData, f.workoutPrefs),
       schema: WorkoutPlanSchema,
@@ -179,7 +232,7 @@ const SITES: Site[] = [
   },
   {
     name: 'workout-detail',
-    model: MODELS.DETAIL, maxTokens: 12000, temperature: 0.5,
+    model: M.DETAIL, maxTokens: 12000, temperature: 0.5,
     build: async (f) => {
       const outline = [
         { day: 'monday', restDay: false, focus: 'Upper push', estimatedTime: '45 min',
@@ -205,7 +258,7 @@ const SITES: Site[] = [
   },
   {
     name: 'recipe',
-    model: MODELS.FAST, maxTokens: 4000, temperature: 0.7,
+    model: M.FAST, maxTokens: 4000, temperature: 0.7,
     build: async (f) => ({
       prompt: createRecipeGenerationPrompt({
         dishName: f.name === 'vegetarian-cut' ? 'Red Lentil Dal with Spinach'
@@ -232,7 +285,7 @@ const SITES: Site[] = [
   },
   {
     name: 'menu-extraction',
-    model: MODELS.DETAIL, maxTokens: 4000, temperature: 0.1,
+    model: M.DETAIL, maxTokens: 4000, temperature: 0.1,
     build: async (f) => ({
       prompt: `Extract structured menu data from the following restaurant research.
 
@@ -272,6 +325,8 @@ interface CallOutcome {
   finishReason: string;
   promptTokens: number;
   completionTokens: number;
+  /** Subset of completionTokens spent thinking. Zero on non-reasoning models. */
+  reasoningTokens: number;
   latencyMs: number;
   model: string;
 }
@@ -282,8 +337,17 @@ async function callOnce(
 ): Promise<CallOutcome> {
   const t0 = Date.now();
   const blank: Omit<CallOutcome, 'parsed' | 'error'> = {
-    finishReason: 'error', promptTokens: 0, completionTokens: 0, latencyMs: 0, model,
+    finishReason: 'error', promptTokens: 0, completionTokens: 0, reasoningTokens: 0,
+    latencyMs: 0, model,
   };
+
+  // The 5.6 family renamed max_tokens and accepts only the default temperature.
+  // Sending the legacy pair is a hard 400, not a silently-ignored field, so the
+  // dialect has to be chosen per model rather than set globally.
+  const reasoning = isReasoningModel(model);
+  const params: Record<string, unknown> = reasoning
+    ? { max_completion_tokens: maxTokens }
+    : { max_tokens: maxTokens, temperature };
 
   let res: Response;
   try {
@@ -292,7 +356,7 @@ async function callOnce(
       headers: { Authorization: `Bearer ${KEY}`, 'Content-Type': 'application/json' },
       body: JSON.stringify({
         model, messages: [{ role: 'system', content: prompt }],
-        temperature, max_tokens: maxTokens,
+        ...params,
         response_format: toStrictJsonSchema(schemaName, schema),
       }),
     });
@@ -309,7 +373,9 @@ async function callOnce(
   const common = {
     finishReason: choice?.finish_reason ?? 'unknown',
     promptTokens: data.usage?.prompt_tokens ?? 0,
+    // Already includes reasoning tokens, which bill at the output rate.
     completionTokens: data.usage?.completion_tokens ?? 0,
+    reasoningTokens: data.usage?.completion_tokens_details?.reasoning_tokens ?? 0,
     latencyMs, model,
   };
 
@@ -339,6 +405,8 @@ interface BenchResult {
   latencyP95Ms: number;
   avgPromptTokens: number;
   avgCompletionTokens: number;
+  /** Part of avgCompletionTokens spent thinking. Non-zero only on gpt-5+/o-series. */
+  avgReasoningTokens: number;
   maxTokens: number;
   peakCeilingPct: number;
   estCostPer1000Runs: number;
@@ -379,7 +447,11 @@ async function runSite(site: Site, f: Fixture, n: number): Promise<BenchResult |
   if (!rate) notes.push(`⚠️ no rate table entry for ${site.model}; cost shown as 0`);
   const avgIn = mean(outcomes.map(o => o.promptTokens));
   const avgOut = mean(outcomes.map(o => o.completionTokens));
+  const avgReasoning = mean(outcomes.map(o => o.reasoningTokens));
   const peakOut = Math.max(0, ...outcomes.map(o => o.completionTokens));
+  if (avgReasoning > 0) {
+    notes.push(`${Math.round((avgReasoning / avgOut) * 100)}% of output tokens were reasoning`);
+  }
 
   return {
     site: site.name,
@@ -392,6 +464,7 @@ async function runSite(site: Site, f: Fixture, n: number): Promise<BenchResult |
     latencyP95Ms: percentile(outcomes.map(o => o.latencyMs), 95),
     avgPromptTokens: avgIn,
     avgCompletionTokens: avgOut,
+    avgReasoningTokens: avgReasoning,
     maxTokens: site.maxTokens,
     peakCeilingPct: Math.round((peakOut / site.maxTokens) * 100),
     estCostPer1000Runs: rate
