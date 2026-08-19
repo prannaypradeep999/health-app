@@ -307,7 +307,23 @@ async function extractMenuInformation(restaurants: Restaurant[], surveyData: any
   // failures into the same eight-wide burst — six restaurants exhausted all
   // three attempts and lost their menus entirely. Retrying a rate limit while
   // still saturating it cannot converge; the concurrency is the thing to fix.
-  const results = await mapWithLimit(restaurants, 3, async (restaurant) => {
+  //
+  // Capped at 8 because an attempt that runs out of budget still spends the
+  // budget. The 2026-08-19 run tried all 10 and finished 2: the last six each
+  // burned a few seconds discovering there was no time left. Fewer lookups that
+  // complete beat more that do not, and `findAndSelectBestRestaurants` has
+  // already ordered these by fit, so the ones dropped are the weakest ones.
+  //
+  // The concurrency here matches the module-level Perplexity gate rather than
+  // sitting below it; a second, tighter cap at this call site would silently
+  // become the binding constraint and undo the measured rate.
+  const MAX_MENU_LOOKUPS = 8;
+  const toEnrich = restaurants.slice(0, MAX_MENU_LOOKUPS);
+  if (restaurants.length > toEnrich.length) {
+    console.log(`[MENU-EXTRACTION] Limiting to the top ${toEnrich.length} of ${restaurants.length} restaurants to stay inside the phase budget`);
+  }
+
+  const results = await mapWithLimit(toEnrich, 4, async (restaurant) => {
     try {
       // Validate before calling Perplexity
       if (!restaurant.name || restaurant.name === 'undefined') {

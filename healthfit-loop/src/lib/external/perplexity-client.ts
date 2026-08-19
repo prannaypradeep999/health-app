@@ -47,8 +47,18 @@ import { createLimiter } from '@/lib/utils/concurrency';
  * while the request is still queued — see concurrency.ts). Retries are spaced
  * by the jittered backoff in retry.ts instead.
  */
-const PERPLEXITY_MAX_CONCURRENT = 3;
-const PERPLEXITY_MIN_INTERVAL_MS = 1500;
+/**
+ * Set to the fastest configuration the table above actually measured passing
+ * (4-wide / 1200ms, 12/12) rather than the conservative step below it.
+ *
+ * The margin was not free. On the 2026-08-19 run, menu extraction at 3/1500ms
+ * enriched only 2 of 10 restaurants before the phase ran out of time — the
+ * other 8 died with "Retry budget exhausted", and the meal selection then had a
+ * two-restaurant menu to choose from, which is the real reason its macros came
+ * out far below target. Throughput here is plan quality, not just latency.
+ */
+const PERPLEXITY_MAX_CONCURRENT = 4;
+const PERPLEXITY_MIN_INTERVAL_MS = 1200;
 const perplexityLimit = createLimiter(PERPLEXITY_MAX_CONCURRENT, PERPLEXITY_MIN_INTERVAL_MS);
 
 export interface PerplexityMenuResponse {
