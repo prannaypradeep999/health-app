@@ -7,7 +7,7 @@ import { withGPTRetry, HttpError } from '@/lib/utils/retry';
 import { validateWorkoutPlan } from '@/lib/utils/workout-validator';
 import { getStartOfWeek } from '@/lib/utils/date-utils';
 import { getAuthUserId } from '@/lib/auth';
-import { MODELS } from '@/lib/ai/models';
+import { MODELS, tuning } from '@/lib/ai/models';
 import { logUsage } from '@/lib/ai/usage';
 import { WorkoutPlanSchema, pinnedWorkoutDetail, toStrictJsonSchema } from '@/lib/ai/schemas';
 import { parseChoice } from '@/lib/ai/validate';
@@ -370,8 +370,7 @@ async function planWorkout(
             { role: 'user', content: planningPrompt }
           ],
           response_format: toStrictJsonSchema('workout_plan', WorkoutPlanSchema),
-          temperature: 0.3,
-          max_tokens: maxTokens
+          ...tuning(MODELS.PLANNING, { maxTokens, temperature: 0.3 })
         }),
         signal
       });
@@ -429,9 +428,8 @@ async function generateDayDetails(
           { role: 'user', content: detailPrompt }
         ],
         response_format: toStrictJsonSchema('workout_detail', DetailSchema),
-        temperature: 0.4,
         // Measured p95 4135 against the old 6000 ceiling — 69%, no useful margin.
-        max_tokens: 9000
+        ...tuning(MODELS.DETAIL, { maxTokens: 9000, temperature: 0.4 })
       }),
       signal
     });

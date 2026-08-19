@@ -3,7 +3,7 @@ import { cookies } from 'next/headers';
 import { prisma } from '@/lib/db';
 import { withGPTRetry, HttpError } from '@/lib/utils/retry';
 import { getAuthUserId } from '@/lib/auth';
-import { MODELS } from '@/lib/ai/models';
+import { MODELS, tuning } from '@/lib/ai/models';
 
 export const runtime = 'nodejs';
 
@@ -260,7 +260,7 @@ Make it feel personal, specific to their situation, and motivating. Use their na
           },
           { role: 'user', content: prompt }
         ],
-        temperature: 0.7
+        ...tuning(MODELS.FAST, { temperature: 0.7 })
       }),
       signal
     });

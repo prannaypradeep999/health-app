@@ -1,6 +1,6 @@
 // src/lib/external/perplexity-client.ts
 import { withPerplexityRetry, withGPTRetry, HttpError } from '@/lib/utils/retry';
-import { MODELS } from '@/lib/ai/models';
+import { MODELS, tuning } from '@/lib/ai/models';
 import { MenuExtractionSchema, toStrictJsonSchema } from '@/lib/ai/schemas';
 import { parseChoice } from '@/lib/ai/validate';
 import { logUsage } from '@/lib/ai/usage';
@@ -697,8 +697,7 @@ Extract 6-12 menu items maximum. Return ONLY valid JSON.`;
             // and a restaurant page may genuinely yield fewer. Pinning a count the
             // prompt does not enumerate makes the model invent menu items.
             response_format: toStrictJsonSchema('menu_extraction', MenuExtractionSchema),
-            max_tokens: 4000,
-            temperature: 0.1
+            ...tuning(MODELS.DETAIL, { maxTokens: 4000, temperature: 0.1 })
           }),
           signal
         });

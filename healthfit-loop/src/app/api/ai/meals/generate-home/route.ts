@@ -12,7 +12,7 @@ import { pexelsClient } from '@/lib/external/pexels-client';
 import { withGPTRetry, HttpError } from '@/lib/utils/retry';
 import { getStartOfWeek } from '@/lib/utils/date-utils';
 import { getAuthUserId } from '@/lib/auth';
-import { MODELS } from '@/lib/ai/models';
+import { MODELS, tuning } from '@/lib/ai/models';
 import { logUsage } from '@/lib/ai/usage';
 import {
   GroceryListSchema,
@@ -405,9 +405,13 @@ async function generateHomeMealsForSchedule(
 }
 
 /**
- * gpt-4o's hard output maximum. Not a tuning knob — the API rejects more.
- * Re-check this when Phase 1 changes MODELS.DETAIL; a model with a larger
- * output window would allow LEGACY_MEALS_PER_CALL to rise.
+ * Was gpt-4o's hard output maximum — the API rejected more. That is no longer
+ * true: MODELS.DETAIL is now a gpt-5 model, and 32000/64000/128000 were all
+ * accepted in a direct probe on 2026-08-18. The number is kept as a deliberate
+ * conservative cap rather than a vendor limit, because the two-call split below
+ * measured no worse on cost and cannot truncate. Raising it is now a real
+ * option; splitting is the safer default until someone measures the merged
+ * single call.
  */
 const LEGACY_MAX_TOKENS = 16384;
 
@@ -516,8 +520,7 @@ async function generateHomeMealsLegacy(
         body: JSON.stringify({
           model: MODELS.DETAIL,
           messages: [{ role: 'system', content: prompt }],
-          temperature: 0.5,
-          max_tokens: LEGACY_MAX_TOKENS,
+          ...tuning(MODELS.DETAIL, { maxTokens: LEGACY_MAX_TOKENS, temperature: 0.5 }),
           response_format: toStrictJsonSchema('home_meals_legacy', LegacySchema)
         }),
         signal: signal
@@ -895,8 +898,7 @@ async function planWeekMeals(
         // ceiling truncated 10/10 in measurement, which threw in JSON.parse and
         // silently dropped every full-home-meal week to the legacy fallback.
         messages: [{ role: 'system', content: planningPrompt }],
-        temperature: 0.7,
-        max_tokens: 8000,
+        ...tuning(MODELS.PLANNING, { maxTokens: 8000, temperature: 0.7 }),
         response_format: toStrictJsonSchema('meal_plan', PlanSchema)
       }),
       signal: signal
@@ -969,10 +971,9 @@ async function generateMealDetails(
       body: JSON.stringify({
         model: MODELS.DETAIL,
         messages: [{ role: 'system', content: detailPrompt }],
-        temperature: 0.5,
         // Measured p95 6283 against the old 8000 ceiling — 79%, too close to
         // truncate safely once strict mode makes a cut-off response a hard fail.
-        max_tokens: 12000,
+        ...tuning(MODELS.DETAIL, { maxTokens: 12000, temperature: 0.5 }),
         response_format: toStrictJsonSchema('meal_detail', DetailSchema)
       }),
       signal: signal
@@ -1035,8 +1036,7 @@ async function generateGroceryList(allMeals: any[], surveyData: any): Promise<an
       body: JSON.stringify({
         model: MODELS.DETAIL,
         messages: [{ role: 'system', content: groceryPrompt }],
-        temperature: 0.3,
-        max_tokens: 4000,
+        ...tuning(MODELS.DETAIL, { maxTokens: 4000, temperature: 0.3 }),
         response_format: toStrictJsonSchema('grocery_list', GroceryListSchema)
       }),
       signal: signal

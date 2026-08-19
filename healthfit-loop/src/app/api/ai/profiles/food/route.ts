@@ -4,7 +4,7 @@ import { prisma } from '@/lib/db';
 import { createFoodProfilePrompt } from '@/lib/ai/prompts/profile-generation';
 import { withGPTRetry, HttpError } from '@/lib/utils/retry';
 import { getAuthUserId } from '@/lib/auth';
-import { MODELS } from '@/lib/ai/models';
+import { MODELS, tuning } from '@/lib/ai/models';
 
 /**
  * Food Profile API Route
@@ -167,7 +167,7 @@ export async function POST(request: NextRequest) {
               content: profilePrompt
             }
           ],
-          temperature: 0.7
+          ...tuning(MODELS.FAST, { temperature: 0.7 })
         }),
         signal,
       });

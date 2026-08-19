@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/db';
 import { createRecipeGenerationPrompt } from '@/lib/ai/prompts';
 import { validateIngredientSums } from '@/lib/utils/ingredient-validator';
-import { MODELS } from '@/lib/ai/models';
+import { MODELS, tuning } from '@/lib/ai/models';
 import { RecipeSchema, toStrictJsonSchema } from '@/lib/ai/schemas';
 import { parseChoice } from '@/lib/ai/validate';
 import { logUsage } from '@/lib/ai/usage';
@@ -107,8 +107,7 @@ export async function POST(req: NextRequest) {
             }
           ],
           response_format: toStrictJsonSchema('recipe', RecipeSchema),
-          max_tokens: RECIPE_MAX_TOKENS,
-          temperature: 0.7
+          ...tuning(MODELS.FAST, { maxTokens: RECIPE_MAX_TOKENS, temperature: 0.7 })
         }),
         signal
       });

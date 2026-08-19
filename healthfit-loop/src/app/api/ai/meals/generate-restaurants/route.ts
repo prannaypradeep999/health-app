@@ -13,7 +13,7 @@ import { buildNutritionTargets } from '@/lib/utils/nutrition-targets';
 import { withGPTRetry, HttpError } from '@/lib/utils/retry';
 import { getStartOfWeek } from '@/lib/utils/date-utils';
 import { validateRestrictions } from '@/lib/utils/restriction-validator';
-import { MODELS } from '@/lib/ai/models';
+import { MODELS, tuning } from '@/lib/ai/models';
 import {
   RestaurantSelectionSchema,
   pinnedRestaurantMeals,
@@ -177,11 +177,10 @@ async function findAndSelectBestRestaurants(surveyData: any): Promise<Restaurant
           model: MODELS.PLANNING,
           messages: [{ role: 'user', content: selectionPrompt }],
           response_format: toStrictJsonSchema('restaurant_selection', RestaurantSelectionSchema),
-          temperature: 0.3,
           // Selection returns <=8 rows of 6 short fields (~120 tok/row). 4000 is
           // ~4x the observed need. Previously unset, which meant the model's own
           // default ceiling applied and truncation was invisible.
-          max_tokens: 4000
+          ...tuning(MODELS.PLANNING, { maxTokens: 4000, temperature: 0.3 })
         }),
         signal: signal
       });
@@ -398,12 +397,11 @@ async function selectRestaurantMealsForSchedule(
           model: MODELS.DETAIL,
           messages: [{ role: 'user', content: prompt }],
           response_format: toStrictJsonSchema('restaurant_meals', MealsSchema),
-          temperature: 0.4,
           // Each row carries two full meal objects (13 fields each, incl. four
           // ordering URLs) at roughly 550 output tokens. The schedule is bounded
           // by eatingOutOccasions, so 12000 is several times the realistic need.
           // Previously unset: truncation here was silent.
-          max_tokens: 12000
+          ...tuning(MODELS.DETAIL, { maxTokens: 12000, temperature: 0.4 })
         }),
         signal: signal
       });

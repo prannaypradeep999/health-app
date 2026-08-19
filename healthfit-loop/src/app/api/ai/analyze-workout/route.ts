@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createWorkoutAnalysisPrompt } from '@/lib/ai/prompts';
-import { MODELS } from '@/lib/ai/models';
+import { MODELS, tuning } from '@/lib/ai/models';
 import { WorkoutAnalysisSchema, toStrictJsonSchema } from '@/lib/ai/schemas';
 import { parseChoice } from '@/lib/ai/validate';
 import { logUsage } from '@/lib/ai/usage';
@@ -40,8 +40,7 @@ export async function POST(request: NextRequest) {
             { role: 'system', content: 'You are a fitness expert.' },
             { role: 'user', content: prompt }
           ],
-          temperature: 0.3,
-          max_tokens: 500,
+          ...tuning(MODELS.FAST, { maxTokens: 500, temperature: 0.3 }),
           response_format: toStrictJsonSchema('workout_analysis', WorkoutAnalysisSchema),
         }),
         signal,

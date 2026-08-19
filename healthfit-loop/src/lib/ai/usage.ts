@@ -8,7 +8,12 @@
  */
 export function logUsage(site: string, ceiling: number, data: unknown): void {
   const d = data as {
-    usage?: { prompt_tokens?: number; completion_tokens?: number };
+    usage?: {
+      prompt_tokens?: number;
+      completion_tokens?: number;
+      completion_tokens_details?: { reasoning_tokens?: number };
+      prompt_tokens_details?: { cached_tokens?: number };
+    };
     choices?: Array<{ finish_reason?: string | null }>;
   } | null | undefined;
 
@@ -17,8 +22,21 @@ export function logUsage(site: string, ceiling: number, data: unknown): void {
   const finish = d?.choices?.[0]?.finish_reason ?? 'unknown';
   const pct = out >= 0 ? Math.round((out / ceiling) * 100) : -1;
 
+  // On a gpt-5 model `completion_tokens` already contains the reasoning tokens,
+  // so `out` alone reads as a bigger answer than the user actually received.
+  // Both draw from the same ceiling, which is why `pct` still uses the total —
+  // but the split is what tells you whether to raise the cap or lower the effort.
+  const reasoning = d?.usage?.completion_tokens_details?.reasoning_tokens ?? 0;
+  // Prompt-prefix cache hits. Zero on a prompt whose per-user data precedes its
+  // static block, which is the failure this number exists to make visible.
+  const cached = d?.usage?.prompt_tokens_details?.cached_tokens ?? 0;
+
   console.log(
-    `[USAGE] ${site} out=${out}/${ceiling} (${pct}%) in=${inTok} finish=${finish}` +
+    `[USAGE] ${site} out=${out}/${ceiling} (${pct}%)` +
+      (reasoning > 0 ? ` [visible=${out - reasoning} reasoning=${reasoning}]` : '') +
+      ` in=${inTok}` +
+      (cached > 0 ? ` (cached=${cached}, ${Math.round((cached / inTok) * 100)}%)` : '') +
+      ` finish=${finish}` +
       (finish === 'length' ? '  ⚠️ TRUNCATED' : '')
   );
 }
