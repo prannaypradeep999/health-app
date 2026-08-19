@@ -348,34 +348,52 @@ async function planWorkout(
   console.log('[GPT-WORKOUT] 📋 Phase 1: Planning workout structure...');
   const planningPrompt = createWorkoutPlanningPrompt(surveyData, workoutPrefs, feedbackContext, libraryExercises);
 
-  const gptResult = await withGPTRetry(async (signal) => {
-    const response = await fetch('https://api.openai.com/v1/chat/completions', {
-      method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${process.env.GPT_KEY}`,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        model: MODELS.PLANNING,
-        messages: [
-          { role: 'system', content: 'You must respond with valid JSON only. No markdown.' },
-          { role: 'user', content: planningPrompt }
-        ],
-        response_format: toStrictJsonSchema('workout_plan', WorkoutPlanSchema),
-        temperature: 0.3,
-        max_tokens: 2000
-      }),
-      signal
-    });
-    if (!response.ok) throw new HttpError(response.status, `GPT error ${response.status}`);
-    return response.json();
-  }, 'Workout planning');
+  // The old ceiling was 2000. WorkoutPlanSchema is six prose/array fields plus a
+  // seven-day outline, and the prompt now carries up to 60 library exercises for
+  // the model to choose from — the response grew, the ceiling never did. Under
+  // strict mode a truncated response is a total loss, not a short one, so this
+  // failed as a 500 with no plan rather than as a slightly thin week.
+  const PLANNING_TOKENS = 4000;
 
-  if (!gptResult.success) throw new Error(`Workout planning failed: ${gptResult.error}`);
+  async function attempt(maxTokens: number, label: string) {
+    const gptResult = await withGPTRetry(async (signal) => {
+      const response = await fetch('https://api.openai.com/v1/chat/completions', {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${process.env.GPT_KEY}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          model: MODELS.PLANNING,
+          messages: [
+            { role: 'system', content: 'You must respond with valid JSON only. No markdown.' },
+            { role: 'user', content: planningPrompt }
+          ],
+          response_format: toStrictJsonSchema('workout_plan', WorkoutPlanSchema),
+          temperature: 0.3,
+          max_tokens: maxTokens
+        }),
+        signal
+      });
+      if (!response.ok) throw new HttpError(response.status, `GPT error ${response.status}`);
+      return response.json();
+    }, label);
 
-  logUsage('workout-planning', 2000, gptResult.data);
+    if (!gptResult.success) return { ok: false as const, reason: 'transport', detail: gptResult.error };
+    logUsage('workout-planning', maxTokens, gptResult.data);
+    return parseChoice(WorkoutPlanSchema, gptResult.data.choices?.[0], 'workout-planning');
+  }
 
-  const parsed = parseChoice(WorkoutPlanSchema, gptResult.data.choices?.[0], 'workout-planning');
+  let parsed = await attempt(PLANNING_TOKENS, 'Workout planning');
+
+  // Truncation is the one failure a second identical call cannot fix and a
+  // second wider call usually can. Everything else (refusal, transport) has
+  // already exhausted withGPTRetry's budget.
+  if (!parsed.ok && parsed.reason === 'truncated') {
+    console.warn(`[GPT-WORKOUT] 🔁 Planning truncated at ${PLANNING_TOKENS} tokens — one retry at ${PLANNING_TOKENS * 2}`);
+    parsed = await attempt(PLANNING_TOKENS * 2, 'Workout planning (widened)');
+  }
+
   if (!parsed.ok) throw new Error(`Workout planning ${parsed.reason}: ${parsed.detail}`);
 
   console.log(`[GPT-WORKOUT] ✅ Planning complete: ${parsed.data.weeklyPlan.length} days outlined`);

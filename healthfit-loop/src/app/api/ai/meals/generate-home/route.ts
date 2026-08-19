@@ -364,6 +364,25 @@ async function generateHomeMealsForSchedule(
   const startTime = Date.now();
   console.log(`[HOME-MEALS-7DAY] 🏠 Generating ${homeMeals.length} home meals for 7-day schedule...`);
 
+  // A user who eats out every meal reaches here with an empty slot list. Both
+  // generation paths pin the array length into the grammar, so this would ask
+  // the model for `minItems: 0, maxItems: 0` — a paid round trip whose only
+  // legal answer is `[]`, plus a grocery call over nothing. Return the shape
+  // the caller expects directly. Same keys, same types, no model call.
+  if (homeMeals.length === 0) {
+    console.log('[HOME-MEALS-7DAY] ⏭️ No home meals scheduled — skipping generation');
+    return {
+      homeMeals: [],
+      groceryList: buildFallbackGroceryList([]),
+      metadata: {
+        generationTime: Date.now() - startTime,
+        totalHomeMeals: 0,
+        nutritionTargets,
+        architecture: 'skipped-no-home-meals'
+      }
+    };
+  }
+
   // Fetch behavioral feedback to improve generation
   const feedbackContext = await getMealFeedbackContext(surveyData);
   if (feedbackContext) {
