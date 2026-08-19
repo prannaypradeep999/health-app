@@ -386,11 +386,18 @@ async function generateHomeMealsForSchedule(
 }
 
 /**
- * A full 21-meal legacy week measures at 15424 output tokens — 94% of 16384,
- * which is gpt-4o's hard output maximum, so the ceiling cannot simply be
- * raised. Under strict mode a truncated response is a total loss rather than a
- * short one, so anything past this many slots goes out as two calls and gets
- * merged. Two ~8k calls cost the same as one ~15k call and cannot truncate.
+ * gpt-4o's hard output maximum. Not a tuning knob — the API rejects more.
+ * Re-check this when Phase 1 changes MODELS.DETAIL; a model with a larger
+ * output window would allow LEGACY_MEALS_PER_CALL to rise.
+ */
+const LEGACY_MAX_TOKENS = 16384;
+
+/**
+ * A full 21-meal legacy week measures at 15424 output tokens — 94% of the
+ * ceiling above, which cannot simply be raised. Under strict mode a truncated
+ * response is a total loss rather than a short one, so anything past this many
+ * slots goes out as two calls and gets merged. Two ~8k calls cost the same as
+ * one ~15k call and cannot truncate.
  *
  * The old behaviour hid this: the model returned 1-3 of 21 meals well under
  * the ceiling and nothing checked the count.
@@ -410,7 +417,7 @@ async function generateHomeMealsLegacyChunked(
 
   const mid = Math.ceil(homeMeals.length / 2);
   const halves = [homeMeals.slice(0, mid), homeMeals.slice(mid)];
-  console.log(`[HOME-MEALS-LEGACY] ✂️ Splitting ${homeMeals.length} meals into ${halves.map(h => h.length).join('+')} to stay clear of the 16384 output ceiling`);
+  console.log(`[HOME-MEALS-LEGACY] ✂️ Splitting ${homeMeals.length} meals into ${halves.map(h => h.length).join('+')} to stay clear of the ${LEGACY_MAX_TOKENS} output ceiling`);
 
   const results = await Promise.all(
     halves.map(half => generateHomeMealsLegacy(half, surveyData, nutritionTargets, weeklyNutritionTargets, feedbackContext))
@@ -479,7 +486,7 @@ async function generateHomeMealsLegacy(
     }, feedbackContext ?? undefined);
 
     // Replace the direct fetch with retry wrapper:
-    console.log(`[HOME-MEALS-LEGACY] 🤖 Using model: gpt-4o, max_tokens: 16384`);
+    console.log(`[HOME-MEALS-LEGACY] 🤖 Using model: ${MODELS.DETAIL}, max_tokens: ${LEGACY_MAX_TOKENS}`);
     const gptResult = await withGPTRetry(async (signal) => {
       const response = await fetch('https://api.openai.com/v1/chat/completions', {
         method: 'POST',
@@ -491,7 +498,7 @@ async function generateHomeMealsLegacy(
           model: MODELS.DETAIL,
           messages: [{ role: 'system', content: prompt }],
           temperature: 0.5,
-          max_tokens: 16384,
+          max_tokens: LEGACY_MAX_TOKENS,
           response_format: toStrictJsonSchema('home_meals_legacy', LegacySchema)
         }),
         signal: signal
@@ -516,7 +523,7 @@ async function generateHomeMealsLegacy(
     }
 
     const data = gptResult.data;
-    logUsage('home-meals-legacy', 16384, data);
+    logUsage('home-meals-legacy', LEGACY_MAX_TOKENS, data);
 
     // Store token usage for later logging
     const tokenUsage = data.usage;

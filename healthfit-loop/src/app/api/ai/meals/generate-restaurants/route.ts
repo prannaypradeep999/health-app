@@ -164,7 +164,7 @@ async function findAndSelectBestRestaurants(surveyData: any): Promise<Restaurant
     console.log(`[RESTAURANT-SEARCH]   - Prompt length: ${selectionPrompt.length} chars`);
     console.log(`[RESTAURANT-SEARCH]   - Estimated tokens: ${estimatedTokens}`);
     console.log(`[RESTAURANT-SEARCH]   - Restaurants to choose from: ${uniqueRestaurants.length}`);
-    console.log(`[RESTAURANT-SEARCH]   - Model: gpt-4o`);
+    console.log(`[RESTAURANT-SEARCH]   - Model: ${MODELS.PLANNING}`);
 
     const gptResult = await withGPTRetry(async (signal) => {
       const response = await fetch('https://api.openai.com/v1/chat/completions', {
@@ -385,7 +385,7 @@ async function selectRestaurantMealsForSchedule(
     console.log(`[RESTAURANT-SELECTION] 📤 Sending GPT request:`);
     console.log(`[RESTAURANT-SELECTION]   - Prompt length: ${prompt.length} chars`);
     console.log(`[RESTAURANT-SELECTION]   - Estimated tokens: ${estimatedTokens}`);
-    console.log(`[RESTAURANT-SELECTION]   - Model: gpt-4o`);
+    console.log(`[RESTAURANT-SELECTION]   - Model: ${MODELS.DETAIL}`);
 
     const gptResult = await withGPTRetry(async (signal) => {
       const response = await fetch('https://api.openai.com/v1/chat/completions', {
