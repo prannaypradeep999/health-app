@@ -2,7 +2,6 @@ import { NextRequest, NextResponse } from 'next/server';
 import { cookies } from 'next/headers';
 import { prisma } from '@/lib/db';
 import { perplexityClient } from '@/lib/external/perplexity-client';
-import { withPerplexityRetry } from '@/lib/utils/retry';
 import { normalizeGroceryKey } from '@/lib/utils/grocery-list';
 
 export const runtime = 'nodejs';
@@ -79,11 +78,22 @@ export async function POST(req: NextRequest) {
 
     // Step 1: Find local grocery stores via Perplexity
     console.log('[GROCERY-PRICES] Step 1/3: Finding local stores...');
-    const storeResult = await withPerplexityRetry(async (signal) => {
-      return perplexityClient.getLocalGroceryStores(streetAddress, city, state, zipcode, signal);
-    }, 'Local grocery stores');
+    // getLocalGroceryStores already retries internally (3 attempts, 75s each).
+    // Wrapping it in a second withPerplexityRetry bought nothing and cost a lot:
+    // the client catches its own errors and resolves with {stores: []}, so the
+    // outer loop never saw a rejection and never retried — but its own 75s
+    // timeout still aborted the inner call mid-flight. Slow-but-fine searches
+    // died early and the user got a 404.
+    //
+    // Note the harder ceiling above: maxDuration is 60s, which is *below* the
+    // 75s the Perplexity preset allows for a single attempt. In production the
+    // platform kills this route before even one attempt can time out, so the
+    // inner retry loop is decorative here. Worth revisiting as a pair.
+    const storeResponse = await perplexityClient.getLocalGroceryStores(
+      streetAddress, city, state, zipcode
+    );
 
-    if (!storeResult.success || !storeResult.data?.stores?.length) {
+    if (!storeResponse.stores?.length) {
       console.error('[GROCERY-PRICES] ❌ Could not find stores after retries');
       return NextResponse.json({
         success: false,
@@ -91,8 +101,6 @@ export async function POST(req: NextRequest) {
         location: `${city}, ${zipcode}`
       }, { status: 404 });
     }
-    const storeResponse = storeResult.data;
-
     console.log(`[GROCERY-PRICES] ✅ Found ${storeResponse.stores.length} stores: ${storeResponse.stores.map(s => s.name).join(', ')}`);
 
     // Step 2: Flatten grocery items from all categories
@@ -125,12 +133,13 @@ export async function POST(req: NextRequest) {
 
     // Step 3: Get prices for all items via Perplexity
     console.log('[GROCERY-PRICES] Step 3/3: Getting prices from Perplexity...');
-    const priceResult = await withPerplexityRetry(async (signal) => {
-      return perplexityClient.getGroceryPrices(allItems, storeResponse.stores, city, userGoal, signal);
-    }, 'Grocery prices');
+    // Same as above — getGroceryPrices owns its own retry loop.
+    const priceResponse = await perplexityClient.getGroceryPrices(
+      allItems, storeResponse.stores, city, userGoal
+    );
 
     // If price lookup failed after retries, save stores but note prices unavailable
-    if (!priceResult.success || !priceResult.data?.items?.length) {
+    if (!priceResponse.items?.length) {
       console.warn('[GROCERY-PRICES] ⚠️ Price lookup taking longer than expected');
 
       const partialGroceryList = {
@@ -139,7 +148,7 @@ export async function POST(req: NextRequest) {
         location: storeResponse.location,
         pricesUpdatedAt: new Date().toISOString(),
         priceSearchSuccess: false,
-        priceError: priceResult.error || 'Could not retrieve prices'
+        priceError: priceResponse.error || 'Could not retrieve prices'
       };
 
       await prisma.mealPlan.update({
@@ -160,7 +169,6 @@ export async function POST(req: NextRequest) {
         stores: storeResponse.stores
       });
     }
-    const priceResponse = priceResult.data;
 
     // Step 4: Reorganize items back into categories
     const groceryListWithPrices: Record<string, any[]> = {
