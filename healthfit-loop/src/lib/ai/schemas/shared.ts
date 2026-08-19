@@ -24,6 +24,38 @@ export const OrderingLinks = z.object({
   direct: z.string().nullable(),
 }).strict();
 
+/**
+ * Coerce every non-URL value in an orderingLinks object to a real null.
+ *
+ * `z.string().nullable()` is satisfied by the four-character string "null", and
+ * that is exactly what the model tends to emit for a platform it could not
+ * find — observed in the 2026-08-18 plan:
+ *
+ *   "orderingLinks": { "direct": "https://...", "grubhub": "null",
+ *                      "doordash": "null", "ubereats": "https://..." }
+ *
+ * `"null"` is truthy, so the UI rendered an enabled "Order Now" button that
+ * navigated nowhere, and the link counts treated it as a real link — which also
+ * kept restaurants alive that had nothing orderable. Anything that is not an
+ * http(s) URL becomes null here, which is what the schema meant to say.
+ *
+ * Applied after parsing rather than as a `.transform()` on the schema itself:
+ * the same object is fed to `zodResponseFormat` to build the wire JSON Schema,
+ * and a ZodEffects there is not reliably convertible.
+ *
+ * The key set and the value types are unchanged, so the serialized shape is
+ * identical — only bogus values become null.
+ */
+export function normalizeOrderingLinks<T extends Record<string, unknown>>(links: T): T {
+  if (!links || typeof links !== 'object') return links;
+  const out: Record<string, unknown> = { ...links };
+  for (const [platform, value] of Object.entries(out)) {
+    const ok = typeof value === 'string' && /^https?:\/\/\S+$/i.test(value.trim());
+    out[platform] = ok ? (value as string).trim() : null;
+  }
+  return out as T;
+}
+
 export const GroceryItem = z.object({
   name: z.string(),
   quantity: z.string(),

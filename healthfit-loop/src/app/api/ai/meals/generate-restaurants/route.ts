@@ -19,6 +19,7 @@ import {
   RestaurantSelectionSchema,
   pinnedRestaurantMeals,
   toStrictJsonSchema,
+  normalizeOrderingLinks,
 } from '@/lib/ai/schemas';
 import { parseChoice } from '@/lib/ai/validate';
 import { logUsage } from '@/lib/ai/usage';
@@ -447,6 +448,17 @@ async function selectRestaurantMealsForSchedule(
     }
 
     const selectedMeals = parsed.data.restaurantMeals;
+
+    // The schema guarantees the four keys are present and string-or-null; it
+    // cannot stop the model from putting the *string* "null" in one. That value
+    // is truthy, so it reached the UI as an enabled "Order Now" button pointing
+    // nowhere. Normalizing here keeps the emitted shape byte-identical — same
+    // keys, same types — while making the null actually null.
+    for (const meal of selectedMeals) {
+      meal.primary.orderingLinks = normalizeOrderingLinks(meal.primary.orderingLinks);
+      meal.alternative.orderingLinks = normalizeOrderingLinks(meal.alternative.orderingLinks);
+    }
+
     console.log(`[RESTAURANT-SELECTION] ✅ Selected ${selectedMeals.length}/${restaurantMealsSchedule.length} restaurant meals`);
 
     // Log each selected meal with its ordering links. Under the strict schema

@@ -954,11 +954,20 @@ export function createRestaurantMealGenerationPrompt(context: RestaurantMealCont
   // Build detailed restaurant info with ordering links prominently displayed
   const restaurantDetails = restaurantMenuData.map(restaurant => {
     const links = restaurant.orderingLinks || {};
-    const availableLinks = Object.entries(links)
-      .filter(([_, url]) => url && typeof url === 'string' && url.trim() !== '')
-      .map(([platform, url]) => `${platform}: ${url}`)
+    // All four platforms are listed, including the missing ones. Previously only
+    // the found links appeared, so a platform's absence was something the model
+    // had to infer from a gap in a list — and it filled the gap by inventing a
+    // URL or by writing the string "null". Stating "not available" explicitly
+    // makes the null case a thing to copy rather than a thing to deduce.
+    const ALL_PLATFORMS = ['doordash', 'ubereats', 'grubhub', 'direct'] as const;
+    const availableLinks = ALL_PLATFORMS
+      .map(platform => {
+        const url = (links as Record<string, unknown>)[platform];
+        const usable = typeof url === 'string' && /^https?:\/\/\S+$/i.test(url.trim());
+        return `${platform}: ${usable ? (url as string).trim() : 'not available — use null'}`;
+      })
       .join('\n    ');
-    
+
     return `
 RESTAURANT: ${restaurant.name}
   Cuisine: ${restaurant.cuisine || 'Mixed'}
@@ -1083,7 +1092,7 @@ ${(surveyData.preferredFoods || []).length > 0
 7. Consider meal timing (lighter lunches, heartier dinners)
 8. Stay within budget and dietary preferences
 9. Use ONLY restaurants and menu items from the data provided above
-10. NEVER omit an orderingLinks key - copy the URL from the restaurant data, or use null if that platform has no URL
+10. NEVER omit an orderingLinks key. Each value is either a URL copied character-for-character from the restaurant data, or the JSON literal null (bare, not quoted) when that platform is listed as "not available"
 11. ⚠️ DIET TYPE + ALLERGIES ARE ABSOLUTE - never select forbidden items; dislikes should be minimized
 12. ⚠️ PREFERRED FOODS: When available, prioritize dishes featuring user's preferred ingredients
 
@@ -1105,10 +1114,10 @@ Return ONLY this JSON structure:
         "cuisine": "Italian",
         "address": "Restaurant address from data",
         "orderingLinks": {
-          "doordash": "COPY EXACT URL FROM RESTAURANT DATA, or null if absent",
-          "ubereats": "COPY EXACT URL FROM RESTAURANT DATA, or null if absent",
-          "grubhub": "COPY EXACT URL FROM RESTAURANT DATA, or null if absent",
-          "direct": "COPY EXACT URL FROM RESTAURANT DATA, or null if absent"
+          "doordash": "https://www.doordash.com/store/...",
+          "ubereats": null,
+          "grubhub": null,
+          "direct": "https://restaurant-own-website.com"
         },
         "source": "restaurant",
         "tags": ["dinner", "italian", "protein-rich"]
@@ -1125,10 +1134,10 @@ Return ONLY this JSON structure:
         "cuisine": "Different cuisine",
         "address": "Different restaurant address",
         "orderingLinks": {
-          "doordash": "COPY EXACT URL FROM DIFFERENT RESTAURANT, or null if absent",
-          "ubereats": "COPY EXACT URL FROM DIFFERENT RESTAURANT, or null if absent",
-          "grubhub": "COPY EXACT URL FROM DIFFERENT RESTAURANT, or null if absent",
-          "direct": "COPY EXACT URL FROM DIFFERENT RESTAURANT, or null if absent"
+          "doordash": null,
+          "ubereats": "https://www.ubereats.com/store/...",
+          "grubhub": null,
+          "direct": null
         },
         "source": "restaurant",
         "tags": ["dinner", "different-cuisine"]
@@ -1137,7 +1146,16 @@ Return ONLY this JSON structure:
   ]
 }
 
-⚠️ IMPORTANT: orderingLinks must ALWAYS contain all four keys — doordash, ubereats, grubhub and direct. Copy the exact URL where the restaurant data has one. Where it does not, set that key to null. Never omit a key and never invent a URL.`;
+⚠️ IMPORTANT: orderingLinks must ALWAYS contain all four keys — doordash, ubereats, grubhub and direct.
+
+A value is one of exactly two things:
+  • a URL copied character-for-character from the restaurant data above, or
+  • the bare JSON literal null
+
+Write null, not "null". The string "null" is a bug: it renders as a working
+order button that leads nowhere. Likewise never use "", "N/A", "not available",
+or a guessed URL. If a platform is marked "not available" for that restaurant,
+the value is null. An honest null is always better than a link that fails.`;
 }
 
 // Restaurant selection prompt (for choosing best restaurants from search results)

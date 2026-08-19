@@ -711,15 +711,18 @@ REQUIRED JSON FORMAT:
     }
   ],
   "orderingLinks": {
-    "doordash": "ACTUAL_URL_IF_FOUND_OR_NULL",
-    "ubereats": "ACTUAL_URL_IF_FOUND_OR_NULL",
-    "grubhub": "ACTUAL_URL_IF_FOUND_OR_NULL",
-    "direct": "RESTAURANT_WEBSITE_IF_FOUND_OR_NULL"
+    "doordash": "https://www.doordash.com/store/...",
+    "ubereats": null,
+    "grubhub": null,
+    "direct": "https://restaurant-own-website.com"
   }
 }
 
-IMPORTANT: orderingLinks must carry all four keys. Use null for any platform you
-did not find a real URL for. Never invent a URL and never use an empty string.
+IMPORTANT: orderingLinks must carry all four keys. A value is either a complete
+URL beginning with https:// or the JSON literal null — as shown above, where
+ubereats and grubhub were not found. Never write the word "null" as a string,
+never use an empty string, and never invent or guess a URL: a link that does not
+resolve is worse than no link at all.
 Extract 6-12 menu items maximum. Return ONLY valid JSON.`;
 
       const gptResult = await withGPTRetry(async (signal) => {
@@ -765,18 +768,26 @@ Extract 6-12 menu items maximum. Return ONLY valid JSON.`;
 
       // The schema guarantees all four keys are present and are either a string
       // or null. It cannot guarantee the string is a URL — observed: the model
-      // still returns "" for a missing platform despite the prompt asking for
-      // null, because "" satisfies the grammar. The http(s) test is what
-      // actually filters those out, and is the only reason this loop remains.
+      // returns "" for a missing platform despite the prompt asking for null,
+      // because "" satisfies the grammar, and elsewhere it has emitted the
+      // literal four-character string "null". The http(s) test is what actually
+      // filters those out, and is the only reason this loop remains.
+      //
+      // Keys for rejected platforms are dropped rather than set to null: callers
+      // downstream count `Object.keys(orderingLinks).length`, and the failure
+      // path below already returns `{}`, so a sparse object is the established
+      // shape here.
       const cleanedLinks: Record<string, string> = {};
       for (const [platform, url] of Object.entries(parsed.data.orderingLinks)) {
-        if (url && (url.startsWith('http://') || url.startsWith('https://'))) {
+        if (typeof url === 'string' && /^https?:\/\/\S+$/i.test(url.trim())) {
           cleanedLinks[platform] = url.trim();
         }
       }
 
       console.log(`[PERPLEXITY-GPT4] ✅ Structured ${parsed.data.menuItems.length} menu items`);
-      console.log(`[PERPLEXITY-GPT4] 🔗 Verified links: ${Object.keys(cleanedLinks).join(', ') || 'none'}`);
+      // "Well-formed", not "verified": this is a syntax check on the URL, never
+      // a request. A 404 storefront looks identical to a live one from here.
+      console.log(`[PERPLEXITY-GPT4] 🔗 Well-formed links: ${Object.keys(cleanedLinks).join(', ') || 'none'}`);
 
       return {
         menuItems: parsed.data.menuItems,
