@@ -104,6 +104,48 @@ function usableQuery(text?: string | null): text is string {
   return true;
 }
 
+/**
+ * Dietary and nutritional descriptors that no image search can match, because
+ * they describe what a dish does not contain or how it performs rather than
+ * what it looks like. Photos are indexed by visible subject.
+ *
+ * Anything hyphenated with "free" is caught by pattern, so this list only needs
+ * the terms that do not follow that shape.
+ */
+const NON_VISUAL_TERMS = new Set([
+  'high', 'low', 'rich', 'protein', 'high-protein', 'low-carb', 'lowcarb',
+  'carb', 'carbs', 'fiber', 'fibre', 'fiber-rich', 'calorie', 'calories',
+  'lowcalorie', 'low-calorie', 'macro', 'macros', 'balanced', 'lean',
+  'vegan', 'vegetarian', 'pescatarian', 'keto', 'ketogenic', 'paleo',
+  'halal', 'kosher', 'coeliac', 'celiac', 'diet', 'dietary',
+  'healthy', 'nutritious', 'wholesome', 'clean', 'light',
+  'quick', 'easy', 'simple', 'budget', 'cheap', 'meal', 'prep', 'mealprep',
+  'one-pot', 'onepot', 'batch', 'leftover', 'friendly', 'boost', 'boosted',
+  'gain', 'loss', 'muscle', 'recovery', 'postworkout', 'post-workout',
+  'preworkout', 'pre-workout', 'gluten', 'dairy', 'nut', 'peanut', 'soy',
+]);
+
+/**
+ * Keeps only the words in `terms` that could plausibly appear in a photograph.
+ * Returns undefined when nothing survives, so the caller can skip the rung
+ * instead of searching for an empty string.
+ */
+function stripNonVisualTerms(terms?: string | null): string | undefined {
+  if (!terms) return undefined;
+
+  const kept = terms
+    .split(/[\s,]+/)
+    .map(w => w.trim().toLowerCase().replace(/^[^a-z]+|[^a-z-]+$/g, ''))
+    .filter(w => w.length > 2)
+    // "gluten-free", "nut-free", "sugar-free" — the whole family, by shape.
+    .filter(w => !/-?free$/.test(w))
+    .filter(w => !NON_VISUAL_TERMS.has(w));
+
+  if (kept.length === 0) return undefined;
+  // Three words is plenty for an image search and keeps us inside usableQuery.
+  return kept.slice(0, 3).join(' ');
+}
+
 /** Drops nulls and duplicates while preserving ladder order. */
 function dedupeQueries(candidates: Array<string | null>): string[] {
   const seen = new Set<string>();
@@ -294,13 +336,27 @@ export class PexelsClient {
     // three rungs, not nine. The old tail ("healthy food", "delicious food",
     // first-word-of-dish) never returned anything the rung above it wouldn't
     // have — it just spent the latency budget proving that again per dish.
+    //
+    // The dish name leads. It used to be second, behind the model's tags, and
+    // those tags are dietary rather than visual: the 2026-08-19 run spent its
+    // first — and, once the budget ran down, only — request per dish on
+    // "high-protein vegetarian peanut-free food", "high-protein fiber-rich
+    // peanut-free food", "high-protein one-pot peanut-free food". A stock photo
+    // library indexes what a picture shows, and nothing shows peanut-freeness.
+    // Those queries could not have matched at any budget; they were spending the
+    // one affordable round trip to prove it, and the dish name — the one term
+    // that describes a photographable object — never got asked.
+    const cleanedTerms = stripNonVisualTerms(aiSearchTerms);
+
     const queries = dedupeQueries([
-      // Primary: the terms the model picked for this specific dish.
-      usableQuery(aiSearchTerms) ? `${aiSearchTerms} food` : null,
-      // Secondary: the dish itself, with cuisine when we have it.
+      // Primary: the dish itself. Cuisine sharpens it when we have it.
       usableQuery(dishName)
         ? (cuisineType ? `${dishName} ${cuisineType} food` : `${dishName} food`)
         : null,
+      // Secondary: the model's terms, minus anything a camera cannot capture.
+      // Skipped entirely when nothing visual survives the filter, rather than
+      // spending a request on the leftovers.
+      usableQuery(cleanedTerms) ? `${cleanedTerms} food` : null,
       // Final: a generic that always resolves, so a miss still yields an image.
       mealType ? `${mealType} food` : 'healthy food',
     ]);

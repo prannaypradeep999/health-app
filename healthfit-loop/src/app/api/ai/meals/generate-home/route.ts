@@ -65,6 +65,39 @@ function extractHomeMealsFromSchedule(weeklyMealSchedule: any): Array<{day: stri
   return homeMeals;
 }
 
+/**
+ * A day slot holds `{ primary, alternative }`, and `source` lives on the option
+ * — restaurantMeals[n].primary.source === 'restaurant' — never on the slot.
+ *
+ * The check here used to read `existingMeal.source`, one level too high, so it
+ * was always undefined and no restaurant meal was ever recognised. Note that
+ * the very next line reached for `existingMeal.primary?.dish`, so the shape was
+ * understood; only the test was wrong.
+ *
+ * The consequence was not a lost log line. The slot then fell through to a
+ * branch requiring a new home meal, and home generation produces `{}` for slots
+ * it does not own, so all seven restaurant slots were PERSISTED as empty
+ * objects. Verified against meal plan cmt07no4n00019k3vunoqntzv on 2026-08-19:
+ * `days[friday].meals.lunch` is `{}`. The app looked fine only because
+ * /meals/current re-merges restaurantMeals into days on every single read,
+ * papering over the stored damage — and the daily calorie summaries, which read
+ * the stored days, were computed without any restaurant calories, producing
+ * seven bogus "under target" warnings.
+ */
+function isRestaurantSlot(slot: any): boolean {
+  if (!slot || typeof slot !== 'object') return false;
+  return slot.source === 'restaurant'
+    || slot.primary?.source === 'restaurant'
+    || Boolean(slot.primary?.restaurant);
+}
+
+/** True when a slot actually holds a meal rather than the `{}` placeholder. */
+function hasContent(slot: any): boolean {
+  if (!slot || typeof slot !== 'object') return false;
+  if (Object.keys(slot).length === 0) return false;
+  return Boolean(slot.primary || slot.name || slot.dish);
+}
+
 // Helper function to merge days arrays combining home and restaurant meals
 function mergeDaysWithRestaurantMeals(newHomeDays: any[], existingDays: any[]): any[] {
   console.log(`[MERGE-DAYS] 🔄 Merging days - Home: ${newHomeDays.length}, Existing: ${existingDays.length}`);
@@ -84,12 +117,20 @@ function mergeDaysWithRestaurantMeals(newHomeDays: any[], existingDays: any[]): 
         const newHomeMeal = day.meals[mealType];
 
         // If existing meal is a restaurant meal, keep it; otherwise use new home meal
-        if (existingMeal && existingMeal.source === 'restaurant') {
+        if (isRestaurantSlot(existingMeal)) {
           console.log(`[MERGE-DAYS] 🏪 Preserving restaurant meal: ${day.day} ${mealType} - ${existingMeal.primary?.dish || 'Unknown'}`);
           day.meals[mealType] = existingMeal;
-        } else if (newHomeMeal && newHomeMeal.source !== 'restaurant') {
-          console.log(`[MERGE-DAYS] 🏠 Keeping home meal: ${day.day} ${mealType} - ${newHomeMeal.name || 'Unknown'}`);
+        } else if (hasContent(newHomeMeal)) {
+          console.log(`[MERGE-DAYS] 🏠 Keeping home meal: ${day.day} ${mealType} - ${newHomeMeal.primary?.name || newHomeMeal.name || 'Unknown'}`);
           // Keep the new home meal (already in place)
+        } else if (hasContent(existingMeal)) {
+          // Neither side claimed this slot, but the previous plan had something
+          // in it. Falling through used to leave the empty `{}` that the home
+          // structure ships for slots it does not own.
+          console.log(`[MERGE-DAYS] ♻️ Restoring existing meal: ${day.day} ${mealType}`);
+          day.meals[mealType] = existingMeal;
+        } else {
+          console.warn(`[MERGE-DAYS] ⚠️ ${day.day} ${mealType} has no meal from either side — leaving empty`);
         }
       });
     }

@@ -308,22 +308,32 @@ async function extractMenuInformation(restaurants: Restaurant[], surveyData: any
   // three attempts and lost their menus entirely. Retrying a rate limit while
   // still saturating it cannot converge; the concurrency is the thing to fix.
   //
-  // Capped at 8 because an attempt that runs out of budget still spends the
-  // budget. The 2026-08-19 run tried all 10 and finished 2: the last six each
-  // burned a few seconds discovering there was no time left. Fewer lookups that
-  // complete beat more that do not, and `findAndSelectBestRestaurants` has
-  // already ordered these by fit, so the ones dropped are the weakest ones.
+  // The cap and the concurrency are deliberately the SAME number, because the
+  // phase has room for exactly one wave and no more.
   //
-  // The concurrency here matches the module-level Perplexity gate rather than
-  // sitting below it; a second, tighter cap at this call site would silently
-  // become the binding constraint and undo the measured rate.
-  const MAX_MENU_LOOKUPS = 8;
+  // Measured on the 2026-08-19 run: a Perplexity menu lookup takes 10-25s, and
+  // this phase gets roughly 22s of the route's 53s once Places (~3s), restaurant
+  // selection (~9s) and meal selection (~18s) have taken theirs. Anything that
+  // does not start in the first few seconds cannot finish. That run attempted
+  // all 10 restaurants four-wide and kept 2 — the second wave opened with
+  // "route budget leaves -1422ms" and every restaurant in it was dropped for
+  // having no menu, which is why the user saw a week of meals from 2 places.
+  //
+  // A restaurant whose lookup fails is REMOVED from the pool, so a failed
+  // lookup is not a missing menu, it is a missing restaurant. Six that resolve
+  // beat ten that mostly do not. findAndSelectBestRestaurants has already
+  // ordered by fit, so the four dropped here are the weakest.
+  //
+  // Six-wide keeps the module-level 1200ms spacing that the rate limit actually
+  // measures (start rate, not concurrency), so the last request still opens
+  // ~6s in and has ~16s to answer.
+  const MAX_MENU_LOOKUPS = 6;
   const toEnrich = restaurants.slice(0, MAX_MENU_LOOKUPS);
   if (restaurants.length > toEnrich.length) {
-    console.log(`[MENU-EXTRACTION] Limiting to the top ${toEnrich.length} of ${restaurants.length} restaurants to stay inside the phase budget`);
+    console.log(`[MENU-EXTRACTION] Limiting to the top ${toEnrich.length} of ${restaurants.length} restaurants — one wave is all the phase budget allows`);
   }
 
-  const results = await mapWithLimit(toEnrich, 4, async (restaurant) => {
+  const results = await mapWithLimit(toEnrich, MAX_MENU_LOOKUPS, async (restaurant) => {
     try {
       // Validate before calling Perplexity
       if (!restaurant.name || restaurant.name === 'undefined') {

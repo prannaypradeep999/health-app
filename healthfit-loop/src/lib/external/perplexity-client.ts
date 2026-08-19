@@ -57,7 +57,23 @@ import { createLimiter } from '@/lib/utils/concurrency';
  * two-restaurant menu to choose from, which is the real reason its macros came
  * out far below target. Throughput here is plan quality, not just latency.
  */
-const PERPLEXITY_MAX_CONCURRENT = 4;
+/**
+ * Raised 4 -> 6 on 2026-08-19 so menu extraction can issue its whole wave.
+ *
+ * This is safe for the reason the table above already establishes: Perplexity
+ * limits the rate at which requests START, not how many are open at once
+ * (concurrency 3 at a 1200ms gap ran 47s with 1/40 failures and showed no
+ * per-minute cap). Six-wide at an unchanged 1200ms interval issues requests at
+ * exactly the same rate as four-wide; it only allows more of them to be in
+ * flight while they wait on a slow live search, which is the actual shape of a
+ * menu lookup.
+ *
+ * It has to move in step with MAX_MENU_LOOKUPS in generate-restaurants. A
+ * module gate below the call site's fan-out silently becomes the binding
+ * constraint, splits the wave in two, and the second half dies on budget —
+ * which is precisely the failure that left the user with 2 restaurants.
+ */
+const PERPLEXITY_MAX_CONCURRENT = 6;
 const PERPLEXITY_MIN_INTERVAL_MS = 1200;
 const perplexityLimit = createLimiter(PERPLEXITY_MAX_CONCURRENT, PERPLEXITY_MIN_INTERVAL_MS);
 
