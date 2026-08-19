@@ -14,6 +14,13 @@ import { withGPTRetry } from '@/lib/utils/retry';
 import { getStartOfWeek } from '@/lib/utils/date-utils';
 import { validateRestrictions } from '@/lib/utils/restriction-validator';
 import { MODELS } from '@/lib/ai/models';
+import {
+  RestaurantSelectionSchema,
+  RestaurantMealsSchema,
+  toStrictJsonSchema,
+} from '@/lib/ai/schemas';
+import { parseChoice } from '@/lib/ai/validate';
+import { logUsage } from '@/lib/ai/usage';
 
 export const runtime = 'nodejs';
 
@@ -96,40 +103,6 @@ function extractRestaurantMealsFromSchedule(weeklyMealSchedule: any): Array<{day
   return restaurantMeals;
 }
 
-// Clean and repair JSON responses from GPT
-function cleanJsonResponse(content: string): any {
-  let cleanContent = content.trim();
-  
-  // Remove markdown code blocks
-  if (cleanContent.startsWith('```json')) {
-    cleanContent = cleanContent.replace(/^```json\s*/, '').replace(/\s*```$/, '');
-  }
-  if (cleanContent.startsWith('```')) {
-    cleanContent = cleanContent.replace(/^```\s*/, '').replace(/\s*```$/, '');
-  }
-  
-  // Fix common JSON issues
-  cleanContent = cleanContent.replace(/,\s*}/g, '}');
-  cleanContent = cleanContent.replace(/,\s*]/g, ']');
-  
-  // Fix Unicode issues
-  cleanContent = cleanContent.replace(/[\u{D800}-\u{DFFF}]/gu, '');
-  cleanContent = cleanContent.replace(/[\u{FFF0}-\u{FFFF}]/gu, '');
-  
-  // Shorten extremely long URLs
-  cleanContent = cleanContent.replace(
-    /(https:\/\/www\.doordash\.com\/store\/[^"&?]+)[^"]*/g,
-    '$1'
-  );
-  
-  try {
-    return JSON.parse(cleanContent);
-  } catch (parseError) {
-    console.error('[JSON-CLEAN] JSON parse failed even after cleaning:', parseError);
-    return null;
-  }
-}
-
 // Find and select best restaurants
 async function findAndSelectBestRestaurants(surveyData: any): Promise<Restaurant[]> {
   const startTime = Date.now();
@@ -202,8 +175,12 @@ async function findAndSelectBestRestaurants(surveyData: any): Promise<Restaurant
         body: JSON.stringify({
           model: MODELS.PLANNING,
           messages: [{ role: 'user', content: selectionPrompt }],
-          response_format: { type: "json_object" },
-          temperature: 0.3
+          response_format: toStrictJsonSchema('restaurant_selection', RestaurantSelectionSchema),
+          temperature: 0.3,
+          // Selection returns <=8 rows of 6 short fields (~120 tok/row). 4000 is
+          // ~4x the observed need. Previously unset, which meant the model's own
+          // default ceiling applied and truncation was invisible.
+          max_tokens: 4000
         }),
         signal: signal
       });
@@ -221,105 +198,67 @@ async function findAndSelectBestRestaurants(surveyData: any): Promise<Restaurant
     }
     const data = gptResult.data;
 
-    // Check for OpenAI refusal or content filtering
-    if (data.choices?.[0]?.finish_reason === 'content_filter') {
-      console.error('[RESTAURANT-SEARCH] ❌ Content filtered by OpenAI');
-      console.warn('[RESTAURANT-SEARCH] ⚠️ Using fallback after content filtering');
+    logUsage('restaurant-selection', 4000, data);
+
+    // Refusal / truncation / invalid-JSON / schema-mismatch all collapse into one
+    // check. The grammar guarantees shape when it succeeds, so the per-field
+    // structural guards that used to live here are gone.
+    const parsed = parseChoice(RestaurantSelectionSchema, data.choices?.[0], 'restaurant-selection');
+    if (!parsed.ok) {
+      console.warn(`[RESTAURANT-SEARCH] ⚠️ ${parsed.reason}: ${parsed.detail} — using first 8 restaurants`);
       return uniqueRestaurants.slice(0, 8);
     }
 
-    if (data.choices?.[0]?.message?.refusal) {
-      console.error('[RESTAURANT-SEARCH] ❌ OpenAI refused request:', data.choices[0].message.refusal);
-      console.warn('[RESTAURANT-SEARCH] ⚠️ Using fallback after refusal');
-      return uniqueRestaurants.slice(0, 8);
-    }
-
-    // Validate response structure
-    if (!data.choices || !Array.isArray(data.choices) || data.choices.length === 0) {
-      console.error('[RESTAURANT-SEARCH] ❌ Invalid response structure - no choices');
-      console.warn('[RESTAURANT-SEARCH] ⚠️ Using fallback after invalid structure');
-      return uniqueRestaurants.slice(0, 8);
-    }
-
-    if (!data.choices[0]?.message?.content) {
-      console.error('[RESTAURANT-SEARCH] ❌ Invalid response structure - no content');
-      console.warn('[RESTAURANT-SEARCH] ⚠️ Using fallback after missing content');
-      return uniqueRestaurants.slice(0, 8);
-    }
-
-    console.log(`[RESTAURANT-SEARCH] 📊 GPT Response data:`);
-    console.log(`[RESTAURANT-SEARCH]   - Has choices: ${!!data.choices}`);
-    console.log(`[RESTAURANT-SEARCH]   - Choices length: ${data.choices?.length || 0}`);
-    console.log(`[RESTAURANT-SEARCH]   - Usage: ${JSON.stringify(data.usage)}`);
-    console.log(`[RESTAURANT-SEARCH]   - Error: ${data.error ? JSON.stringify(data.error) : 'none'}`);
-
-    if (data.error) {
-      console.error(`[RESTAURANT-SEARCH] ❌ GPT returned error: ${JSON.stringify(data.error)}`);
-      console.warn('[RESTAURANT-SEARCH] ⚠️ GPT selection failed, using first 8 restaurants');
-      return uniqueRestaurants.slice(0, 8);
-    }
-
-    const content = data.choices?.[0]?.message?.content || '{}';
-    console.log(`[RESTAURANT-SEARCH] 📝 Raw content preview (first 500 chars): ${content.substring(0, 500)}...`);
-
-    const result = cleanJsonResponse(content);
-    
     // Map selected restaurants back to original data to preserve all fields
     let selectedRestaurants: Restaurant[] = [];
-    
-    if (result?.selectedRestaurants && Array.isArray(result.selectedRestaurants)) {
-      console.log(`[RESTAURANT-SEARCH] 🤖 GPT selected ${result.selectedRestaurants.length} restaurants`);
-      
-      // Create a lookup map for original restaurants
-      const restaurantLookup = new Map<string, Restaurant>();
-      uniqueRestaurants.forEach(r => {
-        if (r.placeId) restaurantLookup.set(r.placeId, r);
-        if (r.name) restaurantLookup.set(r.name.toLowerCase(), r);
-      });
-      
-      // Map GPT selections back to full restaurant objects
-      for (const selected of result.selectedRestaurants) {
-        let fullRestaurant: Restaurant | undefined;
-        
-        // Try to match by placeId first
-        if (selected.placeId) {
-          fullRestaurant = restaurantLookup.get(selected.placeId);
-        }
-        
-        // Try to match by name if placeId didn't work
-        if (!fullRestaurant && selected.name) {
-          fullRestaurant = restaurantLookup.get(selected.name.toLowerCase());
-        }
-        
-        if (fullRestaurant) {
-          console.log(`[RESTAURANT-SEARCH] Rating for ${fullRestaurant.name}: ${fullRestaurant.rating}`);
-          selectedRestaurants.push({
-            ...fullRestaurant,
-            rating: fullRestaurant.rating, // Explicitly preserve rating from original Google Places data
-            selectionReason: selected.reason || selected.selectionReason,
-          } as Restaurant & { selectionReason?: string });
-        } else if (selected.name && selected.address) {
-          console.log(`[RESTAURANT-SEARCH] ⚠️ Using GPT-provided data for: ${selected.name}`);
-          selectedRestaurants.push({
-            ...selected,
-            rating: selected.rating || 0 // Set rating from GPT or default to 0
-          } as Restaurant);
-        } else {
-          console.warn(`[RESTAURANT-SEARCH] ⚠️ Could not match restaurant: ${JSON.stringify(selected).substring(0, 100)}`);
-        }
+
+    console.log(`[RESTAURANT-SEARCH] 🤖 GPT selected ${parsed.data.selectedRestaurants.length} restaurants`);
+
+    // Create a lookup map for original restaurants
+    const restaurantLookup = new Map<string, Restaurant>();
+    uniqueRestaurants.forEach(r => {
+      if (r.placeId) restaurantLookup.set(r.placeId, r);
+      if (r.name) restaurantLookup.set(r.name.toLowerCase(), r);
+    });
+
+    // Map GPT selections back to full restaurant objects
+    for (const selected of parsed.data.selectedRestaurants) {
+      let fullRestaurant: Restaurant | undefined;
+
+      // Try to match by placeId first
+      if (selected.placeId) {
+        fullRestaurant = restaurantLookup.get(selected.placeId);
       }
-      
-      // If mapping resulted in empty array, fall back to original restaurants
-      if (selectedRestaurants.length === 0) {
-        console.warn('[RESTAURANT-SEARCH] ⚠️ GPT selection mapping failed, using original restaurants');
-        selectedRestaurants = uniqueRestaurants.slice(0, 8);
+
+      // Try to match by name if placeId didn't work
+      if (!fullRestaurant && selected.name) {
+        fullRestaurant = restaurantLookup.get(selected.name.toLowerCase());
       }
-    } else {
-      // Fallback if GPT didn't return valid selection
-      console.warn('[RESTAURANT-SEARCH] ⚠️ GPT selection invalid, using first 8 restaurants');
+
+      if (fullRestaurant) {
+        console.log(`[RESTAURANT-SEARCH] Rating for ${fullRestaurant.name}: ${fullRestaurant.rating}`);
+        selectedRestaurants.push({
+          ...fullRestaurant,
+          rating: fullRestaurant.rating, // Explicitly preserve rating from original Google Places data
+          selectionReason: selected.reason,
+        } as Restaurant & { selectionReason?: string });
+      } else if (selected.name && selected.address) {
+        console.log(`[RESTAURANT-SEARCH] ⚠️ Using GPT-provided data for: ${selected.name}`);
+        selectedRestaurants.push({
+          ...selected,
+          rating: selected.rating || 0 // Set rating from GPT or default to 0
+        } as unknown as Restaurant);
+      } else {
+        console.warn(`[RESTAURANT-SEARCH] ⚠️ Could not match restaurant: ${JSON.stringify(selected).substring(0, 100)}`);
+      }
+    }
+
+    // If mapping resulted in empty array, fall back to original restaurants
+    if (selectedRestaurants.length === 0) {
+      console.warn('[RESTAURANT-SEARCH] ⚠️ GPT selection mapping failed, using original restaurants');
       selectedRestaurants = uniqueRestaurants.slice(0, 8);
     }
-    
+
     const totalSearchTime = Date.now() - startTime;
     console.log(`[RESTAURANT-SEARCH] ✅ Selected ${selectedRestaurants.length} restaurants in ${totalSearchTime}ms`);
     
@@ -455,8 +394,13 @@ async function selectRestaurantMealsForSchedule(
         body: JSON.stringify({
           model: MODELS.DETAIL,
           messages: [{ role: 'user', content: prompt }],
-          response_format: { type: "json_object" },
-          temperature: 0.4
+          response_format: toStrictJsonSchema('restaurant_meals', RestaurantMealsSchema),
+          temperature: 0.4,
+          // Each row carries two full meal objects (13 fields each, incl. four
+          // ordering URLs) at roughly 550 output tokens. The schedule is bounded
+          // by eatingOutOccasions, so 12000 is several times the realistic need.
+          // Previously unset: truncation here was silent.
+          max_tokens: 12000
         }),
         signal: signal
       });
@@ -474,55 +418,24 @@ async function selectRestaurantMealsForSchedule(
     }
     const data = gptResult.data;
 
-    // Check for OpenAI refusal or content filtering
-    if (data.choices?.[0]?.finish_reason === 'content_filter') {
-      console.error('[RESTAURANT-SELECTION] ❌ Content filtered by OpenAI');
-      throw new Error('Content filtered by OpenAI - please try rephrasing your food preferences');
+    logUsage('restaurant-meals', 12000, data);
+
+    const parsed = parseChoice(RestaurantMealsSchema, data.choices?.[0], 'restaurant-meals');
+    if (!parsed.ok) {
+      console.error(`[RESTAURANT-SELECTION] ❌ ${parsed.reason}: ${parsed.detail}`);
+      return [];
     }
 
-    if (data.choices?.[0]?.message?.refusal) {
-      console.error('[RESTAURANT-SELECTION] ❌ OpenAI refused request:', data.choices[0].message.refusal);
-      throw new Error(`OpenAI refused request: ${data.choices[0].message.refusal}`);
-    }
+    const selectedMeals = parsed.data.restaurantMeals;
+    console.log(`[RESTAURANT-SELECTION] ✅ Selected ${selectedMeals.length}/${restaurantMealsSchedule.length} restaurant meals`);
 
-    // Validate response structure
-    if (!data.choices || !Array.isArray(data.choices) || data.choices.length === 0) {
-      console.error('[RESTAURANT-SELECTION] ❌ Invalid response structure - no choices');
-      throw new Error('Invalid response structure from OpenAI');
-    }
-
-    if (!data.choices[0]?.message?.content) {
-      console.error('[RESTAURANT-SELECTION] ❌ Invalid response structure - no content');
-      throw new Error('No content in OpenAI response');
-    }
-
-    console.log(`[RESTAURANT-SELECTION] 📊 GPT Response data:`);
-    console.log(`[RESTAURANT-SELECTION]   - Has choices: ${!!data.choices}`);
-    console.log(`[RESTAURANT-SELECTION]   - Choices length: ${data.choices?.length || 0}`);
-    console.log(`[RESTAURANT-SELECTION]   - Usage: ${JSON.stringify(data.usage)}`);
-    console.log(`[RESTAURANT-SELECTION]   - Error: ${data.error ? JSON.stringify(data.error) : 'none'}`);
-
-    if (data.error) {
-      console.error(`[RESTAURANT-SELECTION] ❌ GPT returned error: ${JSON.stringify(data.error)}`);
-      throw new Error(`GPT API error: ${data.error.message || data.error}`);
-    }
-
-    const content = data.choices?.[0]?.message?.content || '{}';
-    console.log(`[RESTAURANT-SELECTION] 📝 Raw content preview (first 500 chars): ${content.substring(0, 500)}...`);
-
-    const result = cleanJsonResponse(content);
-    
-    const selectedMeals = result?.restaurantMeals || [];
-    console.log(`[RESTAURANT-SELECTION] ✅ Selected ${selectedMeals.length} restaurant meals`);
-    
-    // Log each selected meal with its ordering links
-    selectedMeals.forEach((meal: any, i: number) => {
-      const primaryLinks = Object.keys(meal.primary?.orderingLinks || {}).filter(
-        k => meal.primary?.orderingLinks[k]
-      );
-      console.log(`[RESTAURANT-SELECTION]   ${i + 1}. ${meal.day} ${meal.mealType}: ${meal.primary?.restaurant} (${primaryLinks.length} links)`);
+    // Log each selected meal with its ordering links. Under the strict schema
+    // all four orderingLinks keys are always present, so count the non-null ones.
+    selectedMeals.forEach((meal, i: number) => {
+      const primaryLinks = Object.values(meal.primary.orderingLinks).filter(Boolean);
+      console.log(`[RESTAURANT-SELECTION]   ${i + 1}. ${meal.day} ${meal.mealType}: ${meal.primary.restaurant} (${primaryLinks.length} links)`);
     });
-    
+
     return selectedMeals;
     
   } catch (error) {

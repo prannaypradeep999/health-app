@@ -1069,7 +1069,7 @@ ${(surveyData.preferredFoods || []).length > 0
 7. Consider meal timing (lighter lunches, heartier dinners)
 8. Stay within budget and dietary preferences
 9. Use ONLY restaurants and menu items from the data provided above
-10. NEVER leave orderingLinks empty - copy them directly from the restaurant data
+10. NEVER omit an orderingLinks key - copy the URL from the restaurant data, or use null if that platform has no URL
 11. ⚠️ DIET TYPE + ALLERGIES ARE ABSOLUTE - never select forbidden items; dislikes should be minimized
 12. ⚠️ PREFERRED FOODS: When available, prioritize dishes featuring user's preferred ingredients
 
@@ -1091,10 +1091,10 @@ Return ONLY this JSON structure:
         "cuisine": "Italian",
         "address": "Restaurant address from data",
         "orderingLinks": {
-          "doordash": "COPY EXACT URL FROM RESTAURANT DATA",
-          "ubereats": "COPY EXACT URL FROM RESTAURANT DATA",
-          "grubhub": "COPY EXACT URL FROM RESTAURANT DATA",
-          "direct": "COPY EXACT URL FROM RESTAURANT DATA"
+          "doordash": "COPY EXACT URL FROM RESTAURANT DATA, or null if absent",
+          "ubereats": "COPY EXACT URL FROM RESTAURANT DATA, or null if absent",
+          "grubhub": "COPY EXACT URL FROM RESTAURANT DATA, or null if absent",
+          "direct": "COPY EXACT URL FROM RESTAURANT DATA, or null if absent"
         },
         "source": "restaurant",
         "tags": ["dinner", "italian", "protein-rich"]
@@ -1111,10 +1111,10 @@ Return ONLY this JSON structure:
         "cuisine": "Different cuisine",
         "address": "Different restaurant address",
         "orderingLinks": {
-          "doordash": "COPY EXACT URL FROM DIFFERENT RESTAURANT",
-          "ubereats": "COPY EXACT URL FROM DIFFERENT RESTAURANT",
-          "grubhub": "COPY EXACT URL FROM DIFFERENT RESTAURANT",
-          "direct": "COPY EXACT URL FROM DIFFERENT RESTAURANT"
+          "doordash": "COPY EXACT URL FROM DIFFERENT RESTAURANT, or null if absent",
+          "ubereats": "COPY EXACT URL FROM DIFFERENT RESTAURANT, or null if absent",
+          "grubhub": "COPY EXACT URL FROM DIFFERENT RESTAURANT, or null if absent",
+          "direct": "COPY EXACT URL FROM DIFFERENT RESTAURANT, or null if absent"
         },
         "source": "restaurant",
         "tags": ["dinner", "different-cuisine"]
@@ -1123,7 +1123,7 @@ Return ONLY this JSON structure:
   ]
 }
 
-⚠️ IMPORTANT: Only include platforms in orderingLinks that have actual URLs in the restaurant data. If a restaurant doesn't have a GrubHub link, don't include grubhub in that meal's orderingLinks.`;
+⚠️ IMPORTANT: orderingLinks must ALWAYS contain all four keys — doordash, ubereats, grubhub and direct. Copy the exact URL where the restaurant data has one. Where it does not, set that key to null. Never omit a key and never invent a URL.`;
 }
 
 // Restaurant selection prompt (for choosing best restaurants from search results)
