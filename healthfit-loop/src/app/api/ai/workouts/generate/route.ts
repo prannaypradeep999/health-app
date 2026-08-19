@@ -199,9 +199,22 @@ async function getWorkoutFeedbackContext(surveyData: any): Promise<WorkoutFeedba
     ...(surveyId ? [{ surveyId }] : []),
   ];
 
+  // `where: { userId: userId || undefined }` does NOT mean "match rows with no
+  // user". Prisma DROPS an undefined condition, so for a guest — who has a
+  // surveyId and no userId, which is the normal case in this app — the filter
+  // vanished and these two queries returned EVERY row in the table. Strangers'
+  // exercise logs became this user's difficulty ratings, and strangers' recorded
+  // weights became the "last X lbs, suggest Y lbs" progression targets written
+  // into the prompt. That is someone else's training history leaking into this
+  // plan, and it is also simply wrong advice.
+  //
+  // These two tables are keyed by userId only, so there is no guest-scoped query
+  // to fall back to: without a userId there is genuinely no history, and the
+  // correct result is an empty list. customWorkouts and favorites below are
+  // unaffected — they use `userFilter`, which carries surveyId.
   const [exerciseLogs, workoutLogs, customWorkouts, favoritesRaw] = await Promise.all([
-    prisma.workoutExerciseLog.findMany({
-      where: { workoutLog: { userId: userId || undefined } },
+    userId ? prisma.workoutExerciseLog.findMany({
+      where: { workoutLog: { userId } },
       select: {
         exerciseName: true,
         difficultyRating: true,
@@ -213,13 +226,13 @@ async function getWorkoutFeedbackContext(surveyData: any): Promise<WorkoutFeedba
       },
       take: 200,
       orderBy: { createdAt: 'desc' },
-    }),
-    prisma.workoutLog.findMany({
-      where: { userId: userId || undefined },
+    }) : Promise.resolve([]),
+    userId ? prisma.workoutLog.findMany({
+      where: { userId },
       select: { day: true, completed: true },
       take: 50,
       orderBy: { createdAt: 'desc' },
-    }),
+    }) : Promise.resolve([]),
     prisma.userCustomWorkout.findMany({
       where: { OR: userFilter },
       select: { exercises: true },

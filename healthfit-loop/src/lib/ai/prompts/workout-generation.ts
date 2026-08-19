@@ -1,5 +1,36 @@
 import { SurveyResponse } from '@prisma/client';
 
+// Maps the fine-grained muscle names Phase 1 produces onto the coarse
+// muscleGroup values actually stored in ExerciseLibrary
+// ("Mobility","Chest","Cardio","Shoulders","Arms","Full Body","Back","Core","Legs").
+const MUSCLE_GROUP_SYNONYMS: Record<string, string> = {
+  triceps: 'arms',
+  biceps: 'arms',
+  forearms: 'arms',
+  quads: 'legs',
+  quadriceps: 'legs',
+  hamstrings: 'legs',
+  glutes: 'legs',
+  calves: 'legs',
+  adductors: 'legs',
+  abductors: 'legs',
+  lats: 'back',
+  traps: 'back',
+  rhomboids: 'back',
+  'lower back': 'back',
+  abs: 'core',
+  abdominals: 'core',
+  obliques: 'core',
+  pecs: 'chest',
+  pectorals: 'chest',
+  delts: 'shoulders',
+  deltoids: 'shoulders',
+  conditioning: 'cardio',
+  endurance: 'cardio',
+  flexibility: 'mobility',
+  stretching: 'mobility',
+};
+
 // Types for workout generation
 export interface WorkoutPreferences {
   fitnessExperience?: string;
@@ -308,11 +339,26 @@ export const createWorkoutDetailPrompt = (
   const chunkMuscles = new Set(
     dayOutlines.flatMap(d => (d.targetMuscles || []).map(m => String(m).toLowerCase()))
   );
-  const relevantLibrary = (libraryExercises || []).filter(ex => {
-    if (chunkMuscles.size === 0) return true;
-    const group = (ex.muscleGroup || '').toLowerCase();
-    return group !== '' && [...chunkMuscles].some(m => group.includes(m) || m.includes(group));
-  }).slice(0, 30);
+  // Phase 1 emits fine-grained muscles ("triceps", "quads", "lats"); the library
+  // stores coarse groups ("Arms", "Legs", "Back"). Without this map 6 of the 12
+  // most common target muscles matched nothing and the block rendered empty.
+  const normalizedMuscles = new Set<string>();
+  for (const m of chunkMuscles) {
+    normalizedMuscles.add(m);
+    const mapped = MUSCLE_GROUP_SYNONYMS[m];
+    if (mapped) normalizedMuscles.add(mapped);
+  }
+
+  const matched = (libraryExercises || []).filter(ex => {
+    if (normalizedMuscles.size === 0) return true;
+    const group = (ex.muscleGroup || '').toLowerCase().trim();
+    if (group === '') return false;
+    if (group === 'full body') return true;
+    return [...normalizedMuscles].some(m => group.includes(m) || m.includes(group));
+  });
+
+  // Never hand the model an empty library — a partial match beats no guidance.
+  const relevantLibrary = (matched.length > 0 ? matched : (libraryExercises || [])).slice(0, 30);
 
   const libraryBlock = relevantLibrary.length > 0
     ? `
