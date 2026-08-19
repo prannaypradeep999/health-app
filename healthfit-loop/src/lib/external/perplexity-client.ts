@@ -453,6 +453,21 @@ Return as JSON only, no other text:
   /**
    * Get real prices for grocery items at specified stores
    */
+  /**
+   * Prices every item, splitting the work when there is too much of it for one
+   * request.
+   *
+   * Measured 2026-08-19: 83 items across 3 stores in a single call exceeded the
+   * 45s attempt timeout, and because the whole list rode on that one request
+   * the timeout cost all 83 — the route returned `priceSearchSuccess: false`
+   * and the user saw a grocery list with no prices at all. The list length is
+   * driven by the meal plan, so this is the normal case for a full week, not an
+   * outlier.
+   *
+   * At most 3 chunks, matching PERPLEXITY_MAX_CONCURRENT, so they issue as one
+   * wave rather than queueing behind each other. The 15-item floor keeps short
+   * lists as the single request they already were.
+   */
   async getGroceryPrices(
     items: Array<{ name: string; quantity: string; uses: string; category: string }>,
     stores: GroceryStore[],
@@ -460,11 +475,86 @@ Return as JSON only, no other text:
     userGoal: string,
     outerSignal?: AbortSignal
   ): Promise<GroceryPriceResponse> {
-    console.log(`[PERPLEXITY-GROCERY] 💰 Getting prices for ${items.length} items at ${stores.length} stores...`);
+    const chunkSize = Math.max(15, Math.ceil(items.length / PERPLEXITY_MAX_CONCURRENT));
+    const chunks: typeof items[] = [];
+    for (let i = 0; i < items.length; i += chunkSize) chunks.push(items.slice(i, i + chunkSize));
 
+    console.log(`[PERPLEXITY-GROCERY] 💰 Getting prices for ${items.length} items at ${stores.length} stores (${chunks.length} request${chunks.length === 1 ? '' : 's'} of up to ${chunkSize})...`);
+
+    const settled = await Promise.all(chunks.map(chunk =>
+      this.fetchPriceChunk(chunk, stores, city, userGoal, outerSignal)
+        .then(priced => ({ ok: true as const, priced }))
+        .catch(error => ({ ok: false as const, error: error as Error }))
+    ));
+
+    // Partial results are kept on purpose. Previously one timeout discarded
+    // every item; two chunks out of three is a grocery list with most of its
+    // prices, which is plainly worth more to the user than none of them.
+    const pricedItems = settled.flatMap(r => r.ok ? r.priced : []);
+    const failures = settled.filter(r => !r.ok);
+
+    if (pricedItems.length === 0) {
+      const firstError = failures.find(f => !f.ok) as { ok: false; error: Error } | undefined;
+      console.error('[PERPLEXITY-GROCERY] ❌ Price search error:', firstError?.error);
+      return {
+        items: [], stores, storeTotals: [], recommendedStore: '', savings: '',
+        priceSearchSuccess: false,
+        error: firstError?.error?.message || 'Failed to get prices',
+      };
+    }
+
+    if (failures.length > 0) {
+      console.warn(`[PERPLEXITY-GROCERY] ⚠️ ${failures.length}/${chunks.length} chunk(s) failed — pricing ${pricedItems.length}/${items.length} items`);
+    }
+
+    // Totals are summed here rather than taken from the model. They have to be,
+    // now that no single request sees the whole list — but it is also the
+    // better answer regardless: an arithmetic result should come from
+    // arithmetic, and the model was previously free to return a total that did
+    // not match the prices printed beside it.
+    const totalsByStore = new Map<string, number>();
+    for (const item of pricedItems) {
+      for (const option of item.storeOptions) {
+        totalsByStore.set(option.store, (totalsByStore.get(option.store) || 0) + (option.price || 0));
+      }
+    }
+    const storeTotals = [...totalsByStore.entries()]
+      .map(([store, total]) => ({ store, total: Math.round(total * 100) / 100 }))
+      .sort((a, b) => a.total - b.total);
+
+    const cheapest = storeTotals[0];
+    const dearest = storeTotals[storeTotals.length - 1];
+    const savings = cheapest && dearest && storeTotals.length > 1 && dearest.total > cheapest.total
+      ? `Save $${(dearest.total - cheapest.total).toFixed(2)} vs ${dearest.store}`
+      : '';
+
+    console.log(`[PERPLEXITY-GROCERY] ✅ Got prices for ${pricedItems.length} items`);
+    console.log(`[PERPLEXITY-GROCERY] 💡 Recommended store: ${cheapest?.store || 'none'}`);
+
+    return {
+      items: pricedItems,
+      stores,
+      storeTotals,
+      recommendedStore: cheapest?.store || '',
+      savings,
+      priceSearchSuccess: true,
+    };
+  }
+
+  /**
+   * One pricing request. Throws on failure so the caller can decide whether a
+   * partial result is still worth returning.
+   */
+  private async fetchPriceChunk(
+    items: Array<{ name: string; quantity: string; uses: string; category: string }>,
+    stores: GroceryStore[],
+    city: string,
+    userGoal: string,
+    outerSignal?: AbortSignal
+  ): Promise<GroceryItemWithPrices[]> {
     const storeNames = stores.map(s => s.name).join(', ');
 
-    try {
+    {
       // Build item list for query
       const itemList = items.map(i => `- ${i.name} (${i.quantity})`).join('\n');
 
@@ -586,31 +676,10 @@ Return as JSON only:
         }))
       }));
 
-      console.log(`[PERPLEXITY-GROCERY] ✅ Got prices for ${pricedItems.length} items`);
-      console.log(`[PERPLEXITY-GROCERY] 💡 Recommended store: ${parsed.data.recommendedStore}`);
-
-      return {
-        items: pricedItems,
-        stores: stores,
-        storeTotals: parsed.data.storeTotals,
-        recommendedStore: parsed.data.recommendedStore,
-        savings: parsed.data.savings,
-        priceSearchSuccess: pricedItems.length > 0
-      };
-
-    } catch (error) {
-      console.error('[PERPLEXITY-GROCERY] ❌ Price search error:', error);
-
-      // Return empty - UI will show grocery list without price comparison
-      return {
-        items: [],
-        stores: stores,
-        storeTotals: [],
-        recommendedStore: '',
-        savings: '',
-        priceSearchSuccess: false,
-        error: error instanceof Error ? error.message : 'Failed to get prices'
-      };
+      // storeTotals / recommendedStore / savings are still requested by the
+      // schema but discarded: a chunk can only total its own slice, so the
+      // caller recomputes them across every chunk that succeeded.
+      return pricedItems;
     }
   }
 
