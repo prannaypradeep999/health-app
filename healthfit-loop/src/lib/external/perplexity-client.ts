@@ -1,7 +1,12 @@
 // src/lib/external/perplexity-client.ts
 import { withPerplexityRetry, withGPTRetry, HttpError } from '@/lib/utils/retry';
 import { MODELS, tuning } from '@/lib/ai/models';
-import { MenuExtractionSchema, toStrictJsonSchema } from '@/lib/ai/schemas';
+import {
+  MenuExtractionSchema,
+  GroceryPricesSchema,
+  pinnedGroceryStores,
+  toStrictJsonSchema
+} from '@/lib/ai/schemas';
 import { parseChoice } from '@/lib/ai/validate';
 import { logUsage } from '@/lib/ai/usage';
 
@@ -318,6 +323,8 @@ Return as JSON only, no other text:
   ]
 }`;
 
+      const StoreSchema = pinnedGroceryStores(3);
+
       const storeResult = await withPerplexityRetry(async (signal) => {
         const fetchSignal = outerSignal ? AbortSignal.any([signal, outerSignal]) : signal;
         const response = await fetch(this.baseUrl, {
@@ -335,6 +342,11 @@ Return as JSON only, no other text:
               },
               { role: 'user', content: query }
             ],
+            // Sonar enforces this with a grammar rather than treating it as a
+            // hint — the prompt's "JSON only, no other text" is now structural.
+            // First call with a new schema pays a one-off compile penalty on
+            // Perplexity's side; subsequent calls do not.
+            response_format: toStrictJsonSchema('grocery_stores', StoreSchema),
             temperature: 0.1
           }),
           signal: fetchSignal
@@ -351,22 +363,31 @@ Return as JSON only, no other text:
         throw new Error(`Grocery store search failed after retries: ${storeResult.error}`);
       }
 
-      const data = storeResult.data;
-      const content = data.choices?.[0]?.message?.content || '';
-
-      // Parse JSON from response
-      const jsonMatch = content.match(/\{[\s\S]*\}/);
-      if (!jsonMatch) {
-        throw new Error('No JSON found in response');
+      // Replaces `content.match(/\{[\s\S]*\}/)` + a bare JSON.parse. That pair
+      // could not tell a refusal from a truncation from a wrong shape: all
+      // three arrived as "No JSON found in response". parseChoice separates
+      // them and, unlike the regex, actually checks the fields.
+      const parsed = parseChoice(StoreSchema, storeResult.data?.choices?.[0], 'perplexity-grocery-stores');
+      if (!parsed.ok) {
+        throw new Error(`Store search returned an unusable response (${parsed.reason}): ${parsed.detail}`);
       }
 
-      const parsed = JSON.parse(jsonMatch[0]);
-      console.log(`[PERPLEXITY-GROCERY] ✅ Found ${parsed.stores?.length || 0} stores`);
+      // `distance` is optional on GroceryStore but strict mode has no optionals,
+      // so the schema makes it nullable. Mapping null back to undefined keeps
+      // the serialised object identical to what the UI has always received.
+      const stores: GroceryStore[] = parsed.data.stores.map(s => ({
+        name: s.name,
+        address: s.address,
+        distance: s.distance ?? undefined,
+        type: s.type
+      }));
+
+      console.log(`[PERPLEXITY-GROCERY] ✅ Found ${stores.length} stores`);
 
       return {
-        stores: parsed.stores || [],
+        stores,
         location: `${streetAddress}, ${city}, ${state} ${zipcode}`,
-        searchSuccess: parsed.stores?.length > 0
+        searchSuccess: stores.length > 0
       };
 
     } catch (error) {
@@ -471,6 +492,11 @@ Return as JSON only:
               },
               { role: 'user', content: query }
             ],
+            // Same grammar enforcement as the store search. Not count-pinned —
+            // see the note on GroceryPricesSchema; a long list pinned to an
+            // exact count risks truncation, which strict decoding cannot
+            // salvage. Missing items are recovered by the caller instead.
+            response_format: toStrictJsonSchema('grocery_prices', GroceryPricesSchema),
             temperature: 0.2
           }),
           signal: fetchSignal
@@ -487,27 +513,40 @@ Return as JSON only:
         throw new Error(`Grocery price lookup failed after retries: ${priceResult.error}`);
       }
 
-      const data = priceResult.data;
-      const content = data.choices?.[0]?.message?.content || '';
-
-      // Parse JSON from response
-      const jsonMatch = content.match(/\{[\s\S]*\}/);
-      if (!jsonMatch) {
-        throw new Error('No JSON found in response');
+      const parsed = parseChoice(GroceryPricesSchema, priceResult.data?.choices?.[0], 'perplexity-grocery-prices');
+      if (!parsed.ok) {
+        throw new Error(`Price lookup returned an unusable response (${parsed.reason}): ${parsed.detail}`);
       }
 
-      const parsed = JSON.parse(jsonMatch[0]);
+      // `reason` is optional on StoreOption; nullable in the schema for the same
+      // strict-mode reason as `distance` above, and mapped back so the key
+      // disappears from the JSON rather than serialising as null.
+      const pricedItems: GroceryItemWithPrices[] = parsed.data.items.map(i => ({
+        item: i.item,
+        quantity: i.quantity,
+        uses: i.uses,
+        category: i.category,
+        storeOptions: i.storeOptions.map(o => ({
+          store: o.store,
+          displayName: o.displayName,
+          price: o.price,
+          isRecommended: o.isRecommended,
+          reason: o.reason ?? undefined,
+          storeAddress: o.storeAddress,
+          priceConfidence: o.priceConfidence
+        }))
+      }));
 
-      console.log(`[PERPLEXITY-GROCERY] ✅ Got prices for ${parsed.items?.length || 0} items`);
-      console.log(`[PERPLEXITY-GROCERY] 💡 Recommended store: ${parsed.recommendedStore}`);
+      console.log(`[PERPLEXITY-GROCERY] ✅ Got prices for ${pricedItems.length} items`);
+      console.log(`[PERPLEXITY-GROCERY] 💡 Recommended store: ${parsed.data.recommendedStore}`);
 
       return {
-        items: parsed.items || [],
+        items: pricedItems,
         stores: stores,
-        storeTotals: parsed.storeTotals || [],
-        recommendedStore: parsed.recommendedStore || '',
-        savings: parsed.savings || '',
-        priceSearchSuccess: parsed.items?.length > 0
+        storeTotals: parsed.data.storeTotals,
+        recommendedStore: parsed.data.recommendedStore,
+        savings: parsed.data.savings,
+        priceSearchSuccess: pricedItems.length > 0
       };
 
     } catch (error) {

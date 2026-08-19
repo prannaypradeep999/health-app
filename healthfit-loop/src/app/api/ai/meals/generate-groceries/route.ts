@@ -78,17 +78,16 @@ export async function POST(req: NextRequest) {
 
     // Step 1: Find local grocery stores via Perplexity
     console.log('[GROCERY-PRICES] Step 1/3: Finding local stores...');
-    // getLocalGroceryStores already retries internally (3 attempts, 75s each).
-    // Wrapping it in a second withPerplexityRetry bought nothing and cost a lot:
-    // the client catches its own errors and resolves with {stores: []}, so the
-    // outer loop never saw a rejection and never retried — but its own 75s
-    // timeout still aborted the inner call mid-flight. Slow-but-fine searches
-    // died early and the user got a 404.
+    // getLocalGroceryStores already retries internally. Wrapping it in a second
+    // withPerplexityRetry bought nothing and cost a lot: the client catches its
+    // own errors and resolves with {stores: []}, so the outer loop never saw a
+    // rejection and never retried — but its own timeout still aborted the inner
+    // call mid-flight. Slow-but-fine searches died early and the user got a 404.
     //
-    // Note the harder ceiling above: maxDuration is 60s, which is *below* the
-    // 75s the Perplexity preset allows for a single attempt. In production the
-    // platform kills this route before even one attempt can time out, so the
-    // inner retry loop is decorative here. Worth revisiting as a pair.
+    // The two calls below share this route's 60s ceiling and each carries its
+    // own 52s sequence budget, so the budgets do not compose: a slow store
+    // search leaves the price lookup less time than its own preset thinks it
+    // has. The platform, not the preset, is the real limit here.
     const storeResponse = await perplexityClient.getLocalGroceryStores(
       streetAddress, city, state, zipcode
     );
@@ -180,26 +179,59 @@ export async function POST(req: NextRequest) {
       snacks: []
     };
 
+    // Keyed by category:name for the exact match, and by name alone as a
+    // fallback: the model echoes a category back and occasionally echoes one we
+    // have no bucket for, which used to drop the item on the floor.
     const originalItemMap = new Map<string, any>();
+    const originalCategoryByKey = new Map<string, string>();
     for (const category of categories) {
       const items = groceryList[category] || [];
       for (const item of items) {
         const key = normalizeGroceryKey(item.name || item.item || '');
         if (key) {
           originalItemMap.set(`${category}:${key}`, item);
+          if (!originalCategoryByKey.has(key)) originalCategoryByKey.set(key, category);
         }
       }
     }
 
+    const pricedKeys = new Set<string>();
+
     for (const item of priceResponse.items) {
-      if (groceryListWithPrices[item.category]) {
-        const key = normalizeGroceryKey(item.name || item.item || '');
-        const original = originalItemMap.get(`${item.category}:${key}`);
-        groceryListWithPrices[item.category].push({
-          ...original,
-          ...item
-        });
+      const key = normalizeGroceryKey(item.item || '');
+      const category = groceryListWithPrices[item.category]
+        ? item.category
+        : originalCategoryByKey.get(key);
+
+      if (!category) {
+        console.warn(`[GROCERY-PRICES] ⚠️ Priced item "${item.item}" has unknown category "${item.category}" and no original match — skipping`);
+        continue;
       }
+
+      const original = originalItemMap.get(`${category}:${key}`);
+      groceryListWithPrices[category].push({
+        ...original,
+        ...item
+      });
+      if (key) pricedKeys.add(`${category}:${key}`);
+    }
+
+    // Items the model skipped used to vanish from the list entirely: ask for 40
+    // things, get prices for 25, and the other 15 are gone from the UI. The
+    // schema guarantees a well-formed response, not a complete one, so carry
+    // the unpriced originals through untouched. They render the same way they
+    // do on the price-lookup-failed path above.
+    let unpricedCount = 0;
+    for (const category of categories) {
+      for (const item of groceryList[category] || []) {
+        const key = normalizeGroceryKey(item.name || item.item || '');
+        if (!key || pricedKeys.has(`${category}:${key}`)) continue;
+        groceryListWithPrices[category].push(item);
+        unpricedCount++;
+      }
+    }
+    if (unpricedCount > 0) {
+      console.warn(`[GROCERY-PRICES] ⚠️ ${unpricedCount} of ${allItems.length} items came back without prices — kept them unpriced rather than dropping them`);
     }
 
     // Step 5: Build enriched grocery list
