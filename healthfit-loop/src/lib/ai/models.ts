@@ -53,10 +53,30 @@ function isGpt5(model: string): boolean {
   return /^gpt-5/.test(model);
 }
 
-/** gpt-5.4 and its mini/nano variants still honour an explicit temperature. */
+/**
+ * No gpt-5 model accepts an explicit temperature *from us*, because `tuning`
+ * always sends `reasoning_effort` for them and the two are mutually exclusive.
+ *
+ * This previously returned true for gpt-5.4 and its mini/nano variants, on the
+ * belief that they still honour a temperature. They do — but only on their own.
+ * Measured against gpt-5.4-mini on 2026-08-19:
+ *
+ *   temperature: 0.7 alone                  OK
+ *   reasoning_effort: 'low' alone           OK
+ *   reasoning_effort + temperature: 0.7     400 unsupported_value
+ *   reasoning_effort + temperature: 1       OK
+ *
+ * The pairing was the defect, not the parameter — and every MODELS.FAST call
+ * site shipped both. `/api/ai/profiles/workout` and `/api/ai/profiles/food`
+ * returned 500 on every request, instantly, since a 400 is correctly
+ * non-retryable. The user got no profile text at all.
+ *
+ * Temperature is what gets dropped rather than reasoning_effort: the effort
+ * setting is a deliberate cost control applied across every route, whereas the
+ * temperature here was only ever a nudge toward warmer prose.
+ */
 function acceptsTemperature(model: string): boolean {
-  if (!isGpt5(model)) return true;
-  return /^gpt-5\.4/.test(model);
+  return !isGpt5(model);
 }
 
 export type ReasoningEffort = 'none' | 'low' | 'medium' | 'high' | 'xhigh';
