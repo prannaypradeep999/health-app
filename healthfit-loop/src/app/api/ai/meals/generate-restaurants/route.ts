@@ -521,7 +521,8 @@ async function selectRestaurantMealsForSchedule(
 // Validate restaurant meals against calorie targets
 function validateRestaurantMeals(
   restaurantMeals: any[],
-  nutritionTargets: any
+  nutritionTargets: any,
+  availableRestaurantCount: number
 ) {
   let warningCount = 0;
   let errorCount = 0;
@@ -600,12 +601,19 @@ function validateRestaurantMeals(
     if (name) primaryCounts[name] = (primaryCounts[name] || 0) + 1;
   });
   const distinct = Object.keys(primaryCounts).length;
-  const overused = Object.entries(primaryCounts).filter(([, n]) => n > Math.max(1, Math.ceil(restaurantMeals.length / Math.max(1, distinct))));
+  // The cap must be derived from the restaurants that were AVAILABLE, not the
+  // ones the model happened to use. Dividing by `distinct` lets the output
+  // define its own limit: pick one restaurant for all 7 meals and the cap
+  // computes to 7, so the check passes with a tick. Measured 2026-08-19 —
+  // "The Bite x4 of 7 across 2 restaurants" reported ✓ under the old formula.
+  const pool = Math.max(1, availableRestaurantCount || distinct);
+  const cap = Math.max(1, Math.ceil(restaurantMeals.length / pool));
+  const overused = Object.entries(primaryCounts).filter(([, n]) => n > cap);
   if (overused.length > 0) {
     warningCount += 1;
-    console.warn(`[RESTAURANT-VALIDATOR] Variety: ${overused.map(([n, c]) => `${n} x${c}`).join(', ')} across ${restaurantMeals.length} meals from ${distinct} restaurant(s) ⚠️ WARNING`);
+    console.warn(`[RESTAURANT-VALIDATOR] Variety: ${overused.map(([n, c]) => `${n} x${c}`).join(', ')} exceeds the cap of ${cap} per restaurant (${restaurantMeals.length} meals, ${pool} available, ${distinct} used) ⚠️ WARNING`);
   } else {
-    console.log(`[RESTAURANT-VALIDATOR] Variety: ${distinct} distinct restaurant(s) across ${restaurantMeals.length} meals ✓`);
+    console.log(`[RESTAURANT-VALIDATOR] Variety: ${distinct} of ${pool} available restaurant(s) across ${restaurantMeals.length} meals, max ${Math.max(0, ...Object.values(primaryCounts))}/${cap} ✓`);
   }
 
   Object.entries(mealsByDay).forEach(([day, calories]) => {
@@ -747,7 +755,7 @@ async function handleGenerate_restaurants(req: NextRequest) {
 
     // Validate restaurant meals (log only, do not block saving)
     if (selectedRestaurantMeals.length > 0) {
-      validateRestaurantMeals(selectedRestaurantMeals, nutritionTargets);
+      validateRestaurantMeals(selectedRestaurantMeals, nutritionTargets, restaurantMenuData.length);
     }
 
     const userRestrictions = {

@@ -1095,15 +1095,20 @@ ${(surveyData.preferredFoods || []).length > 0
 3. ⚠️ CALORIE TARGETS: Each meal MUST be within ±100 calories of the target above
 4. ⚠️ PROTEIN TARGETS: Among the dishes that fit the calorie window, choose the one closest to the protein target — do not settle for the first dish that fits on calories alone. Protein is the harder constraint to satisfy from a restaurant menu and the one most likely to be missed.
    - Never report a protein number that contradicts the menu listing above. If the highest-protein dish available still falls short of the target, select it anyway and report its real protein. An honest shortfall is usable; an inflated number is not.
-5. For EACH meal, provide BOTH a primary AND alternative option from DIFFERENT restaurants
-6. ⚠️ ORDERING LINKS ARE REQUIRED: Copy the EXACT orderingLinks from the restaurant data above
-7. ⚠️ VARIETY: No restaurant may be the primary pick for more than ${Math.max(1, Math.ceil(restaurantMealsSchedule.length / Math.max(1, restaurantMenuData.length)))} of the ${restaurantMealsSchedule.length} meals. With ${restaurantMenuData.length} restaurants available, repeating one is a choice, not a necessity.
-8. Consider meal timing (lighter lunches, heartier dinners)
-9. Stay within budget and dietary preferences
-10. Use ONLY restaurants and menu items from the data provided above
-11. NEVER omit an orderingLinks key. Each value is either a URL copied character-for-character from the restaurant data, or the JSON literal null (bare, not quoted) when that platform is listed as "not available"
-12. ⚠️ DIET TYPE + ALLERGIES ARE ABSOLUTE - never select forbidden items; dislikes should be minimized
-13. ⚠️ PREFERRED FOODS: When available, prioritize dishes featuring user's preferred ingredients
+5. ⚠️ BUILD THE ORDER, NOT JUST THE ENTRÉE: one plate frequently cannot reach these targets. A meal slot is a real order, and a person filling a large target orders more than one item. When no single menu item lands inside the calorie window AND near the protein target, combine 2-3 items FROM THE SAME RESTAURANT into that one order, the way someone would actually order it — an entrée plus a protein side, an added portion of meat, a soup or salad alongside.
+   - Write the combination in "dish", joined with " + ", e.g. "Chicken Shawarma Platter + Side of Grilled Chicken + Hummus".
+   - "price" is the SUM of the combined items' prices. "estimatedCalories", "protein", "carbs" and "fat" are each the SUM of those items' values as listed in the menu data above. Add up what is listed; do not round toward the target.
+   - Every item you combine MUST appear in that restaurant's menu listing above. Never invent a side, an extra-protein option, or a portion size that is not listed.
+   - Prefer a single dish when a single dish genuinely fits. Combine only to close a real gap, and stop as soon as you are inside the window.
+6. For EACH meal, provide BOTH a primary AND alternative option from DIFFERENT restaurants
+7. ⚠️ ORDERING LINKS ARE REQUIRED: Copy the EXACT orderingLinks from the restaurant data above
+8. ⚠️ VARIETY: No restaurant may be the primary pick for more than ${Math.max(1, Math.ceil(restaurantMealsSchedule.length / Math.max(1, restaurantMenuData.length)))} of the ${restaurantMealsSchedule.length} meals. With ${restaurantMenuData.length} restaurants available, repeating one is a choice, not a necessity.
+9. Consider meal timing (lighter lunches, heartier dinners)
+10. Stay within budget and dietary preferences
+11. Use ONLY restaurants and menu items from the data provided above
+12. NEVER omit an orderingLinks key. Each value is either a URL copied character-for-character from the restaurant data, or the JSON literal null (bare, not quoted) when that platform is listed as "not available"
+13. ⚠️ DIET TYPE + ALLERGIES ARE ABSOLUTE - never select forbidden items; dislikes should be minimized
+14. ⚠️ PREFERRED FOODS: When available, prioritize dishes featuring user's preferred ingredients
 
 Return ONLY this JSON structure:
 {
