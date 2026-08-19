@@ -7,7 +7,7 @@ import { validateMealPlan } from '@/lib/utils/meal-plan-validator';
 import { validateIngredientSums } from '@/lib/utils/ingredient-validator';
 import { validateRestrictions } from '@/lib/utils/restriction-validator';
 import { buildFallbackGroceryList, enhanceGroceryListWithUsage } from '@/lib/utils/grocery-list';
-import { createHomeMealGenerationPrompt, createPlanningPrompt, createDetailPrompt, createGroceryPrompt, type MealFeedbackContext } from '@/lib/ai/prompts';
+import { createHomeMealGenerationPrompt, createPlanningPrompt, createDetailPrompt, createGroceryPrompt, HOME_MEAL_NUTRITION_METHOD, type MealFeedbackContext } from '@/lib/ai/prompts';
 import { pexelsClient } from '@/lib/external/pexels-client';
 import { withGPTRetry, HttpError } from '@/lib/utils/retry';
 import { getStartOfWeek } from '@/lib/utils/date-utils';
@@ -519,7 +519,15 @@ async function generateHomeMealsLegacy(
         },
         body: JSON.stringify({
           model: MODELS.DETAIL,
-          messages: [{ role: 'system', content: prompt }],
+          // Split, not rewritten: the ~4.7k-token nutrition reference used to
+          // sit mid-prompt behind this user's schedule, so the prefix cache
+          // never matched it. Leading with it as its own system message makes
+          // the second half of a chunked run a cache hit. Both parts stay
+          // `system`, and together they carry the same text as before.
+          messages: [
+            { role: 'system', content: HOME_MEAL_NUTRITION_METHOD },
+            { role: 'system', content: prompt }
+          ],
           ...tuning(MODELS.DETAIL, { maxTokens: LEGACY_MAX_TOKENS, temperature: 0.5 }),
           response_format: toStrictJsonSchema('home_meals_legacy', LegacySchema)
         }),
