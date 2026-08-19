@@ -4,6 +4,7 @@ import { prisma } from '@/lib/db';
 import { withGPTRetry, HttpError } from '@/lib/utils/retry';
 import { getAuthUserId } from '@/lib/auth';
 import { MODELS, tuning } from '@/lib/ai/models';
+import { extractProse } from '@/lib/ai/validate';
 
 export const runtime = 'nodejs';
 // 60s is the Hobby ceiling and is valid on every Vercel plan. Without this
@@ -279,5 +280,5 @@ Make it feel personal, specific to their situation, and motivating. Use their na
     throw new Error(`Workout profile generation failed: ${gptResult.error}`);
   }
 
-  return gptResult.data.choices[0].message.content;
+  return extractProse(gptResult.data.choices?.[0], 'workout-profile');
 }

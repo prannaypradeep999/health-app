@@ -76,6 +76,40 @@ export function parseChoice<T>(
   );
 }
 
+/**
+ * Pull plain text out of a choice, for the routes that ask for prose rather
+ * than JSON and so have no schema to validate against.
+ *
+ * Both profile routes read `choices[0].message.content` directly, which is
+ * three different failures wearing one mask. An empty `choices` array throws a
+ * TypeError on `.message` — a 500 with a stack trace instead of a reason. A
+ * refusal arrives as `content: null` with a populated `refusal`, which reads as
+ * "no content" and loses the explanation. And a truncated answer arrives
+ * looking perfectly valid, which is the dangerous one: these routes write
+ * straight to Prisma, so half a profile becomes the user's permanent profile.
+ *
+ * Throws rather than returning a result type — both call sites already sit
+ * inside a try/catch that turns an Error into a 500, and the message is what
+ * ends up in the logs.
+ */
+export function extractProse(choice: ModelChoice | undefined, context: string): string {
+  const refusal = choice?.message?.refusal;
+  if (refusal) {
+    throw new Error(`${context}: model refused — ${refusal}`);
+  }
+  if (choice?.finish_reason === 'length') {
+    throw new Error(`${context}: response was cut off (finish_reason=length) — not saving a partial profile`);
+  }
+  if (choice?.finish_reason === 'content_filter') {
+    throw new Error(`${context}: blocked by content filter`);
+  }
+  const content = choice?.message?.content?.trim();
+  if (!content) {
+    throw new Error(`${context}: empty content (finish_reason=${choice?.finish_reason ?? 'absent'})`);
+  }
+  return content;
+}
+
 /** Enums are not capitalization-guaranteed by either vendor. Normalize at the boundary. */
 export function normalizeEnum<T extends string>(
   value: string | null | undefined,

@@ -5,6 +5,7 @@ import { createFoodProfilePrompt } from '@/lib/ai/prompts/profile-generation';
 import { withGPTRetry, HttpError } from '@/lib/utils/retry';
 import { getAuthUserId } from '@/lib/auth';
 import { MODELS, tuning } from '@/lib/ai/models';
+import { extractProse } from '@/lib/ai/validate';
 
 // 60s is the Hobby ceiling and is valid on every Vercel plan. Without this
 // line the route silently inherits the platform default of 10-15s, well
@@ -187,11 +188,7 @@ export async function POST(request: NextRequest) {
       throw new Error(`Food profile generation failed: ${gptResult.error}`);
     }
 
-    const profileContent = gptResult.data.choices[0]?.message?.content;
-
-    if (!profileContent) {
-      throw new Error('No profile content generated from AI');
-    }
+    const profileContent = extractProse(gptResult.data.choices?.[0], 'food-profile');
 
     // Save profile to database using actual survey ID
     console.log('[Food Profile API] Saving food profile to database');
