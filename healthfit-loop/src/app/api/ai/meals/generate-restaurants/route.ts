@@ -11,6 +11,7 @@ import {
 import { calculateMacroTargets, UserProfile } from '@/lib/utils/nutrition';
 import { buildNutritionTargets } from '@/lib/utils/nutrition-targets';
 import { withGPTRetry, HttpError } from '@/lib/utils/retry';
+import { mapWithLimit } from '@/lib/utils/concurrency';
 import { getStartOfWeek } from '@/lib/utils/date-utils';
 import { validateRestrictions } from '@/lib/utils/restriction-validator';
 import { MODELS, tuning } from '@/lib/ai/models';
@@ -299,7 +300,12 @@ async function extractMenuInformation(restaurants: Restaurant[], surveyData: any
     return restaurants.map(r => ({ ...r, menuData: [], orderingLinks: {}, linksFound: 0, error: 'Missing Perplexity API key' }));
   }
   
-  const menuPromises = restaurants.map(async (restaurant) => {
+  // Capped rather than a bare Promise.all. The 2026-08-18 run fanned out eight
+  // menu lookups at once, Perplexity 429'd, and the retry loop re-fired the
+  // failures into the same eight-wide burst — six restaurants exhausted all
+  // three attempts and lost their menus entirely. Retrying a rate limit while
+  // still saturating it cannot converge; the concurrency is the thing to fix.
+  const results = await mapWithLimit(restaurants, 3, async (restaurant) => {
     try {
       // Validate before calling Perplexity
       if (!restaurant.name || restaurant.name === 'undefined') {
@@ -350,9 +356,7 @@ async function extractMenuInformation(restaurants: Restaurant[], surveyData: any
       return { ...restaurant, menuData: [], orderingLinks: {}, linksFound: 0, error: (error as Error).message };
     }
   });
-  
-  const results = await Promise.all(menuPromises);
-  
+
   // Filter out restaurants with no ordering links
   const restaurantsWithLinks = results.filter(r => r.linksFound > 0);
   const restaurantsWithoutLinks = results.filter(r => r.linksFound === 0);

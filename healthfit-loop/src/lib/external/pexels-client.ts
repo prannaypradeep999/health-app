@@ -1,5 +1,47 @@
 import { prisma } from '@/lib/db';
 import { withPexelsRetry, HttpError } from '@/lib/utils/retry';
+import { createLimiter } from '@/lib/utils/concurrency';
+
+/**
+ * Process-wide, deliberately not per-instance: Pexels counts concurrent
+ * connections per client, so a limiter scoped to one PexelsClient would still
+ * let two callers collide. Every image request in the process funnels through
+ * this one gate.
+ *
+ * Both numbers come from measurement, not taste — see `lib/utils/concurrency.ts`.
+ * Concurrency 2 keeps us clear of the connection-queue tarpit that produced
+ * blanket 20s timeouts, and the 350ms pacing (~3 requests/sec) keeps us under
+ * the separate short-window throttle that returns "Throttle limit exceeded".
+ * Unpaced, concurrency 2 alone still drew 429s on 14 of 20 requests.
+ */
+const pexelsLimit = createLimiter(2, 350);
+
+/**
+ * Throttle circuit breaker.
+ *
+ * Measured 2026-08-18: even at concurrency 2 with 350ms pacing, Pexels allowed
+ * roughly 8 requests and then answered 429 to the remaining 52 of 60. The
+ * account's sustained allowance is simply below what a cold generation wants
+ * (~50 uncached images), so being throttled partway through a run is the
+ * normal case, not an anomaly.
+ *
+ * Once throttled, continuing to ask is strictly worse than not asking: the
+ * image is not coming either way, but each attempt spends part of the route's
+ * 60s budget. That is how one run reached `POST /api/ai/workouts/generate 200
+ * in 4.3min`. Tripping the breaker turns a slow failure into an instant one
+ * and lets the static fallback image render immediately.
+ */
+const THROTTLE_COOLDOWN_MS = 60_000;
+let throttledUntil = 0;
+
+function openThrottleBreaker(cooldownMs: number) {
+  const until = Date.now() + cooldownMs;
+  if (until <= throttledUntil) return;
+  throttledUntil = until;
+  console.warn(
+    `[PEXELS] ⚠️ Throttled by Pexels — serving fallback images for the next ${Math.round(cooldownMs / 1000)}s`
+  );
+}
 
 /**
  * Simple normalization for cache keys - the AI will handle the smart categorization
@@ -23,6 +65,41 @@ export function normalizeExerciseName(exerciseName: string): string {
     .replace(/[^a-z0-9\s]/g, '') // Remove punctuation
     .replace(/\s+/g, '_') // Replace spaces with underscores
     .trim() + '_exercise';
+}
+
+/**
+ * Rejects strings that are prose rather than a search term.
+ *
+ * The generation routes sometimes put an explanation where a name belongs —
+ * the 2026-08-18 run searched Pexels for "The supplied reference table does not
+ * include cottage cheese, apples, flour, milk, or pancake ingredients, so exact
+ * nutrition cannot be calculated." A sentence like that cannot match a stock
+ * photo, so spending a round trip on it is pure waste. Skipping it here just
+ * drops the rung; the generic fallback still yields an image. The upstream
+ * field is the real bug and is not fixed by this guard.
+ */
+function usableQuery(text?: string | null): text is string {
+  if (!text) return false;
+  const trimmed = text.trim();
+  if (trimmed.length === 0 || trimmed.length > 60) return false;
+  if (trimmed.split(/\s+/).length > 8) return false;
+  // A terminal period is the giveaway for a sentence; dish names don't have one.
+  if (/[.!?]$/.test(trimmed)) return false;
+  return true;
+}
+
+/** Drops nulls and duplicates while preserving ladder order. */
+function dedupeQueries(candidates: Array<string | null>): string[] {
+  const seen = new Set<string>();
+  const out: string[] = [];
+  for (const c of candidates) {
+    if (!c) continue;
+    const key = c.trim().toLowerCase();
+    if (!key || seen.has(key)) continue;
+    seen.add(key);
+    out.push(c.trim());
+  }
+  return out;
 }
 
 export interface FoodImageResult {
@@ -197,34 +274,22 @@ export class PexelsClient {
     mealType?: string | null,
     aiSearchTerms?: string
   ): string[] {
-    const queries: string[] = [];
+    // Each rung of this ladder is a full network round trip, so the ladder is
+    // three rungs, not nine. The old tail ("healthy food", "delicious food",
+    // first-word-of-dish) never returned anything the rung above it wouldn't
+    // have — it just spent the latency budget proving that again per dish.
+    const queries = dedupeQueries([
+      // Primary: the terms the model picked for this specific dish.
+      usableQuery(aiSearchTerms) ? `${aiSearchTerms} food` : null,
+      // Secondary: the dish itself, with cuisine when we have it.
+      usableQuery(dishName)
+        ? (cuisineType ? `${dishName} ${cuisineType} food` : `${dishName} food`)
+        : null,
+      // Final: a generic that always resolves, so a miss still yields an image.
+      mealType ? `${mealType} food` : 'healthy food',
+    ]);
 
-    // Primary: Use AI-generated search terms if available
-    if (aiSearchTerms) {
-      queries.push(`${aiSearchTerms} food`);
-      queries.push(aiSearchTerms);
-    }
-
-    // Secondary: Full dish name with cuisine context
-    if (cuisineType) {
-      queries.push(`${dishName} ${cuisineType} food`);
-    }
-    queries.push(`${dishName} food`);
-    queries.push(dishName);
-
-    // Tertiary: Simple word extraction
-    const words = dishName.split(/\s+/).filter(word => word.length > 3);
-    if (words.length > 0) {
-      queries.push(`${words[0]} food`); // First significant word
-    }
-
-    // Final: Generic fallbacks
-    if (mealType) {
-      queries.push(`${mealType} food`);
-    }
-    queries.push('healthy food', 'delicious food');
-
-    console.log(`[PEXELS] Search strategy for "${dishName}":`, queries.slice(0, 3));
+    console.log(`[PEXELS] Search strategy for "${dishName}":`, queries);
     return queries;
   }
 
@@ -232,7 +297,18 @@ export class PexelsClient {
    * Makes actual API call to Pexels with retry logic
    */
   private async searchPexels(query: string): Promise<string | null> {
-    const pexelsResult = await withPexelsRetry(async (signal) => {
+    // The limiter wraps the retry helper rather than sitting inside it, so the
+    // 20s attempt timer starts only once this request owns a slot. Inverting
+    // the two makes queue depth look like vendor latency and every request
+    // past the front of the queue "times out" without ever being sent.
+    if (throttledUntil > Date.now()) {
+      // Already known-throttled. Returning null costs nothing and lets the
+      // caller fall back to a static image; issuing the request instead would
+      // buy another 429 and, worse, another slice of the route's time budget.
+      return null;
+    }
+
+    const pexelsResult = await pexelsLimit(() => withPexelsRetry(async (signal) => {
       const response = await fetch(`${this.baseUrl}?query=${encodeURIComponent(query)}&per_page=1&orientation=landscape`, {
         headers: {
           'Authorization': this.apiKey
@@ -241,6 +317,15 @@ export class PexelsClient {
       });
 
       if (!response.ok) {
+        if (response.status === 429) {
+          // Honour Retry-After when Pexels sends one; its throttle responses
+          // usually omit it, so fall back to a fixed cooldown.
+          const retryAfter = Number(response.headers.get('retry-after'));
+          const cooldownMs = Number.isFinite(retryAfter) && retryAfter > 0
+            ? retryAfter * 1000
+            : THROTTLE_COOLDOWN_MS;
+          openThrottleBreaker(cooldownMs);
+        }
         throw new HttpError(response.status, `Pexels API error: ${response.status}`);
       }
 
@@ -251,7 +336,7 @@ export class PexelsClient {
       }
 
       return null;
-    }, `Pexels image search: "${query}"`);
+    }, `Pexels image search: "${query}"`));
 
     if (!pexelsResult.success) {
       console.error(`[PEXELS] API error for query "${query}" after retries:`, pexelsResult.error);
@@ -405,44 +490,23 @@ export class PexelsClient {
     equipmentType?: string | null,
     aiSearchTerms?: string
   ): string[] {
-    const queries: string[] = [];
+    // Three rungs, for the same reason as buildSearchQueries above. The old
+    // version issued up to eleven searches per exercise; with several
+    // exercises in flight that alone was enough to saturate the connection
+    // limit and make every one of them time out.
+    const queries = dedupeQueries([
+      // Primary: the terms the model picked for this specific exercise.
+      usableQuery(aiSearchTerms) ? `${aiSearchTerms} exercise` : null,
+      // Secondary: the exercise itself, with equipment when we have it since
+      // that discriminates far better than muscle group for stock photos.
+      usableQuery(exerciseName)
+        ? (equipmentType ? `${exerciseName} ${equipmentType} exercise` : `${exerciseName} exercise`)
+        : null,
+      // Final: a generic that always resolves.
+      muscleGroup ? `${muscleGroup} workout` : 'fitness workout',
+    ]);
 
-    // Primary: Use AI-generated search terms if available
-    if (aiSearchTerms) {
-      queries.push(`${aiSearchTerms} exercise`);
-      queries.push(`${aiSearchTerms} workout`);
-    }
-
-    // Secondary: Full exercise name with context
-    queries.push(`${exerciseName} exercise workout`);
-    queries.push(`${exerciseName} fitness`);
-    queries.push(`${exerciseName} exercise`);
-
-    // Add muscle group context
-    if (muscleGroup) {
-      queries.push(`${exerciseName} ${muscleGroup} workout`);
-      queries.push(`${muscleGroup} exercise`);
-    }
-
-    // Add equipment context
-    if (equipmentType) {
-      queries.push(`${exerciseName} ${equipmentType} exercise`);
-    }
-
-    // Extract key words for fallback searches
-    const words = exerciseName.toLowerCase().split(/[\s\-\(\)]+/).filter(word =>
-      word.length > 3 && !['exercise', 'workout', 'with', 'using'].includes(word)
-    );
-
-    if (words.length > 0) {
-      queries.push(`${words[0]} exercise`);
-      queries.push(`${words[0]} workout`);
-    }
-
-    // Final: Generic fallbacks
-    queries.push('fitness workout', 'gym exercise', 'strength training');
-
-    console.log(`[PEXELS] Workout search strategy for "${exerciseName}":`, queries.slice(0, 3));
+    console.log(`[PEXELS] Workout search strategy for "${exerciseName}":`, queries);
     return queries;
   }
 
