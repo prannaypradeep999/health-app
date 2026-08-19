@@ -66,6 +66,31 @@ export interface WorkoutDay {
   };
 }
 
+export const DAYS_OF_WEEK = [
+  'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday'
+] as const;
+
+/**
+ * One spelling of a weekday, whatever came in.
+ *
+ * `workoutPreferences.availableDays` holds two different formats depending on
+ * how the row was written: the survey UI submits `["Mon","Tue"]` while the
+ * fallback in api/survey/route.ts writes `['monday','wednesday','friday']`.
+ * Both then flowed straight into the prompt and into the validator, which
+ * lower-cased and compared — so `"mon" !== "monday"` and the availableDays
+ * check warned on literally every day, every run. Because warnings are
+ * advisory, nothing stopped a 3-day-a-week user from being handed 6 training
+ * days.
+ *
+ * Returns '' for anything unrecognised so callers can drop it rather than
+ * silently matching the wrong day.
+ */
+export function canonicalDay(day: unknown): string {
+  if (typeof day !== 'string') return '';
+  const d = day.trim().toLowerCase();
+  return DAYS_OF_WEEK.find(full => full === d || full.startsWith(d) && d.length >= 3) || '';
+}
+
 export interface WorkoutFeedbackContext {
   poorlyRatedExercises: string[];
   wellRatedExercises: string[];
@@ -138,6 +163,14 @@ export const createWorkoutPlanningPrompt = (
 ): string => {
   const dayInfo = getCurrentDayInfo();
 
+  // Canonicalised once here so the prompt speaks the same dialect it asks the
+  // model to reply in — previously it interpolated "Mon, Tue, Fri" raw while
+  // demanding `"day": "monday"` back.
+  const trainingDays = (workoutPrefs.availableDays || [])
+    .map(canonicalDay)
+    .filter(Boolean);
+  const restDays = DAYS_OF_WEEK.filter(d => !trainingDays.includes(d));
+
   return `You are an expert fitness trainer. Create a high-level 7-day workout plan outline.
 
 USER PROFILE:
@@ -148,7 +181,7 @@ USER PROFILE:
 - Activity Level: ${surveyData.activityLevel}
 
 WORKOUT PREFERENCES:
-- Available Days: ${workoutPrefs.availableDays?.join(', ') || 'flexible'} (${workoutPrefs.availableDays?.length || 5} days/week)
+- Available Days: ${trainingDays.length > 0 ? `${trainingDays.join(', ')} (${trainingDays.length} days/week)` : 'flexible'}
 - Session Duration: ${workoutPrefs.preferredDuration || 45} minutes
 - Gym Access: ${workoutPrefs.gymAccess || 'no_gym'}
 - Preferred Types: ${workoutPrefs.workoutTypes?.join(', ') || 'varied'}
@@ -166,6 +199,15 @@ GOAL CONTEXT: ${getWorkoutGoalContext(surveyData.goal)}
 
 Select the best training split and outline all 7 days. For rest days, mark restDay: true and set exercises to an empty array.
 Start the week from today (${dayInfo.orderedDays[0]}) and go through ${dayInfo.orderedDays[6]}.
+${trainingDays.length > 0 ? `
+DAY SCHEDULE — THIS IS A HARD CONSTRAINT, NOT A PREFERENCE:
+- Training days (restDay: false), exactly these ${trainingDays.length}: ${trainingDays.join(', ')}
+- Rest days (restDay: true), exactly these ${restDays.length}: ${restDays.join(', ')}
+The user told us which days they can train. Scheduling a workout on any other
+day produces a plan they cannot follow. Do not add training days to "make the
+split work" — fit the split to the days given, and use the "day" values spelled
+exactly as above.
+` : ''}
 
 Return ONLY this JSON:
 {

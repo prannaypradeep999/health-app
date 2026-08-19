@@ -1,3 +1,5 @@
+import { canonicalDay } from '@/lib/ai/prompts/workout-generation';
+
 export interface WorkoutValidationResult {
   valid: boolean;
   warnings: string[];
@@ -41,7 +43,11 @@ const toNumber = (value: unknown): number | null => {
 
 const normalizeDay = (day: unknown): string => {
   if (typeof day !== 'string') return 'unknown';
-  return day.toLowerCase();
+  // Lower-casing alone was not enough: availableDays arrives as either
+  // ["Mon","Tue"] (survey UI) or ["monday",...] (the api/survey fallback),
+  // while the model always answers "monday". "mon" !== "monday", so this
+  // comparison failed for every day of every run and the warning was noise.
+  return canonicalDay(day) || day.toLowerCase();
 };
 
 export function validateWorkoutPlan(
@@ -65,7 +71,7 @@ export function validateWorkoutPlan(
     ? preferences.preferredDuration
     : null;
   const availableDays = Array.isArray(preferences.availableDays)
-    ? preferences.availableDays.map(day => day.toLowerCase())
+    ? preferences.availableDays.map(day => normalizeDay(day))
     : null;
   const fitnessExperience = preferences.fitnessExperience || null;
 
@@ -123,8 +129,12 @@ export function validateWorkoutPlan(
       issues.push('Exceeds preferred duration');
     }
 
-    if (availableDays && dayPlan?.day && !availableDays.includes(normalizeDay(dayPlan.day))) {
-      warnings.push(`[WORKOUT-VALIDATOR] ${dayLabel}: scheduled but not in availableDays`);
+    // Only a *training* day on an unavailable date is a problem. Rest days are
+    // supposed to fall outside availableDays, so checking them made the plan
+    // look broken precisely when it was correct.
+    if (availableDays && dayPlan?.day && !dayPlan?.restDay
+        && !availableDays.includes(normalizeDay(dayPlan.day))) {
+      warnings.push(`[WORKOUT-VALIDATOR] ${dayLabel}: training scheduled but not in availableDays`);
       issues.push('Scheduled on unavailable day');
     }
 
