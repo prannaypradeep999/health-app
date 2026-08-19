@@ -29,14 +29,17 @@ export const RestaurantMealObject = z.object({
   tags: z.array(z.string()),
 }).strict();
 
+/** One scheduled eating-out slot: the pick and its backup. */
+export const RestaurantMealSlot = z.object({
+  day: z.string(),
+  mealType: z.string(),
+  primary: RestaurantMealObject,
+  alternative: RestaurantMealObject,
+}).strict();
+
 /** createRestaurantMealGenerationPrompt */
 export const RestaurantMealsSchema = z.object({
-  restaurantMeals: z.array(z.object({
-    day: z.string(),
-    mealType: z.string(),
-    primary: RestaurantMealObject,
-    alternative: RestaurantMealObject,
-  }).strict()),
+  restaurantMeals: z.array(RestaurantMealSlot),
 }).strict();
 
 /** Enum values are normalized with normalizeEnum before this runs. */

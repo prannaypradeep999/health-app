@@ -15,10 +15,10 @@ import { getAuthUserId } from '@/lib/auth';
 import { MODELS } from '@/lib/ai/models';
 import { logUsage } from '@/lib/ai/usage';
 import {
-  MealPlanSchema,
-  MealDetailSchema,
   GroceryListSchema,
-  HomeMealsLegacySchema,
+  pinnedMealPlan,
+  pinnedMealDetail,
+  pinnedHomeMealsLegacy,
   toStrictJsonSchema,
 } from '@/lib/ai/schemas';
 import { parseChoice } from '@/lib/ai/validate';
@@ -452,6 +452,11 @@ async function generateHomeMealsLegacy(
   let restrictionViolations: any[] = [];
   console.log(`[HOME-MEALS-LEGACY] 🔄 Fallback: Using Phase 1 legacy approach for ${homeMeals.length} meals...`);
 
+  // This is the call that used to return 1-3 of 21 meals every single run.
+  // Strict mode alone got it to 21/21; pinning the count keeps it there even
+  // after generateHomeMealsLegacyChunked splits the week into halves.
+  const LegacySchema = pinnedHomeMealsLegacy(homeMeals.length);
+
   try {
     // Organize meals by type for better prompting
     const mealsByType = homeMeals.reduce((acc, meal) => {
@@ -487,7 +492,7 @@ async function generateHomeMealsLegacy(
           messages: [{ role: 'system', content: prompt }],
           temperature: 0.5,
           max_tokens: 16384,
-          response_format: toStrictJsonSchema('home_meals_legacy', HomeMealsLegacySchema)
+          response_format: toStrictJsonSchema('home_meals_legacy', LegacySchema)
         }),
         signal: signal
       });
@@ -521,7 +526,7 @@ async function generateHomeMealsLegacy(
     // Refusal, content filtering, truncation, bad JSON and shape drift all land
     // here. The four hand-rolled structural checks this replaces did not cover
     // truncation, which was the failure that actually happened in measurement.
-    const legacyParsed = parseChoice(HomeMealsLegacySchema, data.choices?.[0], 'home-meals-legacy');
+    const legacyParsed = parseChoice(LegacySchema, data.choices?.[0], 'home-meals-legacy');
 
     let parsedResult: any;
     if (legacyParsed.ok) {
@@ -827,6 +832,10 @@ async function planWeekMeals(
   console.log(`[HOME-MEALS-7DAY] 📋 Phase 1: Planning ${homeMeals.length} meals...`);
   const startTime = Date.now();
 
+  // The prompt enumerates every slot by day and meal type, so the count is
+  // known exactly and safe to pin into the grammar. See `exactly` in schemas/index.
+  const PlanSchema = pinnedMealPlan(homeMeals.length);
+
   // Build schedule summary
   const mealsByType = homeMeals.reduce((acc, meal) => {
     if (!acc[meal.mealType]) acc[meal.mealType] = [];
@@ -862,7 +871,7 @@ async function planWeekMeals(
         messages: [{ role: 'system', content: planningPrompt }],
         temperature: 0.7,
         max_tokens: 8000,
-        response_format: toStrictJsonSchema('meal_plan', MealPlanSchema)
+        response_format: toStrictJsonSchema('meal_plan', PlanSchema)
       }),
       signal: signal
     });
@@ -891,7 +900,7 @@ async function planWeekMeals(
     console.log(`[HOME-MEALS-7DAY] ✅ Planning complete in ${planningTime}ms`);
   }
 
-  const parsed = parseChoice(MealPlanSchema, data.choices?.[0], 'home-meals-planning');
+  const parsed = parseChoice(PlanSchema, data.choices?.[0], 'home-meals-planning');
   if (!parsed.ok) {
     throw new Error(`Meal planning ${parsed.reason}: ${parsed.detail}`);
   }
@@ -911,6 +920,10 @@ async function generateMealDetails(
 ): Promise<any> {
   console.log(`[HOME-MEALS-7DAY] 📋 Phase 2: Generating details for ${chunkName} (${plannedMealsChunk.length} meals)...`);
   const startTime = Date.now();
+
+  // Pinned to the chunk size. This phase came back short about one run in three
+  // before the count was in the grammar.
+  const DetailSchema = pinnedMealDetail(plannedMealsChunk.length);
 
   // Create detail prompt with planned meals and user context
   const detailPrompt = createDetailPrompt(plannedMealsChunk, {
@@ -934,7 +947,7 @@ async function generateMealDetails(
         // Measured p95 6283 against the old 8000 ceiling — 79%, too close to
         // truncate safely once strict mode makes a cut-off response a hard fail.
         max_tokens: 12000,
-        response_format: toStrictJsonSchema('meal_detail', MealDetailSchema)
+        response_format: toStrictJsonSchema('meal_detail', DetailSchema)
       }),
       signal: signal
     });
@@ -966,7 +979,7 @@ async function generateMealDetails(
     console.log(`[HOME-MEALS-7DAY] ✅ ${chunkName} complete in ${detailTime}ms`);
   }
 
-  const parsed = parseChoice(MealDetailSchema, data.choices?.[0], `home-meals-detail:${chunkName}`);
+  const parsed = parseChoice(DetailSchema, data.choices?.[0], `home-meals-detail:${chunkName}`);
   if (!parsed.ok) {
     console.error(`[HOME-MEALS-7DAY] ❌ ${chunkName} ${parsed.reason}: ${parsed.detail} — deferring to top-up`);
     return { meals: [] };

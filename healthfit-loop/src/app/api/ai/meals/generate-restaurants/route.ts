@@ -16,7 +16,7 @@ import { validateRestrictions } from '@/lib/utils/restriction-validator';
 import { MODELS } from '@/lib/ai/models';
 import {
   RestaurantSelectionSchema,
-  RestaurantMealsSchema,
+  pinnedRestaurantMeals,
   toStrictJsonSchema,
 } from '@/lib/ai/schemas';
 import { parseChoice } from '@/lib/ai/validate';
@@ -362,6 +362,8 @@ async function selectRestaurantMealsForSchedule(
   nutritionTargets: any
 ): Promise<any[]> {
   console.log(`[RESTAURANT-SELECTION] 🍽️ Selecting ${restaurantMealsSchedule.length} restaurant meals from ${restaurantMenuData.length} restaurants with links...`);
+  // One entry per scheduled eating-out slot, and the prompt names them all.
+  const MealsSchema = pinnedRestaurantMeals(restaurantMealsSchedule.length);
   
   // If no restaurants with ordering links, return empty
   if (restaurantMenuData.length === 0) {
@@ -394,7 +396,7 @@ async function selectRestaurantMealsForSchedule(
         body: JSON.stringify({
           model: MODELS.DETAIL,
           messages: [{ role: 'user', content: prompt }],
-          response_format: toStrictJsonSchema('restaurant_meals', RestaurantMealsSchema),
+          response_format: toStrictJsonSchema('restaurant_meals', MealsSchema),
           temperature: 0.4,
           // Each row carries two full meal objects (13 fields each, incl. four
           // ordering URLs) at roughly 550 output tokens. The schedule is bounded
@@ -420,7 +422,7 @@ async function selectRestaurantMealsForSchedule(
 
     logUsage('restaurant-meals', 12000, data);
 
-    const parsed = parseChoice(RestaurantMealsSchema, data.choices?.[0], 'restaurant-meals');
+    const parsed = parseChoice(MealsSchema, data.choices?.[0], 'restaurant-meals');
     if (!parsed.ok) {
       console.error(`[RESTAURANT-SELECTION] ❌ ${parsed.reason}: ${parsed.detail}`);
       return [];

@@ -9,7 +9,7 @@ import { getStartOfWeek } from '@/lib/utils/date-utils';
 import { getAuthUserId } from '@/lib/auth';
 import { MODELS } from '@/lib/ai/models';
 import { logUsage } from '@/lib/ai/usage';
-import { WorkoutPlanSchema, WorkoutDetailShape, toStrictJsonSchema } from '@/lib/ai/schemas';
+import { WorkoutPlanSchema, pinnedWorkoutDetail, toStrictJsonSchema } from '@/lib/ai/schemas';
 import { parseChoice } from '@/lib/ai/validate';
 
 export const runtime = 'nodejs';
@@ -391,6 +391,10 @@ async function generateDayDetails(
   chunkLabel: string
 ): Promise<any[]> {
   console.log(`[GPT-WORKOUT] 📋 Phase 2: Generating details for ${chunkLabel} (${dayOutlines.length} days)...`);
+  // The prompt lists each day of the chunk by name, so the count is exact.
+  // Unrefined on purpose: the branch invariant is a superRefine, which has no
+  // JSON Schema form. It is re-applied as the filter below.
+  const DetailSchema = pinnedWorkoutDetail(dayOutlines.length);
   const detailPrompt = createWorkoutDetailPrompt(dayOutlines, surveyData, workoutPrefs);
 
   const gptResult = await withGPTRetry(async (signal) => {
@@ -406,7 +410,7 @@ async function generateDayDetails(
           { role: 'system', content: 'You must respond with valid JSON only. No markdown.' },
           { role: 'user', content: detailPrompt }
         ],
-        response_format: toStrictJsonSchema('workout_detail', WorkoutDetailShape),
+        response_format: toStrictJsonSchema('workout_detail', DetailSchema),
         temperature: 0.4,
         // Measured p95 4135 against the old 6000 ceiling — 69%, no useful margin.
         max_tokens: 9000
@@ -426,7 +430,7 @@ async function generateDayDetails(
 
   logUsage(`workout-detail:${chunkLabel}`, 9000, gptResult.data);
 
-  const parsed = parseChoice(WorkoutDetailShape, gptResult.data.choices?.[0], `workout-detail:${chunkLabel}`);
+  const parsed = parseChoice(DetailSchema, gptResult.data.choices?.[0], `workout-detail:${chunkLabel}`);
   if (!parsed.ok) {
     console.error(`[GPT-WORKOUT] ❌ ${chunkLabel} ${parsed.reason}: ${parsed.detail} — deferring to top-up`);
     return [];
