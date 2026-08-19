@@ -220,7 +220,26 @@ export const createWorkoutDetailPrompt = (
     description: string;
   }>,
   surveyData: SurveyResponse,
-  workoutPrefs: WorkoutPreferences
+  workoutPrefs: WorkoutPreferences,
+  /**
+   * Phase 1 got both of these and Phase 2 did not, which was backwards.
+   * Planning only emits day *outlines* — focus, duration, target muscles — and
+   * names no exercises at all. Every exercise name, and every
+   * `weightGuidance.suggestion`, is written here. So the phase that had last
+   * week's weights could not use them, and the phase that needed them could not
+   * see them: the plan told the user "increase gradually" while the DB held the
+   * exact 135 lbs they pressed on Tuesday.
+   */
+  feedbackContext?: WorkoutFeedbackContext,
+  libraryExercises?: Array<{
+    name: string;
+    muscleGroup: string | null;
+    equipmentType: string | null;
+    defaultSets: number | null;
+    defaultReps: string | null;
+    difficulty: string | null;
+    weightGuidance: string | null;
+  }>
 ): string => {
   const gymAccess = workoutPrefs.gymAccess || 'no_gym';
   let equipmentConstraint = '';
@@ -242,6 +261,48 @@ export const createWorkoutDetailPrompt = (
     .map(d => `- ${d.day}: ${d.restDay ? 'REST DAY' : `${d.focus} (${d.estimatedTime}, ${d.estimatedCalories} cal, muscles: ${d.targetMuscles.join(', ')})`}`)
     .join('\n');
 
+  // Only the exercises whose muscle group this chunk actually trains, so a
+  // Mon/Tue chunk is not handed 60 rows of leg work. Cap keeps the prompt small.
+  const chunkMuscles = new Set(
+    dayOutlines.flatMap(d => (d.targetMuscles || []).map(m => String(m).toLowerCase()))
+  );
+  const relevantLibrary = (libraryExercises || []).filter(ex => {
+    if (chunkMuscles.size === 0) return true;
+    const group = (ex.muscleGroup || '').toLowerCase();
+    return group !== '' && [...chunkMuscles].some(m => group.includes(m) || m.includes(group));
+  }).slice(0, 30);
+
+  const libraryBlock = relevantLibrary.length > 0
+    ? `
+
+APPROVED EXERCISE LIBRARY (already filtered to this user's equipment and level —
+prefer these names; they are what the app can track progression against):
+${relevantLibrary.map(ex => `- ${ex.name}${ex.muscleGroup ? ` [${ex.muscleGroup}]` : ''}${ex.defaultSets && ex.defaultReps ? ` — typically ${ex.defaultSets}x${ex.defaultReps}` : ''}${ex.weightGuidance ? ` — ${ex.weightGuidance}` : ''}`).join('\n')}`
+    : '';
+
+  const progression = feedbackContext?.weightProgressionByExercise || {};
+  const progressionEntries = Object.entries(progression).slice(0, 12);
+  const reps = feedbackContext?.repCompletionByExercise || {};
+  const repEntries = Object.entries(reps).slice(0, 10);
+
+  const historyBlock = (progressionEntries.length > 0 || repEntries.length > 0
+    || (feedbackContext?.poorlyRatedExercises.length || 0) > 0
+    || (feedbackContext?.favoriteExercises.length || 0) > 0)
+    ? `
+
+THIS USER'S ACTUAL TRAINING HISTORY — use it, do not write generic advice:
+${progressionEntries.length > 0 ? `- Weights they actually lifted, and this week's target. When you emit one of
+  these exercises, weightGuidance.method must be "weight" and
+  weightGuidance.suggestion must state the target number in lbs explicitly:
+${progressionEntries.map(([ex, w]) => `  * ${ex}: last ${w.lastWeightLbs} lbs → prescribe ${w.suggestedWeightLbs} lbs`).join('\n')}` : ''}
+${repEntries.length > 0 ? `- Reps completed recently (if they consistently hit the top of the range, raise it):
+${repEntries.map(([ex, r]) => `  * ${ex}: ${r.slice(0, 5).join(', ')}`).join('\n')}` : ''}
+${(feedbackContext?.poorlyRatedExercises.length || 0) > 0 ? `- Rated too hard / disliked — substitute something for the same muscle: ${feedbackContext!.poorlyRatedExercises.slice(0, 8).join(', ')}` : ''}
+${(feedbackContext?.favoriteExercises.length || 0) > 0 ? `- Favourites — include these or a progression of them: ${feedbackContext!.favoriteExercises.slice(0, 8).join(', ')}` : ''}
+
+Never write "start light", "use a comfortable weight" or "increase gradually"
+for an exercise listed above. The number is known; state it.` : '';
+
   return `You are an expert fitness trainer. Generate FULL exercise details for these specific workout days.
 
 DAYS TO FILL IN:
@@ -254,6 +315,7 @@ USER CONSTRAINTS:
 - ${equipmentConstraint}
 - ${injuryConstraint}
 - Preferred Activities: ${surveyData.preferredActivities?.join(', ') || 'none'}
+${libraryBlock}${historyBlock}
 
 For each TRAINING day, generate 3-7 exercises with full detail.
 For each REST day, generate only the activeRecovery block.

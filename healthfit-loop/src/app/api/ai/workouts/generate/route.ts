@@ -409,14 +409,24 @@ async function generateDayDetails(
   dayOutlines: any[],
   surveyData: any,
   workoutPrefs: WorkoutPreferences,
-  chunkLabel: string
+  chunkLabel: string,
+  feedbackContext?: WorkoutFeedbackContext,
+  libraryExercises?: Array<{
+    name: string;
+    muscleGroup: string | null;
+    equipmentType: string | null;
+    defaultSets: number | null;
+    defaultReps: string | null;
+    difficulty: string | null;
+    weightGuidance: string | null;
+  }>
 ): Promise<any[]> {
   console.log(`[GPT-WORKOUT] 📋 Phase 2: Generating details for ${chunkLabel} (${dayOutlines.length} days)...`);
   // The prompt lists each day of the chunk by name, so the count is exact.
   // Unrefined on purpose: the branch invariant is a superRefine, which has no
   // JSON Schema form. It is re-applied as the filter below.
   const DetailSchema = pinnedWorkoutDetail(dayOutlines.length);
-  const detailPrompt = createWorkoutDetailPrompt(dayOutlines, surveyData, workoutPrefs);
+  const detailPrompt = createWorkoutDetailPrompt(dayOutlines, surveyData, workoutPrefs, feedbackContext, libraryExercises);
 
   const gptResult = await withGPTRetry(async (signal) => {
     const response = await fetch('https://api.openai.com/v1/chat/completions', {
@@ -547,7 +557,7 @@ async function generateWorkoutPlan(surveyData: any): Promise<WorkoutPlan> {
 
   // Phase 2: Generate exercise details for each chunk in parallel
   const detailArrays = await Promise.all(
-    chunks.map(c => generateDayDetails(c.outlines, surveyData, workoutPrefs, c.label))
+    chunks.map(c => generateDayDetails(c.outlines, surveyData, workoutPrefs, c.label, feedbackContext, libraryExercises))
   );
 
   // Merge detail results back, preserving order from plan outline
@@ -561,7 +571,7 @@ async function generateWorkoutPlan(surveyData: any): Promise<WorkoutPlan> {
   const missing = weeklyOutline.filter(o => !detailMap.has(o.day?.toLowerCase()));
   if (missing.length > 0) {
     console.warn(`[GPT-WORKOUT] 🔁 Top-up: ${missing.length} day(s) missing detail (${missing.map(m => m.day).join(', ')})`);
-    const topUp = await generateDayDetails(missing, surveyData, workoutPrefs, 'top-up');
+    const topUp = await generateDayDetails(missing, surveyData, workoutPrefs, 'top-up', feedbackContext, libraryExercises);
     topUp.forEach(d => { if (d?.day) detailMap.set(d.day.toLowerCase(), d); });
     const stillMissing = weeklyOutline.filter(o => !detailMap.has(o.day?.toLowerCase()));
     if (stillMissing.length > 0) {
