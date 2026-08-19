@@ -298,7 +298,7 @@ async function extractMenuInformation(restaurants: Restaurant[], surveyData: any
   
   if (!process.env.PERPLEXITY_API_KEY) {
     console.error('[MENU-EXTRACTION] Missing PERPLEXITY_API_KEY');
-    return restaurants.map(r => ({ ...r, menuData: [], orderingLinks: {}, linksFound: 0, error: 'Missing Perplexity API key' }));
+    return restaurants.map(r => ({ ...r, menuData: [], orderingLinks: {}, linksFound: 0, lookupFailed: true, error: 'Missing Perplexity API key' }));
   }
   
   // Capped rather than a bare Promise.all. The 2026-08-18 run fanned out eight
@@ -311,7 +311,7 @@ async function extractMenuInformation(restaurants: Restaurant[], surveyData: any
       // Validate before calling Perplexity
       if (!restaurant.name || restaurant.name === 'undefined') {
         console.warn(`[MENU-EXTRACTION] ⚠️ Skipping restaurant with undefined name`);
-        return { ...restaurant, menuData: [], orderingLinks: {}, linksFound: 0, error: 'Restaurant name is undefined' };
+        return { ...restaurant, menuData: [], orderingLinks: {}, linksFound: 0, lookupFailed: false, error: 'Restaurant name is undefined' };
       }
       
       console.log(`[MENU-EXTRACTION] Processing ${restaurant.name} with Perplexity...`);
@@ -326,52 +326,77 @@ async function extractMenuInformation(restaurants: Restaurant[], surveyData: any
       };
       
       const menuResponse = await perplexityClient.getRestaurantMenu(restaurantWithDefaults, surveyData);
-      
-      // Count valid ordering links
+
+      // Count valid ordering links. `!== ''` used to be the test, which counted
+      // the literal string "null" as a link — the same value that reaches the UI
+      // as an order button leading nowhere. Same URL test as
+      // normalizeOrderingLinks so the count and the rendered buttons agree.
       const orderingLinks = menuResponse.orderingLinks || {};
-      const linksFound = Object.values(orderingLinks).filter(
-        (link): link is string => typeof link === 'string' && link.trim() !== ''
-      ).length;
-      
-      console.log(`[MENU-EXTRACTION] ${restaurant.name}: ${menuResponse.menuItems?.length || 0} menu items, ${linksFound} ordering links`);
-      
+      const isUsableLink = (link: unknown): link is string =>
+        typeof link === 'string' && /^https?:\/\/\S+$/i.test(link.trim());
+      const linksFound = Object.values(orderingLinks).filter(isUsableLink).length;
+      const menuItems = menuResponse.menuItems || [];
+
+      console.log(`[MENU-EXTRACTION] ${restaurant.name}: ${menuItems.length} menu items, ${linksFound} ordering links`);
+
       // Log each found link
       Object.entries(orderingLinks).forEach(([platform, url]) => {
-        if (url && typeof url === 'string' && url.trim() !== '') {
+        if (isUsableLink(url)) {
           console.log(`[MENU-EXTRACTION]   ✅ ${platform}: ${url.substring(0, 60)}...`);
         }
       });
-      
+
       return {
         ...restaurant,
-        menuData: menuResponse.menuItems || [],
+        menuData: menuItems,
         menuUrl: orderingLinks.doordash || orderingLinks.ubereats || orderingLinks.grubhub || orderingLinks.direct,
         orderingLinks: orderingLinks,
         menuSource: 'Perplexity',
         sources: menuResponse.sources,
         extractionSuccess: menuResponse.extractionSuccess,
-        linksFound: linksFound
+        linksFound: linksFound,
+        lookupFailed: false
       };
     } catch (error) {
       console.error(`[MENU-EXTRACTION] Error processing ${restaurant.name}:`, error);
-      return { ...restaurant, menuData: [], orderingLinks: {}, linksFound: 0, error: (error as Error).message };
+      // `lookupFailed` separates "we could not find out" from "there is nothing
+      // here" — see the filter below, which used to treat them identically.
+      return { ...restaurant, menuData: [], orderingLinks: {}, linksFound: 0, lookupFailed: true, error: (error as Error).message };
     }
   });
 
-  // Filter out restaurants with no ordering links
-  const restaurantsWithLinks = results.filter(r => r.linksFound > 0);
-  const restaurantsWithoutLinks = results.filter(r => r.linksFound === 0);
-  
+  // A restaurant is usable if we know at least one dish it serves. Ordering
+  // links are a bonus on top of that, not the entry requirement.
+  //
+  // This filter used to keep `linksFound > 0` and drop everything else, which
+  // was wrong in both directions and produced exactly what the 2026-08-18 run
+  // showed. Six restaurants whose Perplexity lookup was killed by a 429 storm
+  // reported zero links — not because they have no delivery, but because we
+  // never got an answer — and were discarded as though we had checked. Nine
+  // restaurants became two. Meanwhile SF Grill came back with two links and
+  // *no menu items*, passed the filter, and had nothing to serve, so the plan
+  // rendered the dish "No menu item available".
+  //
+  // A restaurant with a menu but no link is still a real recommendation: the
+  // user can walk in or call, and the schema already allows all four link
+  // values to be null. A restaurant with no menu cannot fill a slot at all.
+  const usable = results.filter(r => (r.menuData?.length ?? 0) > 0);
+  const noMenu = results.filter(r => (r.menuData?.length ?? 0) === 0);
+  const failed = noMenu.filter(r => r.lookupFailed);
+  const genuinelyEmpty = noMenu.filter(r => !r.lookupFailed);
+
   console.log(`[MENU-EXTRACTION] ✅ Menu extraction completed:`);
-  console.log(`[MENU-EXTRACTION]   - ${restaurantsWithLinks.length} restaurants WITH ordering links (keeping)`);
-  console.log(`[MENU-EXTRACTION]   - ${restaurantsWithoutLinks.length} restaurants WITHOUT ordering links (removing)`);
-  
-  if (restaurantsWithoutLinks.length > 0) {
-    console.log(`[MENU-EXTRACTION]   Removed restaurants: ${restaurantsWithoutLinks.map(r => r.name).join(', ')}`);
+  console.log(`[MENU-EXTRACTION]   - ${usable.length} restaurants with a menu (keeping, ${usable.filter(r => r.linksFound > 0).length} of them with ordering links)`);
+  if (genuinelyEmpty.length > 0) {
+    console.log(`[MENU-EXTRACTION]   - ${genuinelyEmpty.length} with no menu found (removing): ${genuinelyEmpty.map(r => r.name).join(', ')}`);
   }
-  
-  // Return only restaurants that have at least one ordering link
-  return restaurantsWithLinks;
+  if (failed.length > 0) {
+    // Distinct from the line above on purpose: this one is our problem, not the
+    // restaurant's, and a spike here means the upstream call is being throttled.
+    console.warn(`[MENU-EXTRACTION]   ⚠️ ${failed.length} lookups failed outright (removing): ${failed.map(r => r.name).join(', ')}`);
+  }
+
+  return usable;
 }
 
 // Select specific restaurant meals for the schedule
