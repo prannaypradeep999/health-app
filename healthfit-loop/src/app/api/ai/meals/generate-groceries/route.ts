@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { withRouteBudget } from '@/lib/utils/route-budget';
+import { withRouteBudget, reservingBudget } from '@/lib/utils/route-budget';
 import { cookies } from 'next/headers';
 import { prisma } from '@/lib/db';
 import { perplexityClient } from '@/lib/external/perplexity-client';
@@ -93,8 +93,20 @@ async function handleGenerate_groceries(req: NextRequest) {
     // own 52s sequence budget, so the budgets do not compose: a slow store
     // search leaves the price lookup less time than its own preset thinks it
     // has. The platform, not the preset, is the real limit here.
-    const storeResponse = await perplexityClient.getLocalGroceryStores(
-      streetAddress, city, state, zipcode
+    //
+    // The route budget now composes them, but a shared deadline alone is
+    // first-come-first-served and this is the same shape that returned 0
+    // restaurant meals: the greedy phase is not the one that matters. Stores
+    // without prices is a degraded result the UI still renders (see the
+    // `priceSearchSuccess: false` branch below); prices are the deliverable.
+    // So the store search gets everything except what step 3 needs.
+    //
+    // 28s for prices because that call carries every grocery item across six
+    // categories in one prompt, against a store search that is a single
+    // location query. If the search cannot finish in the remaining ~25s it was
+    // not going to finish in 53s either.
+    const storeResponse = await reservingBudget(28_000, () =>
+      perplexityClient.getLocalGroceryStores(streetAddress, city, state, zipcode)
     );
 
     if (!storeResponse.stores?.length) {
