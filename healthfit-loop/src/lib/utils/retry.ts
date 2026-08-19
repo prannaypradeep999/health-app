@@ -204,8 +204,19 @@ export async function withRetry<T>(
           opts.onRetry(attempt, lastError, currentDelay);
         }
 
-        console.log(`[RETRY] ⏳ ${context} - Retrying in ${currentDelay}ms...`);
-        await sleep(currentDelay);
+        // Full jitter. Callers that failed together — the usual case for a rate
+        // limit, where a whole burst is rejected in the same instant — would
+        // otherwise sleep for exactly the same interval and retry in lockstep,
+        // recreating the burst that caused the 429. Spreading each retry
+        // uniformly across [0, currentDelay] de-synchronises them.
+        //
+        // Sleeping *less* than the nominal delay is the point of full jitter and
+        // is safe here: the expected wait still grows exponentially, and the
+        // deadline check above already used the un-jittered (larger) value, so
+        // this can only leave more budget than planned, never less.
+        const jitteredDelay = Math.round(Math.random() * currentDelay);
+        console.log(`[RETRY] ⏳ ${context} - Retrying in ${jitteredDelay}ms (backoff ${currentDelay}ms, jittered)...`);
+        await sleep(jitteredDelay);
 
         // Exponential backoff with cap
         currentDelay = Math.min(currentDelay * opts.backoffMultiplier, opts.maxDelayMs);

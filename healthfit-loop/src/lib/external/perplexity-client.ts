@@ -9,6 +9,47 @@ import {
 } from '@/lib/ai/schemas';
 import { parseChoice } from '@/lib/ai/validate';
 import { logUsage } from '@/lib/ai/usage';
+import { createLimiter } from '@/lib/utils/concurrency';
+
+/**
+ * Process-wide gate on every Perplexity request.
+ *
+ * The 2026-08-18 run fired 8 menu lookups at once and 21 of them came back
+ * `429 request_rate_limit_exceeded` (`retry-after: null`, no rate headers),
+ * which cost 7 of 9 restaurant menus and left the selection prompt with 2
+ * restaurants to fill 7 slots.
+ *
+ * Measured against this account on 2026-08-19, 9 requests unless noted:
+ *
+ *   concurrency=8 gap=0ms      8/9  failed
+ *   concurrency=3 gap=0ms      8/9  failed
+ *   concurrency=3 gap=500ms    5/9  failed
+ *   concurrency=1 gap=0ms      1/9  failed
+ *   concurrency=3 gap=1200ms   1/9  failed
+ *   concurrency=4 gap=1200ms   0/12 failed
+ *   concurrency=3 gap=1200ms   1/40 failed  (47s sustained — no per-minute cap)
+ *   concurrency=1 gap=1000ms   0/9  failed
+ *   concurrency=2 gap=1500ms   0/9  failed
+ *   concurrency=1 gap=2000ms   0/9  failed
+ *
+ * The shape of that table is the finding: 4-wide at 1200ms passes while 1-wide
+ * at 0ms fails. The account is limited on how often a request may *start*,
+ * roughly once a second, and not on how many are in flight. So this gates
+ * primarily on rate; the concurrency cap is only there to bound how much of the
+ * route's 52s budget is committed at once.
+ *
+ * It must be module-level. A per-call-site limiter lets menu lookups, the
+ * grocery-store search and the price lookup each believe they are alone and
+ * collide anyway — they share one account-wide budget, so they need one gate.
+ *
+ * Pacing applies to first attempts only, since the limiter wraps *outside*
+ * `withPerplexityRetry` (putting it inside would start the attempt timeout
+ * while the request is still queued — see concurrency.ts). Retries are spaced
+ * by the jittered backoff in retry.ts instead.
+ */
+const PERPLEXITY_MAX_CONCURRENT = 3;
+const PERPLEXITY_MIN_INTERVAL_MS = 1500;
+const perplexityLimit = createLimiter(PERPLEXITY_MAX_CONCURRENT, PERPLEXITY_MIN_INTERVAL_MS);
 
 export interface PerplexityMenuResponse {
   menuItems: Array<{
@@ -183,7 +224,7 @@ export class PerplexityClient {
 
       console.log(`[PERPLEXITY] 🚀 Making API request to ${this.baseUrl}`);
 
-      const perplexityResult = await withPerplexityRetry(async (signal) => {
+      const perplexityResult = await perplexityLimit(() => withPerplexityRetry(async (signal) => {
         const response = await fetch(this.baseUrl, {
           method: 'POST',
           headers: {
@@ -201,11 +242,18 @@ export class PerplexityClient {
             statusText: response.statusText,
             response: errorText
           });
-          throw new Error(`Perplexity API failed: ${response.status} ${response.statusText} - ${errorText}`);
+          // Must be an HttpError, not a bare Error. `isRetryableError` reads
+          // `.status`; with a plain Error it sees `undefined` and retries
+          // everything, so a bad key or a malformed body burned all three
+          // attempts here while the other two call sites gave up at once.
+          throw new HttpError(
+            response.status,
+            `Perplexity API failed: ${response.status} ${response.statusText} - ${errorText.slice(0, 500)}`
+          );
         }
 
         return response.json();
-      }, `Restaurant menu for ${restaurantName}`);
+      }, `Restaurant menu for ${restaurantName}`));
 
       if (!perplexityResult.success) {
         throw new Error(`Perplexity API failed after retries: ${perplexityResult.error}`);
@@ -325,7 +373,7 @@ Return as JSON only, no other text:
 
       const StoreSchema = pinnedGroceryStores(3);
 
-      const storeResult = await withPerplexityRetry(async (signal) => {
+      const storeResult = await perplexityLimit(() => withPerplexityRetry(async (signal) => {
         const fetchSignal = outerSignal ? AbortSignal.any([signal, outerSignal]) : signal;
         const response = await fetch(this.baseUrl, {
           method: 'POST',
@@ -357,7 +405,7 @@ Return as JSON only, no other text:
         }
 
         return response.json();
-      }, `Grocery stores near ${city}`);
+      }, `Grocery stores near ${city}`));
 
       if (!storeResult.success) {
         throw new Error(`Grocery store search failed after retries: ${storeResult.error}`);
@@ -475,7 +523,7 @@ Return as JSON only:
   "savings": "Save $8.80 vs Store2"
 }`;
 
-      const priceResult = await withPerplexityRetry(async (signal) => {
+      const priceResult = await perplexityLimit(() => withPerplexityRetry(async (signal) => {
         const fetchSignal = outerSignal ? AbortSignal.any([signal, outerSignal]) : signal;
         const response = await fetch(this.baseUrl, {
           method: 'POST',
@@ -507,7 +555,7 @@ Return as JSON only:
         }
 
         return response.json();
-      }, `Grocery prices in ${city}`);
+      }, `Grocery prices in ${city}`));
 
       if (!priceResult.success) {
         throw new Error(`Grocery price lookup failed after retries: ${priceResult.error}`);
