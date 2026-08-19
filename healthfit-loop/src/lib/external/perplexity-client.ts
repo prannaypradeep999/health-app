@@ -58,6 +58,7 @@ export interface PerplexityMenuResponse {
     description?: string;
     category: 'breakfast' | 'lunch' | 'dinner' | 'snack';
     estimatedCalories?: number;
+    estimatedProtein?: number;
     healthRating?: 'excellent' | 'good' | 'fair' | 'poor';
     orderingUrl?: string;
     source?: string;
@@ -755,6 +756,7 @@ REQUIRED JSON FORMAT:
       "description": "Brief description from menu",
       "category": "lunch",
       "estimatedCalories": 520,
+      "estimatedProtein": 38,
       "healthRating": "good"
     }
   ],
@@ -771,6 +773,13 @@ URL beginning with https:// or the JSON literal null — as shown above, where
 ubereats and grubhub were not found. Never write the word "null" as a string,
 never use an empty string, and never invent or guess a URL: a link that does not
 resolve is worse than no link at all.
+
+estimatedCalories and estimatedProtein are per portion as served, for the whole
+dish. Estimate them from the ingredients and portion size in the description —
+a grilled chicken plate is not the same as a chicken wrap. These two numbers are
+what the meal selection step chooses against, so a dish whose protein you set to
+a filler value will be picked for the wrong reason. Give your honest estimate,
+including a low one: 6g for a side salad is a useful answer.
 Extract 6-12 menu items maximum. Return ONLY valid JSON.`;
 
       const gptResult = await withGPTRetry(async (signal) => {

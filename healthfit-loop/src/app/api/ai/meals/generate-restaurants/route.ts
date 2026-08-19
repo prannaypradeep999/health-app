@@ -546,7 +546,51 @@ function validateRestaurantMeals(
         console.log(`[RESTAURANT-VALIDATOR] ${day} ${mealType}: ${actualCalories} cal (target: ${targetCalories}, ${deviation.toFixed(1)}%) ✓`);
       }
     }
+
+    // Protein was unvalidated until 2026-08-19, which is why a meal at 42g
+    // against an 85g target passed review looking healthy: it was within the
+    // calorie window, and the calorie window was the only thing measured.
+    //
+    // Only a shortfall is reported. Overshooting protein is not a defect for
+    // any goal this app supports, whereas falling short defeats the point of
+    // the target — so a symmetric deviation check would spend attention on the
+    // harmless direction.
+    const targetProtein = mealTargets?.[mealType]?.protein || 0;
+    const actualProtein = meal.primary?.protein ?? meal.protein;
+    if (targetProtein > 0 && typeof actualProtein === 'number') {
+      const shortfall = (targetProtein - actualProtein) / targetProtein * 100;
+      if (shortfall > 30) {
+        errorCount += 1;
+        console.error(`[RESTAURANT-VALIDATOR] ${day} ${mealType}: ${actualProtein}g protein (target: ${targetProtein}g, ${shortfall.toFixed(1)}% short) ⚠️ ERROR`);
+      } else if (shortfall > 15) {
+        warningCount += 1;
+        console.warn(`[RESTAURANT-VALIDATOR] ${day} ${mealType}: ${actualProtein}g protein (target: ${targetProtein}g, ${shortfall.toFixed(1)}% short) ⚠️ WARNING`);
+      } else {
+        console.log(`[RESTAURANT-VALIDATOR] ${day} ${mealType}: ${actualProtein}g protein (target: ${targetProtein}g) ✓`);
+      }
+    } else if (targetProtein > 0) {
+      warningCount += 1;
+      console.warn(`[RESTAURANT-VALIDATOR] ${day} ${mealType}: protein missing (target: ${targetProtein}g) ⚠️ WARNING`);
+    }
   });
+
+  // Variety, checked rather than merely requested. The prompt has asked for
+  // distribution across restaurants since the beginning; nothing ever confirmed
+  // it happened, so a plan that sent the user to one place all week would have
+  // looked identical in the logs to one that did not.
+  const primaryCounts: Record<string, number> = {};
+  restaurantMeals.forEach((meal: any) => {
+    const name = meal.primary?.restaurant;
+    if (name) primaryCounts[name] = (primaryCounts[name] || 0) + 1;
+  });
+  const distinct = Object.keys(primaryCounts).length;
+  const overused = Object.entries(primaryCounts).filter(([, n]) => n > Math.max(1, Math.ceil(restaurantMeals.length / Math.max(1, distinct))));
+  if (overused.length > 0) {
+    warningCount += 1;
+    console.warn(`[RESTAURANT-VALIDATOR] Variety: ${overused.map(([n, c]) => `${n} x${c}`).join(', ')} across ${restaurantMeals.length} meals from ${distinct} restaurant(s) ⚠️ WARNING`);
+  } else {
+    console.log(`[RESTAURANT-VALIDATOR] Variety: ${distinct} distinct restaurant(s) across ${restaurantMeals.length} meals ✓`);
+  }
 
   Object.entries(mealsByDay).forEach(([day, calories]) => {
     const dailyTotal = calories.reduce((sum, value) => sum + value, 0);

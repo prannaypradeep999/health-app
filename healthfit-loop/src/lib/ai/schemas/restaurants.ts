@@ -54,6 +54,14 @@ export const MenuExtractionSchema = z.object({
     description: z.string(),
     category: z.enum(MENU_CATEGORIES),
     estimatedCalories: z.number(),
+    // Extracted per dish because selection cannot optimise for a number it is
+    // never shown. Without this the meal-selection prompt lists each dish as
+    // "$14.99 (lunch) - 520 cal" and the model picks against the calorie
+    // window, then estimates protein at output time from whatever it already
+    // chose. Measured 2026-08-19: a Fanoos dish came back at 42g against an
+    // 85g target — not the target being ignored, but protein never having been
+    // a selectable attribute.
+    estimatedProtein: z.number(),
     healthRating: z.enum(HEALTH_RATINGS),
   }).strict()),
   orderingLinks: OrderingLinks,

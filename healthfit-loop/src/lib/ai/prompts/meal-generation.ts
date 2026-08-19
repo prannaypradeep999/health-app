@@ -979,8 +979,14 @@ RESTAURANT: ${restaurant.name}
     ${availableLinks || 'No links available'}
   
   MENU ITEMS:
-${(restaurant.menuData || []).slice(0, 8).map((item: any) => 
-    `    - ${item.name}: $${item.price} (${item.category || 'meal'}) - ${item.estimatedCalories || '~500'} cal`
+${(restaurant.menuData || []).slice(0, 8).map((item: any) =>
+    // Protein is printed alongside calories because selection happens here and
+    // nowhere else. When the listing showed calories only, every dish was
+    // interchangeable on the one axis the model was told mattered, and protein
+    // became something it reported after choosing rather than something it
+    // chose by. "?" rather than a guessed default: an unknown protein should
+    // read as unknown, so the model can prefer a dish whose protein it knows.
+    `    - ${item.name}: $${item.price} (${item.category || 'meal'}) - ${item.estimatedCalories ?? '?'} cal, ${item.estimatedProtein ?? '?'}g protein`
   ).join('\n') || '    No menu items available'}
 `;
   }).join('\n---\n');
@@ -993,7 +999,7 @@ ${restaurantMealsSchedule.map(meal => `- ${meal.day} ${meal.mealType}`).join('\n
 AVAILABLE RESTAURANTS WITH VERIFIED ORDERING LINKS:
 ${restaurantDetails}
 
-NUTRITION TARGETS PER MEAL (IMPORTANT - meals should be within ±100 calories):
+NUTRITION TARGETS PER MEAL (both numbers matter — see requirements 3 and 4):
 ${nutritionTargets ? `- Breakfast: ${nutritionTargets.mealTargets?.breakfast?.calories || 500} calories, ${nutritionTargets.mealTargets?.breakfast?.protein || 30}g protein
 - Lunch: ${nutritionTargets.mealTargets?.lunch?.calories || 600} calories, ${nutritionTargets.mealTargets?.lunch?.protein || 40}g protein
 - Dinner: ${nutritionTargets.mealTargets?.dinner?.calories || 700} calories, ${nutritionTargets.mealTargets?.dinner?.protein || 45}g protein` : `- Breakfast: 500 calories, 30g protein
@@ -1087,15 +1093,17 @@ ${(surveyData.preferredFoods || []).length > 0
 1. Select EXACTLY ${restaurantMealsSchedule.length} meals matching the schedule
 2. ⚠️ CUISINE PREFERENCES: STRONGLY prioritize restaurants matching user's preferred cuisines: ${(surveyData.preferredCuisines || []).join(', ')}
 3. ⚠️ CALORIE TARGETS: Each meal MUST be within ±100 calories of the target above
-4. For EACH meal, provide BOTH a primary AND alternative option from DIFFERENT restaurants
-5. ⚠️ ORDERING LINKS ARE REQUIRED: Copy the EXACT orderingLinks from the restaurant data above
-6. Distribute across different restaurants for variety
-7. Consider meal timing (lighter lunches, heartier dinners)
-8. Stay within budget and dietary preferences
-9. Use ONLY restaurants and menu items from the data provided above
-10. NEVER omit an orderingLinks key. Each value is either a URL copied character-for-character from the restaurant data, or the JSON literal null (bare, not quoted) when that platform is listed as "not available"
-11. ⚠️ DIET TYPE + ALLERGIES ARE ABSOLUTE - never select forbidden items; dislikes should be minimized
-12. ⚠️ PREFERRED FOODS: When available, prioritize dishes featuring user's preferred ingredients
+4. ⚠️ PROTEIN TARGETS: Among the dishes that fit the calorie window, choose the one closest to the protein target — do not settle for the first dish that fits on calories alone. Protein is the harder constraint to satisfy from a restaurant menu and the one most likely to be missed.
+   - Never report a protein number that contradicts the menu listing above. If the highest-protein dish available still falls short of the target, select it anyway and report its real protein. An honest shortfall is usable; an inflated number is not.
+5. For EACH meal, provide BOTH a primary AND alternative option from DIFFERENT restaurants
+6. ⚠️ ORDERING LINKS ARE REQUIRED: Copy the EXACT orderingLinks from the restaurant data above
+7. ⚠️ VARIETY: No restaurant may be the primary pick for more than ${Math.max(1, Math.ceil(restaurantMealsSchedule.length / Math.max(1, restaurantMenuData.length)))} of the ${restaurantMealsSchedule.length} meals. With ${restaurantMenuData.length} restaurants available, repeating one is a choice, not a necessity.
+8. Consider meal timing (lighter lunches, heartier dinners)
+9. Stay within budget and dietary preferences
+10. Use ONLY restaurants and menu items from the data provided above
+11. NEVER omit an orderingLinks key. Each value is either a URL copied character-for-character from the restaurant data, or the JSON literal null (bare, not quoted) when that platform is listed as "not available"
+12. ⚠️ DIET TYPE + ALLERGIES ARE ABSOLUTE - never select forbidden items; dislikes should be minimized
+13. ⚠️ PREFERRED FOODS: When available, prioritize dishes featuring user's preferred ingredients
 
 Return ONLY this JSON structure:
 {
