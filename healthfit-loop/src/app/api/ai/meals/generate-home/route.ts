@@ -9,7 +9,7 @@ import { validateRestrictions } from '@/lib/utils/restriction-validator';
 import { buildFallbackGroceryList, enhanceGroceryListWithUsage } from '@/lib/utils/grocery-list';
 import { createHomeMealGenerationPrompt, createPlanningPrompt, createDetailPrompt, createGroceryPrompt, type MealFeedbackContext } from '@/lib/ai/prompts';
 import { pexelsClient } from '@/lib/external/pexels-client';
-import { withGPTRetry } from '@/lib/utils/retry';
+import { withGPTRetry, HttpError } from '@/lib/utils/retry';
 import { getStartOfWeek } from '@/lib/utils/date-utils';
 import { getAuthUserId } from '@/lib/auth';
 import { MODELS } from '@/lib/ai/models';
@@ -506,7 +506,7 @@ async function generateHomeMealsLegacy(
 
       if (!response.ok) {
         const errorText = await response.text().catch(() => 'Unknown error');
-        throw new Error(`GPT API error ${response.status}: ${errorText.substring(0, 100)}`);
+        throw new HttpError(response.status, `GPT API error ${response.status}: ${errorText.substring(0, 100)}`);
       }
 
       return response.json();
@@ -885,7 +885,7 @@ async function planWeekMeals(
 
     if (!response.ok) {
       const errorText = await response.text().catch(() => 'Unknown error');
-      throw new Error(`GPT API error ${response.status}: ${errorText.substring(0, 100)}`);
+      throw new HttpError(response.status, `GPT API error ${response.status}: ${errorText.substring(0, 100)}`);
     }
 
     return response.json();
@@ -961,7 +961,7 @@ async function generateMealDetails(
 
     if (!response.ok) {
       const errorText = await response.text().catch(() => 'Unknown error');
-      throw new Error(`GPT API error ${response.status}: ${errorText.substring(0, 100)}`);
+      throw new HttpError(response.status, `GPT API error ${response.status}: ${errorText.substring(0, 100)}`);
     }
 
     return response.json();
@@ -1025,7 +1025,7 @@ async function generateGroceryList(allMeals: any[], surveyData: any): Promise<an
 
     if (!response.ok) {
       const errorText = await response.text().catch(() => 'Unknown error');
-      throw new Error(`GPT API error ${response.status}: ${errorText.substring(0, 100)}`);
+      throw new HttpError(response.status, `GPT API error ${response.status}: ${errorText.substring(0, 100)}`);
     }
 
     return response.json();
@@ -1125,10 +1125,15 @@ async function generateHomeMealsParallel(
     }
 
     // Phase 2: Split planned meals into chunks for parallel processing
+    // Day names come straight from the model. The schema constrains them to the
+    // seven weekday strings but not their casing, so "Monday" is a legal
+    // response. Match case-insensitively or every chunk silently comes back
+    // empty and the user gets a successful response with a blank week.
+    const dayOf = (m: any) => String(m?.day ?? '').toLowerCase();
     const chunks = [
-      { name: "Chunk A (Mon-Tue)", meals: plannedMeals.filter((m: any) => ['monday', 'tuesday'].includes(m.day)) },
-      { name: "Chunk B (Wed-Thu)", meals: plannedMeals.filter((m: any) => ['wednesday', 'thursday'].includes(m.day)) },
-      { name: "Chunk C (Fri-Sun)", meals: plannedMeals.filter((m: any) => ['friday', 'saturday', 'sunday'].includes(m.day)) }
+      { name: "Chunk A (Mon-Tue)", meals: plannedMeals.filter((m: any) => ['monday', 'tuesday'].includes(dayOf(m))) },
+      { name: "Chunk B (Wed-Thu)", meals: plannedMeals.filter((m: any) => ['wednesday', 'thursday'].includes(dayOf(m))) },
+      { name: "Chunk C (Fri-Sun)", meals: plannedMeals.filter((m: any) => ['friday', 'saturday', 'sunday'].includes(dayOf(m))) }
     ].filter(chunk => chunk.meals.length > 0);
 
     console.log(`[HOME-MEALS-7DAY] 📋 Phase 2: Generating details for ${chunks.length} chunks in parallel...`);
@@ -1359,8 +1364,13 @@ export async function POST(req: NextRequest) {
 
     // Place generated home meals into the correct day/meal slots
     (homeMealPlan.homeMeals || []).forEach((meal: any) => {
-      if (homeMealsByDay[meal.day] && homeMealsByDay[meal.day].plannedMeals[meal.mealType] === 'home') {
-        homeMealsByDay[meal.day].meals[meal.mealType] = {
+      // Both maps are keyed lowercase; the model's strings are not guaranteed to
+      // be. Without normalising, a "Monday"/"Breakfast" response drops the meal
+      // from the calendar while homeMeals[] still looks populated.
+      const day = String(meal?.day ?? '').toLowerCase();
+      const mealType = String(meal?.mealType ?? '').toLowerCase();
+      if (homeMealsByDay[day] && homeMealsByDay[day].plannedMeals[mealType] === 'home') {
+        homeMealsByDay[day].meals[mealType] = {
           primary: meal.primary,
           alternative: meal.alternative,
           source: 'home'

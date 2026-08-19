@@ -3,7 +3,7 @@ import { cookies } from 'next/headers';
 import { prisma } from '@/lib/db';
 import { pexelsClient } from '@/lib/external/pexels-client';
 import { createWorkoutPlanPrompt, createWorkoutPlanningPrompt, createWorkoutDetailPrompt, type WorkoutPlan, type WorkoutDay, type WorkoutFeedbackContext, type WorkoutPreferences } from '@/lib/ai/prompts';
-import { withGPTRetry } from '@/lib/utils/retry';
+import { withGPTRetry, HttpError } from '@/lib/utils/retry';
 import { validateWorkoutPlan } from '@/lib/utils/workout-validator';
 import { getStartOfWeek } from '@/lib/utils/date-utils';
 import { getAuthUserId } from '@/lib/auth';
@@ -367,7 +367,7 @@ async function planWorkout(
       }),
       signal
     });
-    if (!response.ok) throw new Error(`GPT error ${response.status}`);
+    if (!response.ok) throw new HttpError(response.status, `GPT error ${response.status}`);
     return response.json();
   }, 'Workout planning');
 
@@ -417,7 +417,7 @@ async function generateDayDetails(
       }),
       signal
     });
-    if (!response.ok) throw new Error(`GPT error ${response.status}`);
+    if (!response.ok) throw new HttpError(response.status, `GPT error ${response.status}`);
     return response.json();
   }, `Workout detail ${chunkLabel}`);
 

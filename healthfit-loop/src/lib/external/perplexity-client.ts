@@ -1,5 +1,5 @@
 // src/lib/external/perplexity-client.ts
-import { withPerplexityRetry, withGPTRetry } from '@/lib/utils/retry';
+import { withPerplexityRetry, withGPTRetry, HttpError } from '@/lib/utils/retry';
 import { MODELS } from '@/lib/ai/models';
 import { MenuExtractionSchema, toStrictJsonSchema } from '@/lib/ai/schemas';
 import { parseChoice } from '@/lib/ai/validate';
@@ -341,7 +341,7 @@ Return as JSON only, no other text:
         });
 
         if (!response.ok) {
-          throw new Error(`Perplexity API error: ${response.status}`);
+          throw new HttpError(response.status, `Perplexity API error: ${response.status}`);
         }
 
         return response.json();
@@ -477,7 +477,7 @@ Return as JSON only:
         });
 
         if (!response.ok) {
-          throw new Error(`Perplexity API error: ${response.status}`);
+          throw new HttpError(response.status, `Perplexity API error: ${response.status}`);
         }
 
         return response.json();
@@ -630,29 +630,31 @@ ${(() => {
   const restrictions = (surveyData.dietPrefs || []);
   if (restrictions.length === 0) return '   - No dietary restrictions to apply';
 
+  // ⚠️ Keyed on the LOWERCASE value the survey actually persists
+  // (src/app/survey/page.tsx stores 'vegetarian', 'halal', … not 'Vegetarian').
+  // This block previously compared against capitalised literals, so no branch
+  // ever matched, `rules` stayed empty, and dietary filtering on restaurant
+  // menus was silently off for every user. `restriction-validator.ts` already
+  // lowercases before its lookup; this is the same convention.
+  const RULES: Record<string, string> = {
+    vegetarian:    'VEGETARIAN: Exclude dishes with meat, poultry, fish, or gelatin',
+    vegan:         'VEGAN: Exclude dishes with any animal products (meat, dairy, eggs, honey)',
+    pescatarian:   'PESCATARIAN: Exclude meat and poultry dishes, but fish/seafood is allowed',
+    keto:          'KETO: Exclude high-carb dishes like rice bowls, pasta, or bread-heavy items',
+    paleo:         'PALEO: Exclude grains, legumes, dairy, and processed/refined foods',
+    mediterranean: 'MEDITERRANEAN: Prefer fish, vegetables, legumes and olive oil; exclude heavily processed or deep-fried dishes',
+    halal:         'HALAL: Exclude pork dishes and non-halal meat options',
+    kosher:        'KOSHER: Exclude pork and shellfish, and any dish mixing meat with dairy',
+    'gluten-free': 'GLUTEN-FREE: Exclude bread-based, pasta, or wheat dishes unless marked gluten-free',
+    'dairy-free':  'DAIRY-FREE: Exclude dishes with cheese, cream sauces, or dairy ingredients',
+  };
+
   let rules = '';
   restrictions.forEach((pref: string) => {
-    if (pref === 'Vegetarian') {
-      rules += `   - VEGETARIAN: Exclude dishes with meat, poultry, fish, or gelatin\n`;
-    }
-    if (pref === 'Vegan') {
-      rules += `   - VEGAN: Exclude dishes with any animal products (meat, dairy, eggs, honey)\n`;
-    }
-    if (pref === 'Gluten-Free') {
-      rules += `   - GLUTEN-FREE: Exclude bread-based, pasta, or wheat dishes unless marked gluten-free\n`;
-    }
-    if (pref === 'Dairy-Free') {
-      rules += `   - DAIRY-FREE: Exclude dishes with cheese, cream sauces, or dairy ingredients\n`;
-    }
-    if (pref === 'Keto') {
-      rules += `   - KETO: Exclude high-carb dishes like rice bowls, pasta, or bread-heavy items\n`;
-    }
-    if (pref === 'Halal') {
-      rules += `   - HALAL: Exclude pork dishes and non-halal meat options\n`;
-    }
-    if (pref === 'Pescatarian') {
-      rules += `   - PESCATARIAN: Exclude meat and poultry dishes, but fish/seafood is allowed\n`;
-    }
+    const key = String(pref ?? '').toLowerCase().trim();
+    // Unknown values must still produce a hard exclusion. Falling through
+    // silently is what made this bug invisible the first time.
+    rules += `   - ${RULES[key] ?? `${key.toUpperCase()}: Strictly exclude any dish that violates a "${pref}" diet`}\n`;
   });
   return rules;
 })()}
@@ -702,7 +704,7 @@ Extract 6-12 menu items maximum. Return ONLY valid JSON.`;
         });
 
         if (!response.ok) {
-          throw new Error(`GPT-4 processing failed: ${response.status}`);
+          throw new HttpError(response.status, `GPT-4 processing failed: ${response.status}`);
         }
 
         return response.json();

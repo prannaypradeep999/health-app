@@ -10,7 +10,7 @@ import {
 } from '@/lib/ai/prompts';
 import { calculateMacroTargets, UserProfile } from '@/lib/utils/nutrition';
 import { buildNutritionTargets } from '@/lib/utils/nutrition-targets';
-import { withGPTRetry } from '@/lib/utils/retry';
+import { withGPTRetry, HttpError } from '@/lib/utils/retry';
 import { getStartOfWeek } from '@/lib/utils/date-utils';
 import { validateRestrictions } from '@/lib/utils/restriction-validator';
 import { MODELS } from '@/lib/ai/models';
@@ -188,7 +188,7 @@ async function findAndSelectBestRestaurants(surveyData: any): Promise<Restaurant
 
       if (!response.ok) {
         const errorText = await response.text().catch(() => 'Unknown error');
-        throw new Error(`GPT API error: ${response.status} - ${errorText}`);
+        throw new HttpError(response.status, `GPT API error: ${response.status} - ${errorText}`);
       }
       return response.json();
     }, 'Restaurant selection');
@@ -410,7 +410,7 @@ async function selectRestaurantMealsForSchedule(
 
       if (!response.ok) {
         const errorText = await response.text().catch(() => 'Unknown error');
-        throw new Error(`GPT API error: ${response.status} - ${errorText}`);
+        throw new HttpError(response.status, `GPT API error: ${response.status} - ${errorText}`);
       }
       return response.json();
     }, 'Restaurant meal selection');
@@ -704,16 +704,20 @@ export async function POST(req: NextRequest) {
         const updatedDays = existingDays.map((dayData: any) => {
           const updatedDay = { ...dayData };
           
-          // Find restaurant meals for this day
+          // Find restaurant meals for this day. The model's day/mealType casing
+          // is not constrained by the schema, so compare and index normalised —
+          // otherwise a "Monday"/"Lunch" response never matches and the
+          // restaurant slot stays null with no error anywhere.
           const dayRestaurantMeals = selectedRestaurantMeals.filter(
-            (meal: any) => meal.day === dayData.day
+            (meal: any) => String(meal?.day ?? '').toLowerCase() === String(dayData?.day ?? '').toLowerCase()
           );
-          
+
           // Integrate restaurant meals into the day structure
           dayRestaurantMeals.forEach((meal: any) => {
-            if (updatedDay.plannedMeals?.[meal.mealType] === 'restaurant') {
+            const mealType = String(meal?.mealType ?? '').toLowerCase();
+            if (updatedDay.plannedMeals?.[mealType] === 'restaurant') {
               updatedDay.meals = updatedDay.meals || {};
-              updatedDay.meals[meal.mealType] = {
+              updatedDay.meals[mealType] = {
                 primary: { ...meal.primary, source: 'restaurant' },
                 alternative: { ...meal.alternative, source: 'restaurant' },
                 source: 'restaurant'

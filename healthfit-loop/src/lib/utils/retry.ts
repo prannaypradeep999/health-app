@@ -34,6 +34,50 @@ function sleep(ms: number): Promise<void> {
 }
 
 /**
+ * An HTTP failure that carries its status code, so `withRetry` can tell a
+ * client mistake from a transient server problem.
+ *
+ * Without this every `throw new Error('GPT error 401')` looked identical to a
+ * 503, so a bad API key or a malformed request burned the full retry budget at
+ * every call site — roughly 6s each, and `generate-home` chains five of them.
+ */
+export class HttpError extends Error {
+  readonly status: number;
+  constructor(status: number, message: string) {
+    super(message);
+    this.name = 'HttpError';
+    this.status = status;
+  }
+}
+
+/**
+ * Build an HttpError from a failed Response, including a short slice of the
+ * body — the body is where OpenAI explains *why* a 400 happened.
+ */
+export async function httpErrorFrom(response: Response, context: string): Promise<HttpError> {
+  let detail = '';
+  try {
+    detail = (await response.text()).slice(0, 500);
+  } catch {
+    // Body already consumed or unreadable; the status alone still tells us
+    // whether to retry, which is the part that matters here.
+  }
+  return new HttpError(response.status, `${context} failed: ${response.status} ${response.statusText}${detail ? ` - ${detail}` : ''}`);
+}
+
+/**
+ * 4xx means the request itself is wrong; sending it again unchanged cannot
+ * help. 408 (timeout) and 429 (rate limit) are the two exceptions that do
+ * clear on their own.
+ */
+function isRetryableError(error: unknown): boolean {
+  const status = (error as HttpError | undefined)?.status;
+  if (typeof status !== 'number') return true;
+  if (status === 408 || status === 429) return true;
+  return status < 400 || status >= 500;
+}
+
+/**
  * Wraps a function with a timeout
  */
 async function withTimeout<T>(fn: (signal: AbortSignal) => Promise<T>, timeoutMs: number): Promise<T> {
@@ -82,6 +126,30 @@ export async function withRetry<T>(
       lastError = error instanceof Error ? error : new Error(String(error));
 
       console.log(`[RETRY] ⚠️ ${context} - Attempt ${attempt}/${opts.maxAttempts} failed: ${lastError.message}`);
+
+      // A 4xx will fail identically on every subsequent attempt. Surface it now
+      // rather than making the user wait out the backoff to learn the same thing.
+      if (!isRetryableError(error)) {
+        console.log(`[RETRY] ⛔ ${context} - ${(error as HttpError).status} is not retryable, giving up immediately`);
+        return {
+          success: false,
+          error: lastError.message,
+          attempts: attempt,
+          totalTimeMs: Date.now() - startTime
+        };
+      }
+
+      // The caller aborted (not our timeout) — respect it instead of burning
+      // the remaining attempts on a request nobody is waiting for.
+      if (lastError.name === 'AbortError') {
+        console.log(`[RETRY] ⛔ ${context} - aborted by caller, not retrying`);
+        return {
+          success: false,
+          error: lastError.message,
+          attempts: attempt,
+          totalTimeMs: Date.now() - startTime
+        };
+      }
 
       if (attempt < opts.maxAttempts) {
         if (opts.onRetry) {

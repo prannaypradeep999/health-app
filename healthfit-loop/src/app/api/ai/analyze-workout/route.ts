@@ -4,7 +4,7 @@ import { MODELS } from '@/lib/ai/models';
 import { WorkoutAnalysisSchema, toStrictJsonSchema } from '@/lib/ai/schemas';
 import { parseChoice } from '@/lib/ai/validate';
 import { logUsage } from '@/lib/ai/usage';
-import { withGPTRetry } from '@/lib/utils/retry';
+import { withGPTRetry, HttpError } from '@/lib/utils/retry';
 
 const FALLBACK = {
   calories: 200,
@@ -48,7 +48,7 @@ export async function POST(request: NextRequest) {
       });
 
       if (!response.ok) {
-        throw new Error(`OpenAI API error: ${response.status}`);
+        throw new HttpError(response.status, `OpenAI API error: ${response.status}`);
       }
       return response.json();
     }, 'Workout analysis');

@@ -1,5 +1,5 @@
 import { prisma } from '@/lib/db';
-import { withPexelsRetry } from '@/lib/utils/retry';
+import { withPexelsRetry, HttpError } from '@/lib/utils/retry';
 
 /**
  * Simple normalization for cache keys - the AI will handle the smart categorization
@@ -241,7 +241,7 @@ export class PexelsClient {
       });
 
       if (!response.ok) {
-        throw new Error(`Pexels API error: ${response.status}`);
+        throw new HttpError(response.status, `Pexels API error: ${response.status}`);
       }
 
       const data = await response.json();

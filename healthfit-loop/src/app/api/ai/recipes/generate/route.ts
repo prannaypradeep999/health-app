@@ -6,7 +6,7 @@ import { MODELS } from '@/lib/ai/models';
 import { RecipeSchema, toStrictJsonSchema } from '@/lib/ai/schemas';
 import { parseChoice } from '@/lib/ai/validate';
 import { logUsage } from '@/lib/ai/usage';
-import { withGPTRetry } from '@/lib/utils/retry';
+import { withGPTRetry, HttpError } from '@/lib/utils/retry';
 
 export async function POST(req: NextRequest) {
   try {
@@ -115,7 +115,7 @@ export async function POST(req: NextRequest) {
 
       if (!response.ok) {
         const errorText = await response.text().catch(() => 'Unknown error');
-        throw new Error(`GPT API error ${response.status}: ${errorText.substring(0, 200)}`);
+        throw new HttpError(response.status, `GPT API error ${response.status}: ${errorText.substring(0, 200)}`);
       }
 
       return response.json();

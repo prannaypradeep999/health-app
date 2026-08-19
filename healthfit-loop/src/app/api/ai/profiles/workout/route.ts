@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { cookies } from 'next/headers';
 import { prisma } from '@/lib/db';
-import { withGPTRetry } from '@/lib/utils/retry';
+import { withGPTRetry, HttpError } from '@/lib/utils/retry';
 import { getAuthUserId } from '@/lib/auth';
 import { MODELS } from '@/lib/ai/models';
 
@@ -266,7 +266,7 @@ Make it feel personal, specific to their situation, and motivating. Use their na
     });
 
     if (!response.ok) {
-      throw new Error(`GPT API error: ${response.status}`);
+      throw new HttpError(response.status, `GPT API error: ${response.status}`);
     }
     return response.json();
   }, 'Workout profile generation');
