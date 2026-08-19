@@ -12,6 +12,10 @@ const FALLBACK = {
 };
 
 export const runtime = 'nodejs';
+// 60s is the Hobby ceiling and is valid on every Vercel plan. Without this
+// line the route silently inherits the platform default of 10-15s, well
+// under what a model call needs. RetryPresets budgets the inner calls to fit.
+export const maxDuration = 60;
 
 export async function POST(request: NextRequest) {
   try {

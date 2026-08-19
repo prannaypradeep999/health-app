@@ -9,9 +9,26 @@ export interface RetryOptions {
   maxDelayMs?: number;
   backoffMultiplier?: number;
   timeoutMs?: number; // Timeout per attempt
+  /**
+   * Ceiling for the whole retry sequence, backoff included.
+   *
+   * `timeoutMs * maxAttempts` used to be the real budget, which on the gpt
+   * preset came to 720s inside a route the platform kills at 60s. The retry
+   * loop would confidently begin a third 240s attempt that had no chance of
+   * returning. With a deadline set we clamp each attempt to the time actually
+   * left and refuse to start one that cannot finish, so the budget is spent on
+   * attempts that can still produce an answer.
+   */
+  maxTotalMs?: number;
   context?: string; // For logging
   onRetry?: (attempt: number, error: Error, nextDelayMs: number) => void;
 }
+
+/**
+ * A retry that would get only a sliver of time left is not worth the backoff
+ * sleep that precedes it — better to surface the previous error immediately.
+ */
+const MIN_USEFUL_ATTEMPT_MS = 5000;
 
 export interface RetryResult<T> {
   success: boolean;
@@ -21,7 +38,7 @@ export interface RetryResult<T> {
   totalTimeMs: number;
 }
 
-const defaultOptions: Required<Omit<RetryOptions, 'onRetry' | 'context'>> = {
+const defaultOptions: Required<Omit<RetryOptions, 'onRetry' | 'context' | 'maxTotalMs'>> = {
   maxAttempts: 3,
   initialDelayMs: 1000,
   maxDelayMs: 10000,
@@ -110,9 +127,28 @@ export async function withRetry<T>(
   let lastError: Error | null = null;
   let currentDelay = opts.initialDelayMs;
 
+  const deadline = options.maxTotalMs !== undefined ? startTime + options.maxTotalMs : null;
+
   for (let attempt = 1; attempt <= opts.maxAttempts; attempt++) {
+    // Never hand an attempt more time than the sequence has left, or it will be
+    // the platform that kills the request rather than our own error handling.
+    let attemptTimeout = opts.timeoutMs;
+    if (deadline !== null) {
+      const remaining = deadline - Date.now();
+      if (remaining < MIN_USEFUL_ATTEMPT_MS) {
+        console.log(`[RETRY] ⌛ ${context} - ${remaining}ms left of the ${options.maxTotalMs}ms budget, stopping`);
+        return {
+          success: false,
+          error: lastError?.message || `Retry budget of ${options.maxTotalMs}ms exhausted`,
+          attempts: attempt - 1,
+          totalTimeMs: Date.now() - startTime
+        };
+      }
+      attemptTimeout = Math.min(attemptTimeout, remaining);
+    }
+
     try {
-      const data = await withTimeout(fn, opts.timeoutMs);
+      const data = await withTimeout(fn, attemptTimeout);
       if (attempt > 1) {
         console.log(`[RETRY] ✅ ${context} succeeded on attempt ${attempt}`);
       }
@@ -152,6 +188,18 @@ export async function withRetry<T>(
       }
 
       if (attempt < opts.maxAttempts) {
+        // Sleeping out the backoff only to find there is no time left for the
+        // attempt it precedes wastes the very budget we are trying to protect.
+        if (deadline !== null && Date.now() + currentDelay + MIN_USEFUL_ATTEMPT_MS > deadline) {
+          console.log(`[RETRY] ⌛ ${context} - no room for another attempt after a ${currentDelay}ms backoff, stopping`);
+          return {
+            success: false,
+            error: lastError.message,
+            attempts: attempt,
+            totalTimeMs: Date.now() - startTime
+          };
+        }
+
         if (opts.onRetry) {
           opts.onRetry(attempt, lastError, currentDelay);
         }
@@ -175,6 +223,23 @@ export async function withRetry<T>(
 }
 
 /**
+ * Every AI route declares `maxDuration = 60`. 60s is the Hobby ceiling and is
+ * accepted on every Vercel plan, so it is the one value safe to hard-code
+ * without knowing the plan; routes that declared nothing were silently getting
+ * the platform default of 10-15s instead.
+ *
+ * `maxTotalMs` below leaves ~8s of that 60s for everything the route does
+ * around the model call: parsing the request, Prisma reads and writes, image
+ * lookups, and serialising the response.
+ *
+ * ⚠️ If meal or workout generation genuinely needs more than ~50s of model
+ * time, no preset can fix that — 60s is a hard platform ceiling. That needs
+ * either a Vercel plan with a higher limit (Pro allows 300s) or moving
+ * generation to a background job the client polls. See ROUTE_BUDGET_MS users.
+ */
+const ROUTE_BUDGET_MS = 52_000;
+
+/**
  * Preset configurations for different API types
  */
 export const RetryPresets = {
@@ -183,16 +248,22 @@ export const RetryPresets = {
     maxAttempts: 3,
     initialDelayMs: 2000,
     maxDelayMs: 15000,
+    // Was 240s, which multiplied out to a 720s sequence inside a 60s route.
+    // The deadline below is the real limit; this just caps a single attempt.
+    timeoutMs: 45000,
     backoffMultiplier: 2,
-    timeoutMs: 240000 // 240s timeout per attempt - workout and meal generation need more time
+    maxTotalMs: ROUTE_BUDGET_MS
   },
   // Perplexity calls - similar to GPT but slightly faster
   perplexity: {
     maxAttempts: 3,
     initialDelayMs: 2000,
     maxDelayMs: 12000,
+    // Was 75s — longer than the 60s route that contains it, so a single
+    // attempt could never have timed out on its own terms.
+    timeoutMs: 45000,
     backoffMultiplier: 2,
-    timeoutMs: 75000 // 75s timeout per attempt - complex searches take time
+    maxTotalMs: ROUTE_BUDGET_MS
   },
   // Pexels image calls - faster, less critical
   pexels: {
@@ -200,7 +271,9 @@ export const RetryPresets = {
     initialDelayMs: 1000,
     maxDelayMs: 5000,
     backoffMultiplier: 2,
-    timeoutMs: 30000 // 30s timeout per attempt
+    timeoutMs: 20000,
+    // Decorative imagery must never eat the budget the meal itself needs.
+    maxTotalMs: 25_000
   },
   // Google Places - usually fast
   googlePlaces: {
@@ -208,7 +281,8 @@ export const RetryPresets = {
     initialDelayMs: 1000,
     maxDelayMs: 5000,
     backoffMultiplier: 2,
-    timeoutMs: 20000 // 20s timeout per attempt
+    timeoutMs: 20000,
+    maxTotalMs: 25_000
   }
 };
 
