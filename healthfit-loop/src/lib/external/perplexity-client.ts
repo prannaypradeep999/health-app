@@ -1,6 +1,9 @@
 // src/lib/external/perplexity-client.ts
 import { withPerplexityRetry, withGPTRetry } from '@/lib/utils/retry';
 import { MODELS } from '@/lib/ai/models';
+import { MenuExtractionSchema, toStrictJsonSchema } from '@/lib/ai/schemas';
+import { parseChoice } from '@/lib/ai/validate';
+import { logUsage } from '@/lib/ai/usage';
 
 export interface PerplexityMenuResponse {
   menuItems: Array<{
@@ -621,14 +624,15 @@ REQUIRED JSON FORMAT:
     }
   ],
   "orderingLinks": {
-    "doordash": "ACTUAL_URL_IF_FOUND_OR_EMPTY_STRING",
-    "ubereats": "ACTUAL_URL_IF_FOUND_OR_EMPTY_STRING",
-    "grubhub": "ACTUAL_URL_IF_FOUND_OR_EMPTY_STRING",
-    "direct": "RESTAURANT_WEBSITE_IF_FOUND_OR_EMPTY_STRING"
+    "doordash": "ACTUAL_URL_IF_FOUND_OR_NULL",
+    "ubereats": "ACTUAL_URL_IF_FOUND_OR_NULL",
+    "grubhub": "ACTUAL_URL_IF_FOUND_OR_NULL",
+    "direct": "RESTAURANT_WEBSITE_IF_FOUND_OR_NULL"
   }
 }
 
-IMPORTANT: For orderingLinks, use "" (empty string) if not found. Do not use null, undefined, or made-up URLs.
+IMPORTANT: orderingLinks must carry all four keys. Use null for any platform you
+did not find a real URL for. Never invent a URL and never use an empty string.
 Extract 6-12 menu items maximum. Return ONLY valid JSON.`;
 
       const gptResult = await withGPTRetry(async (signal) => {
@@ -641,7 +645,11 @@ Extract 6-12 menu items maximum. Return ONLY valid JSON.`;
           body: JSON.stringify({
             model: MODELS.DETAIL,
             messages: [{ role: 'user', content: gptPrompt }],
-            response_format: { type: "json_object" },
+            // Not count-pinned: the prompt asks for "6-12 items maximum", a range,
+            // and a restaurant page may genuinely yield fewer. Pinning a count the
+            // prompt does not enumerate makes the model invent menu items.
+            response_format: toStrictJsonSchema('menu_extraction', MenuExtractionSchema),
+            max_tokens: 4000,
             temperature: 0.1
           }),
           signal
@@ -658,43 +666,34 @@ Extract 6-12 menu items maximum. Return ONLY valid JSON.`;
         throw new Error(`GPT-4 processing failed after retries: ${gptResult.error}`);
       }
 
-      const gptData = gptResult.data;
-      const gptContent = gptData.choices?.[0]?.message?.content || '{}';
+      logUsage('perplexity-menu-extraction', 4000, gptResult.data);
 
-      // Parse JSON response
-      let structuredData;
-      try {
-        structuredData = JSON.parse(gptContent);
-      } catch (parseError) {
-        // Try cleaning if direct parse fails
-        let cleanContent = gptContent.trim();
-        if (cleanContent.startsWith('```json')) {
-          cleanContent = cleanContent.replace(/^```json\s*/, '').replace(/\s*```$/, '');
-        }
-        if (cleanContent.startsWith('```')) {
-          cleanContent = cleanContent.replace(/^```\s*/, '').replace(/\s*```$/, '');
-        }
-        structuredData = JSON.parse(cleanContent);
+      // The markdown-fence salvage is gone: under grammar-constrained decoding
+      // the model cannot emit a fence, and a response that fails to parse is a
+      // real failure rather than something to clean up and hope about.
+      const parsed = parseChoice(MenuExtractionSchema, gptResult.data.choices?.[0], 'perplexity-menu-extraction');
+      if (!parsed.ok) {
+        console.error(`[PERPLEXITY-GPT4] ❌ ${parsed.reason}: ${parsed.detail}`);
+        return { menuItems: [], orderingLinks: {} };
       }
 
-      // Clean up ordering links - remove empty strings, nulls, undefined
+      // The schema guarantees all four keys are present and are either a string
+      // or null. It cannot guarantee the string is a URL — observed: the model
+      // still returns "" for a missing platform despite the prompt asking for
+      // null, because "" satisfies the grammar. The http(s) test is what
+      // actually filters those out, and is the only reason this loop remains.
       const cleanedLinks: Record<string, string> = {};
-      if (structuredData.orderingLinks) {
-        for (const [platform, url] of Object.entries(structuredData.orderingLinks)) {
-          if (typeof url === 'string' && url.trim() !== '' && url !== 'null' && url !== 'undefined') {
-            // Basic URL validation
-            if (url.startsWith('http://') || url.startsWith('https://')) {
-              cleanedLinks[platform] = url.trim();
-            }
-          }
+      for (const [platform, url] of Object.entries(parsed.data.orderingLinks)) {
+        if (url && (url.startsWith('http://') || url.startsWith('https://'))) {
+          cleanedLinks[platform] = url.trim();
         }
       }
 
-      console.log(`[PERPLEXITY-GPT4] ✅ Structured ${structuredData.menuItems?.length || 0} menu items`);
+      console.log(`[PERPLEXITY-GPT4] ✅ Structured ${parsed.data.menuItems.length} menu items`);
       console.log(`[PERPLEXITY-GPT4] 🔗 Verified links: ${Object.keys(cleanedLinks).join(', ') || 'none'}`);
 
       return {
-        menuItems: structuredData.menuItems || [],
+        menuItems: parsed.data.menuItems,
         orderingLinks: cleanedLinks
       };
 

@@ -29,7 +29,8 @@ export const runtime = 'nodejs';
  * 
  * FIXES APPLIED:
  * - Fixed all console.log syntax errors
- * - Added response_format: { type: "json_object" } to GPT calls
+ * - GPT calls use response_format json_schema + strict:true (was json_object,
+ *   which guaranteed valid JSON syntax and nothing at all about its shape)
  * - Added mapping logic to preserve full restaurant data after GPT selection
  * - Added filtering to remove restaurants without ordering links
  * - Improved validation and error handling
