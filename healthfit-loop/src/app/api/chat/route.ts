@@ -164,24 +164,37 @@ async function executeToolCall(functionName: string, args: any, userContext: any
 
     case 'get_eaten_meals':
       try {
-        const mealConsumptions = await prisma.mealConsumption.findMany({
+        // Every identifier in this block was wrong against the schema. The model
+        // is MealConsumptionLog, so `prisma.mealConsumption` was undefined and
+        // `.findMany` threw a TypeError straight into the catch below — meaning
+        // this tool has never once returned data, it has only ever returned
+        // 'Error fetching consumption log'. The columns are mealName,
+        // restaurantName and loggedAt, not dishName/restaurant/consumedAt.
+        //
+        // The tool is get_eaten_meals, but rows are written for planned meals
+        // too and carry wasEaten (default false). Without this filter the
+        // assistant would confidently report meals the user never ate.
+        const mealConsumptions = await prisma.mealConsumptionLog.findMany({
           where: {
+            wasEaten: true,
             OR: [
               { userId: userId },
               { surveyId: surveyData.id }
             ]
           },
-          orderBy: { consumedAt: 'desc' },
+          orderBy: { loggedAt: 'desc' },
           take: 50
         });
         return {
           success: true,
+          // Output keys deliberately unchanged — this result is read by the
+          // model, and the prompt describes it in these terms.
           consumptions: mealConsumptions.map(c => ({
             day: c.day,
             mealType: c.mealType,
-            dishName: c.dishName,
-            restaurant: c.restaurant,
-            consumedAt: c.consumedAt,
+            dishName: c.mealName,
+            restaurant: c.restaurantName,
+            consumedAt: c.loggedAt,
             calories: c.calories,
             protein: c.protein,
             carbs: c.carbs,
@@ -341,20 +354,47 @@ Guidelines:
         });
       }
 
-      // Execute tool calls
-      for (const toolCall of response.tool_calls) {
-        if (toolCall.type === 'function') {
+      // Execute tool calls.
+      //
+      // The model emits the calls in one batch precisely because they do not
+      // depend on each other, so awaiting them one at a time just adds up their
+      // latencies. Results are collected by index and pushed in the original
+      // order afterwards, keeping the transcript deterministic.
+      //
+      // Every call is also individually contained: previously a rejected tool —
+      // or an arguments string the model did not close properly, which
+      // JSON.parse throws on — took down the entire chat request. The protocol
+      // requires a tool message for every tool_call_id, so a failure has to come
+      // back as a result the model can read, not as an absent entry.
+      const toolResults = await Promise.all(
+        response.tool_calls.map(async (toolCall) => {
+          if (toolCall.type !== 'function') return null;
           const functionName = toolCall.function.name;
-          const args = JSON.parse(toolCall.function.arguments || '{}');
 
-          const result = await executeToolCall(functionName, args, userContext);
+          let args: unknown;
+          try {
+            args = JSON.parse(toolCall.function.arguments || '{}');
+          } catch (e) {
+            console.error(`[CHAT] Unparseable arguments for ${functionName}:`, toolCall.function.arguments);
+            return { id: toolCall.id, result: { error: `Could not parse arguments for ${functionName}` } };
+          }
 
-          conversationMessages.push({
-            role: 'tool',
-            content: JSON.stringify(result),
-            tool_call_id: toolCall.id
-          });
-        }
+          try {
+            return { id: toolCall.id, result: await executeToolCall(functionName, args as any, userContext) };
+          } catch (e) {
+            console.error(`[CHAT] Tool ${functionName} threw:`, e);
+            return { id: toolCall.id, result: { error: `${functionName} failed: ${(e as Error).message}` } };
+          }
+        })
+      );
+
+      for (const entry of toolResults) {
+        if (!entry) continue;
+        conversationMessages.push({
+          role: 'tool',
+          content: JSON.stringify(entry.result),
+          tool_call_id: entry.id
+        });
       }
 
       toolCallRounds++;

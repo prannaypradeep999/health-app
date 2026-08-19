@@ -117,31 +117,42 @@ async function findAndSelectBestRestaurants(surveyData: any): Promise<Restaurant
     console.log(`[RESTAURANT-SEARCH] 📍 Location: ${location}`);
     console.log(`[RESTAURANT-SEARCH] 🍽️ Cuisines: ${cuisines.join(', ')}`);
     
-    const allRestaurants: Restaurant[] = [];
-    
     // Convert distance preference to miles (strict enforcement)
     const radiusMiles = surveyData.distancePreference === 'close' ? 1.0 :
                         surveyData.distancePreference === 'far' ? 8.0 : 3.0;
 
     console.log(`[RESTAURANT-SEARCH] 📏 Distance preference: ${surveyData.distancePreference} → ${radiusMiles} miles radius (STRICT)`);
-    
-    // Search for each cuisine (limit to 6 for performance)
-    for (const cuisine of cuisines.slice(0, 6)) {
-      try {
-        const restaurants = await googlePlacesClient.searchRestaurantsByCuisine(
-          location,
-          cuisine,
-          dietaryRestrictions,
-          12,
-          radiusMiles
-        );
-        console.log(`[RESTAURANT-SEARCH] Found ${restaurants.length} ${cuisine} restaurants`);
-        allRestaurants.push(...restaurants);
-      } catch (error) {
-        console.error(`[RESTAURANT-SEARCH] Error searching ${cuisine}:`, error);
-      }
-    }
-    
+
+    // Search for each cuisine (limit to 6 for performance).
+    //
+    // These were awaited one at a time despite being fully independent — six
+    // Places round trips in series, 2.4-4.8s of the user's wait for work that
+    // takes as long as its slowest single call. Order is preserved by mapping
+    // rather than pushing: the dedup below is a last-wins Map and the survivors
+    // feed the selection prompt, so a racing append order would quietly change
+    // which restaurants the model sees.
+    const searchList: string[] = cuisines.slice(0, 6);
+    const perCuisine = await Promise.all(
+      searchList.map(async (cuisine: string) => {
+        try {
+          const restaurants = await googlePlacesClient.searchRestaurantsByCuisine(
+            location,
+            cuisine,
+            dietaryRestrictions,
+            12,
+            radiusMiles
+          );
+          console.log(`[RESTAURANT-SEARCH] Found ${restaurants.length} ${cuisine} restaurants`);
+          return restaurants;
+        } catch (error) {
+          // One dead cuisine must not sink the other five, same as before.
+          console.error(`[RESTAURANT-SEARCH] Error searching ${cuisine}:`, error);
+          return [] as Restaurant[];
+        }
+      })
+    );
+    const allRestaurants: Restaurant[] = perCuisine.flat();
+
     // Remove duplicates by placeId
     const uniqueRestaurants = Array.from(
       new Map(allRestaurants.map(r => [r.placeId, r])).values()
