@@ -70,6 +70,14 @@ export interface Recipe {
  *
  * Keep these free of interpolation. One `${...}` in here and the prefix stops
  * matching across users, silently restoring the old behaviour.
+ *
+ * MACROS ARE WHOLE GRAMS ON PURPOSE. This table used to carry 0.5g values for
+ * 39 ingredients while ROUNDING_RULES below told the model to round macros to
+ * the nearest whole number — the reference contradicted the instruction sitting
+ * a few lines under it. Worse, meal-generation.ts carries the same table already
+ * rounded, so the two generators scored identical ingredients differently: an
+ * egg was 0.5g carbs here and 1g there. Both now agree on all 245 entries.
+ * No calorie value was touched. If you add a row, round the macros first.
  */
 const INGREDIENT_REFERENCE = `
 INGREDIENT REFERENCE TABLE (use for accurate portion scaling):
@@ -87,10 +95,10 @@ PROTEINS (per serving):
 - Cottage cheese (1/2 cup): 110 cal, 14g protein, 5g carbs, 2g fat
 - Cottage cheese 4% (1 cup): 205 cal, 28g protein, 6g carbs, 9g fat
 - Cottage cheese lowfat (1 cup): 165 cal, 28g protein, 6g carbs, 2g fat
-- Egg (large): 70 cal, 6g protein, 0.5g carbs, 5g fat
+- Egg (large): 70 cal, 6g protein, 1g carbs, 5g fat
 - Egg white (1 large): 15 cal, 4g protein, 0g carbs, 0g fat
 - Greek yogurt plain 2% (1 cup): 150 cal, 17g protein, 8g carbs, 4g fat
-- Greek yogurt plain nonfat (1 cup): 130 cal, 17g protein, 8g carbs, 0.5g fat
+- Greek yogurt plain nonfat (1 cup): 130 cal, 17g protein, 8g carbs, 1g fat
 - Ground beef (4 oz, 93% lean): 170 cal, 23g protein, 0g carbs, 8g fat
 - Ground beef 85% lean (4 oz): 240 cal, 21g protein, 0g carbs, 17g fat
 - Ground beef 90% lean (4 oz): 200 cal, 23g protein, 0g carbs, 11g fat
@@ -113,14 +121,14 @@ PROTEINS (per serving):
 - Turkey breast (4 oz): 120 cal, 26g protein, 0g carbs, 1g fat
 
 DAIRY (per serving):
-- Almond milk unsweetened (1 cup): 30 cal, 1g protein, 1g carbs, 2.5g fat
+- Almond milk unsweetened (1 cup): 30 cal, 1g protein, 1g carbs, 3g fat
 - Cheddar cheese (1 oz): 115 cal, 7g protein, 0g carbs, 9g fat
 - Cheese blue (1 oz): 100 cal, 6g protein, 1g carbs, 8g fat
 - Cheese feta (1 oz): 75 cal, 4g protein, 1g carbs, 6g fat
 - Cheese goat (1 oz): 75 cal, 5g protein, 0g carbs, 6g fat
 - Cheese mozzarella fresh (1 oz): 70 cal, 5g protein, 1g carbs, 5g fat
 - Cheese parmesan (1 oz): 110 cal, 10g protein, 1g carbs, 7g fat
-- Cheese parmesan (1 tbsp grated): 20 cal, 2g protein, 0g carbs, 1.5g fat
+- Cheese parmesan (1 tbsp grated): 20 cal, 2g protein, 0g carbs, 2g fat
 - Cheese provolone (1 oz): 100 cal, 7g protein, 1g carbs, 7g fat
 - Cheese ricotta part-skim (1/4 cup): 85 cal, 7g protein, 3g carbs, 5g fat
 - Cheese Swiss (1 oz): 110 cal, 8g protein, 2g carbs, 8g fat
@@ -141,28 +149,28 @@ DAIRY (per serving):
 - Soy milk unsweetened (1 cup): 80 cal, 7g protein, 4g carbs, 4g fat
 
 GRAINS & CARBS (per serving):
-- Bagel (1 medium): 275 cal, 11g protein, 54g carbs, 1.5g fat
-- Bread sourdough (1 slice): 90 cal, 4g protein, 18g carbs, 0.5g fat
+- Bagel (1 medium): 275 cal, 11g protein, 54g carbs, 2g fat
+- Bread sourdough (1 slice): 90 cal, 4g protein, 18g carbs, 1g fat
 - Bread white (1 slice): 75 cal, 2g protein, 14g carbs, 1g fat
-- Bulgur (1 cup cooked): 150 cal, 6g protein, 34g carbs, 0.5g fat
+- Bulgur (1 cup cooked): 150 cal, 6g protein, 34g carbs, 1g fat
 - Corn (1 cup kernels): 130 cal, 5g protein, 29g carbs, 2g fat
 - Corn on cob (1 medium ear): 90 cal, 3g protein, 19g carbs, 1g fat
-- Couscous (1 cup cooked): 175 cal, 6g protein, 36g carbs, 0.5g fat
+- Couscous (1 cup cooked): 175 cal, 6g protein, 36g carbs, 1g fat
 - English muffin (1 whole): 135 cal, 5g protein, 26g carbs, 1g fat
 - Farro (1 cup cooked): 200 cal, 8g protein, 40g carbs, 2g fat
 - Naan bread (1 piece): 260 cal, 9g protein, 45g carbs, 5g fat
 - Oatmeal instant (1 packet): 100 cal, 4g protein, 19g carbs, 2g fat
 - Oats rolled (1 cup dry): 305 cal, 11g protein, 55g carbs, 5g fat
-- Oats rolled (1/2 cup dry): 155 cal, 5g protein, 27g carbs, 2.5g fat
+- Oats rolled (1/2 cup dry): 155 cal, 5g protein, 27g carbs, 3g fat
 - Pasta (2 oz dry = ~1 cup cooked): 200 cal, 7g protein, 42g carbs, 1g fat
-- Pasta whole wheat (2 oz dry): 180 cal, 8g protein, 37g carbs, 1.5g fat
+- Pasta whole wheat (2 oz dry): 180 cal, 8g protein, 37g carbs, 2g fat
 - Pita bread (1 whole 6.5"): 165 cal, 5g protein, 33g carbs, 1g fat
 - Potato red (1 medium/150g): 155 cal, 4g protein, 34g carbs, 0g fat
 - Potato russet (1 medium/150g): 165 cal, 4g protein, 37g carbs, 0g fat
 - Quinoa (1 cup cooked): 220 cal, 8g protein, 40g carbs, 4g fat
 - Rice brown (1 cup cooked): 215 cal, 5g protein, 45g carbs, 2g fat
-- Rice jasmine (1 cup cooked): 205 cal, 4g protein, 45g carbs, 0.5g fat
-- Rice white (1 cup cooked): 205 cal, 4g protein, 45g carbs, 0.5g fat
+- Rice jasmine (1 cup cooked): 205 cal, 4g protein, 45g carbs, 1g fat
+- Rice white (1 cup cooked): 205 cal, 4g protein, 45g carbs, 1g fat
 - Sweet potato (1 medium): 100 cal, 2g protein, 24g carbs, 0g fat
 - Tortilla whole wheat (1 medium): 120 cal, 4g protein, 20g carbs, 3g fat
 - Tortilla, corn (1 medium): 60 cal, 1g protein, 12g carbs, 1g fat
@@ -170,7 +178,7 @@ GRAINS & CARBS (per serving):
 - Whole wheat bread (1 slice): 80 cal, 4g protein, 15g carbs, 1g fat
 
 VEGETABLES (per serving):
-- Arugula (1 cup): 5 cal, 0.5g protein, 1g carbs, 0g fat
+- Arugula (1 cup): 5 cal, 1g protein, 1g carbs, 0g fat
 - Asparagus (1 cup): 25 cal, 3g protein, 5g carbs, 0g fat
 - Asparagus (6 spears): 20 cal, 2g protein, 4g carbs, 0g fat
 - Avocado (1/4): 80 cal, 1g protein, 4g carbs, 7g fat
@@ -181,9 +189,9 @@ VEGETABLES (per serving):
 - Bell pepper red (1 medium): 35 cal, 1g protein, 7g carbs, 0g fat
 - Bell pepper yellow (1 medium): 50 cal, 2g protein, 12g carbs, 0g fat
 - Bok choy (1 cup): 10 cal, 1g protein, 2g carbs, 0g fat
-- Broccoli (1 cup chopped): 55 cal, 4g protein, 11g carbs, 0.5g fat
-- Broccoli (1 cup steamed): 55 cal, 4g protein, 11g carbs, 0.5g fat
-- Brussels sprouts (1 cup): 55 cal, 4g protein, 11g carbs, 0.5g fat
+- Broccoli (1 cup chopped): 55 cal, 4g protein, 11g carbs, 1g fat
+- Broccoli (1 cup steamed): 55 cal, 4g protein, 11g carbs, 1g fat
+- Brussels sprouts (1 cup): 55 cal, 4g protein, 11g carbs, 1g fat
 - Cabbage green (1 cup shredded): 20 cal, 1g protein, 4g carbs, 0g fat
 - Cabbage red (1 cup shredded): 20 cal, 1g protein, 5g carbs, 0g fat
 - Carrots (1 cup chopped): 50 cal, 1g protein, 12g carbs, 0g fat
@@ -201,8 +209,8 @@ VEGETABLES (per serving):
 - Green beans (1 cup): 30 cal, 2g protein, 7g carbs, 0g fat
 - Green onion (1 stalk): 5 cal, 0g protein, 1g carbs, 0g fat
 - Jalapeño (1 pepper): 5 cal, 0g protein, 1g carbs, 0g fat
-- Kale cooked (1 cup): 35 cal, 2g protein, 7g carbs, 0.5g fat
-- Kale raw (1 cup chopped): 35 cal, 3g protein, 6g carbs, 0.5g fat
+- Kale cooked (1 cup): 35 cal, 2g protein, 7g carbs, 1g fat
+- Kale raw (1 cup chopped): 35 cal, 3g protein, 6g carbs, 1g fat
 - Lettuce romaine (1 cup): 10 cal, 1g protein, 2g carbs, 0g fat
 - Mixed greens (1 cup): 10 cal, 1g protein, 2g carbs, 0g fat
 - Mushrooms (1 cup): 20 cal, 3g protein, 3g carbs, 0g fat
@@ -222,33 +230,33 @@ VEGETABLES (per serving):
 - Yellow squash (1 cup): 20 cal, 1g protein, 4g carbs, 0g fat
 - Zucchini (1 cup sliced): 20 cal, 1g protein, 4g carbs, 0g fat
 - Zucchini (1 cup): 20 cal, 1g protein, 4g carbs, 0g fat
-- Zucchini (1 medium): 35 cal, 2g protein, 6g carbs, 0.5g fat
+- Zucchini (1 medium): 35 cal, 2g protein, 6g carbs, 1g fat
 
 FRUITS (per serving):
-- Apple (1 medium): 95 cal, 0.5g protein, 25g carbs, 0.5g fat
-- Banana (1 medium): 105 cal, 1g protein, 27g carbs, 0.5g fat
-- Banana (1/2 medium): 55 cal, 0.5g protein, 14g carbs, 0g fat
-- Blackberries (1 cup): 60 cal, 2g protein, 14g carbs, 0.5g fat
-- Blueberries (1 cup): 85 cal, 1g protein, 21g carbs, 0.5g fat
-- Blueberries (1/2 cup): 40 cal, 0.5g protein, 11g carbs, 0g fat
-- Cantaloupe (1 cup cubed): 55 cal, 1g protein, 13g carbs, 0.5g fat
-- Cherries (1 cup): 95 cal, 2g protein, 25g carbs, 0.5g fat
+- Apple (1 medium): 95 cal, 1g protein, 25g carbs, 1g fat
+- Banana (1 medium): 105 cal, 1g protein, 27g carbs, 1g fat
+- Banana (1/2 medium): 55 cal, 1g protein, 14g carbs, 0g fat
+- Blackberries (1 cup): 60 cal, 2g protein, 14g carbs, 1g fat
+- Blueberries (1 cup): 85 cal, 1g protein, 21g carbs, 1g fat
+- Blueberries (1/2 cup): 40 cal, 1g protein, 11g carbs, 0g fat
+- Cantaloupe (1 cup cubed): 55 cal, 1g protein, 13g carbs, 1g fat
+- Cherries (1 cup): 95 cal, 2g protein, 25g carbs, 1g fat
 - Dates medjool (1): 65 cal, 0g protein, 18g carbs, 0g fat
 - Dried apricots (1/4 cup): 80 cal, 1g protein, 20g carbs, 0g fat
-- Dried cranberries (1/4 cup): 125 cal, 0g protein, 33g carbs, 0.5g fat
+- Dried cranberries (1/4 cup): 125 cal, 0g protein, 33g carbs, 1g fat
 - Grapefruit (1/2): 50 cal, 1g protein, 13g carbs, 0g fat
 - Grapes (1 cup): 105 cal, 1g protein, 27g carbs, 0g fat
-- Kiwi (1 medium): 40 cal, 1g protein, 10g carbs, 0.5g fat
+- Kiwi (1 medium): 40 cal, 1g protein, 10g carbs, 1g fat
 - Lemon juice (1 tbsp): 5 cal, 0g protein, 1g carbs, 0g fat
 - Lime juice (1 tbsp): 5 cal, 0g protein, 1g carbs, 0g fat
-- Mango (1 cup cubed): 100 cal, 1g protein, 25g carbs, 0.5g fat
+- Mango (1 cup cubed): 100 cal, 1g protein, 25g carbs, 1g fat
 - Orange (1 medium): 60 cal, 1g protein, 15g carbs, 0g fat
-- Peach (1 medium): 60 cal, 1g protein, 14g carbs, 0.5g fat
+- Peach (1 medium): 60 cal, 1g protein, 14g carbs, 1g fat
 - Pear (1 medium): 100 cal, 1g protein, 27g carbs, 0g fat
 - Pineapple (1 cup chunks): 80 cal, 1g protein, 22g carbs, 0g fat
 - Raisins (1/4 cup): 125 cal, 1g protein, 33g carbs, 0g fat
 - Raspberries (1 cup): 65 cal, 1g protein, 15g carbs, 1g fat
-- Strawberries (1 cup sliced): 50 cal, 1g protein, 12g carbs, 0.5g fat
+- Strawberries (1 cup sliced): 50 cal, 1g protein, 12g carbs, 1g fat
 - Watermelon (1 cup cubed): 45 cal, 1g protein, 12g carbs, 0g fat
 
 LEGUMES (per serving):
@@ -263,10 +271,10 @@ FATS & OILS (per serving):
 - Avocado oil (1 tbsp): 125 cal, 0g protein, 0g carbs, 14g fat
 - Butter (1 tbsp): 100 cal, 0g protein, 0g carbs, 12g fat
 - Butter (1 tsp): 35 cal, 0g protein, 0g carbs, 4g fat
-- Coconut oil (1 tbsp): 120 cal, 0g protein, 0g carbs, 13.5g fat
+- Coconut oil (1 tbsp): 120 cal, 0g protein, 0g carbs, 14g fat
 - Ghee (1 tbsp): 120 cal, 0g protein, 0g carbs, 14g fat
-- Olive oil (1 tbsp): 120 cal, 0g protein, 0g carbs, 13.5g fat
-- Olive oil (1 tsp): 40 cal, 0g protein, 0g carbs, 4.5g fat
+- Olive oil (1 tbsp): 120 cal, 0g protein, 0g carbs, 14g fat
+- Olive oil (1 tsp): 40 cal, 0g protein, 0g carbs, 5g fat
 - Sesame oil (1 tbsp): 120 cal, 0g protein, 0g carbs, 14g fat
 - Vegetable oil (1 tbsp): 120 cal, 0g protein, 0g carbs, 14g fat
 
@@ -298,7 +306,7 @@ CONDIMENTS & SAUCES (per serving):
 - Apple cider vinegar (1 tbsp): 5 cal, 0g protein, 0g carbs, 0g fat
 - Balsamic vinegar (1 tbsp): 15 cal, 0g protein, 3g carbs, 0g fat
 - BBQ sauce (2 tbsp): 70 cal, 0g protein, 17g carbs, 0g fat
-- Breadcrumbs (1/4 cup): 110 cal, 4g protein, 20g carbs, 1.5g fat
+- Breadcrumbs (1/4 cup): 110 cal, 4g protein, 20g carbs, 2g fat
 - Brown sugar (1 tbsp): 50 cal, 0g protein, 13g carbs, 0g fat
 - Coconut cream (2 tbsp): 100 cal, 1g protein, 2g carbs, 10g fat
 - Cornstarch (1 tbsp): 30 cal, 0g protein, 7g carbs, 0g fat
@@ -308,7 +316,7 @@ CONDIMENTS & SAUCES (per serving):
 - Flour whole wheat (1 tbsp): 25 cal, 1g protein, 5g carbs, 0g fat
 - Greek yogurt (as sauce, 2 tbsp): 20 cal, 2g protein, 1g carbs, 0g fat
 - Guacamole (2 tbsp): 50 cal, 1g protein, 3g carbs, 4g fat
-- Hoisin sauce (1 tbsp): 35 cal, 1g protein, 7g carbs, 0.5g fat
+- Hoisin sauce (1 tbsp): 35 cal, 1g protein, 7g carbs, 1g fat
 - Honey (1 tbsp): 65 cal, 0g protein, 17g carbs, 0g fat
 - Honey (1 tsp): 20 cal, 0g protein, 6g carbs, 0g fat
 - Hot sauce (1 tsp): 0 cal, 0g protein, 0g carbs, 0g fat
@@ -321,9 +329,9 @@ CONDIMENTS & SAUCES (per serving):
 - Miso paste (1 tbsp): 35 cal, 2g protein, 4g carbs, 1g fat
 - Mustard (1 tbsp): 10 cal, 1g protein, 1g carbs, 0g fat
 - Mustard (1 tsp): 5 cal, 0g protein, 0g carbs, 0g fat
-- Nutritional yeast (2 tbsp): 45 cal, 8g protein, 5g carbs, 0.5g fat
+- Nutritional yeast (2 tbsp): 45 cal, 8g protein, 5g carbs, 1g fat
 - Oyster sauce (1 tbsp): 10 cal, 0g protein, 2g carbs, 0g fat
-- Panko breadcrumbs (1/4 cup): 55 cal, 2g protein, 11g carbs, 0.5g fat
+- Panko breadcrumbs (1/4 cup): 55 cal, 2g protein, 11g carbs, 1g fat
 - Pesto (1 tbsp): 80 cal, 2g protein, 1g carbs, 8g fat
 - Pico de gallo (2 tbsp): 5 cal, 0g protein, 1g carbs, 0g fat
 - Ranch dressing (2 tbsp): 140 cal, 0g protein, 2g carbs, 14g fat
