@@ -73,8 +73,54 @@ export interface GroceryPriceResponse {
   error?: string;
 }
 
+/**
+ * DECISION 2026-08-18 — stay on Sonar chat/completions for now. Measured, not assumed.
+ *
+ * ⏳ THIS HAS AN EXPIRY DATE. Perplexity retires the Sonar tiers and the
+ * `/chat/completions` surface on **2026-09-27**. After that these three calls
+ * stop working — not degrade, stop. If you are reading this on or after that
+ * date and restaurant/grocery search is broken, this comment is the reason.
+ *   https://docs.perplexity.ai/docs/agent-api/migrate-from-sonar/overview
+ *
+ * Why we did not migrate today:
+ *
+ * 1. The endpoint is healthy. Probed 2026-08-18: HTTP 200, no Deprecation or
+ *    Sunset headers, `citations` and `search_results` both populated and fresh.
+ * 2. The replacement is not a drop-in. `POST /v1/agent` takes `input` (a string)
+ *    instead of `messages`, chooses a model via `preset`, and returns an `output`
+ *    array of steps rather than `choices[]`. All three call sites and both
+ *    response parsers change. That is Phase 2 work, not a constant swap.
+ * 3. Its structured-output mode is measurably weaker under a tight schema.
+ *    With `minItems: 5` against a prompt naming only two items:
+ *      - Sonar    → clean, e.g. ["apple","banana","cherry","orange","mango"]
+ *      - Agent API→ corrupted: chain-of-thought leaked into string values,
+ *                   multilingual junk tokens, and 1 of 3 trials returned no
+ *                   message at all.
+ *    On realistic, loosely-constrained prompts the Agent API was fine (3/3 valid
+ *    menus). The failure is specific to schemas that constrain harder than the
+ *    prompt supports — which is exactly the regime Phase 0's count-pinning uses.
+ *
+ * Cost is close enough not to decide this, but the shape differs — Sonar bills a
+ * flat `request_cost` ($0.005 of a $0.0053 call, ~94%), the Agent API bills
+ * per-tool-call plus cache creation ($0.00594 for the same query).
+ *
+ * ⚠️ Non-obvious, and it reverses what the Phase 2 plan assumed: Sonar
+ * `/chat/completions` DOES accept `response_format: {type:'json_schema',
+ * json_schema:{..., strict:true}}` today, and it is genuinely grammar-enforced —
+ * `minItems` is honoured, and citations survive (15 citations / 15 search_results
+ * on a schema'd menu query, ~5.5s). So the two-hop
+ * Sonar-writes-prose → gpt-4o-reshapes-it design in `processWithGPT4` is not
+ * required by any vendor limitation. See Amendment A1 in
+ * docs/superpowers/plans/2026-08-17-phase2-structured-perplexity.md before
+ * acting on that, though: collapsing the hop also has to carry the dietary
+ * exclusion logic, and the surface it would be built on retires on 2026-09-27.
+ *
+ * What would change this decision: the demo slipping past mid-September, or
+ * Perplexity fixing Agent API structured output (re-run the minItems probe above).
+ */
 export class PerplexityClient {
   private apiKey: string;
+  // Retires 2026-09-27 — see the DECISION block above before changing this.
   private baseUrl = 'https://api.perplexity.ai/chat/completions';
 
   constructor() {
