@@ -10,6 +10,7 @@ import { validateRestrictions } from '@/lib/utils/restriction-validator';
 import { buildFallbackGroceryList, enhanceGroceryListWithUsage } from '@/lib/utils/grocery-list';
 import { isUsableMeal, isUsableOption } from '@/lib/utils/meal-usability';
 import { summarizeCompleteness } from '@/lib/utils/completeness';
+import { adjustTargetsForRestaurantBudget } from '@/lib/utils/restaurant-budget';
 import { createHomeMealGenerationPrompt, createPlanningPrompt, createDetailPrompt, createGroceryPrompt, HOME_MEAL_NUTRITION_METHOD, type MealFeedbackContext } from '@/lib/ai/prompts';
 import { pexelsClient } from '@/lib/external/pexels-client';
 import { withGPTRetry, HttpError } from '@/lib/utils/retry';
@@ -215,76 +216,6 @@ function hasRestaurantSlots(weeklySchedule: any): boolean {
   );
 }
 
-// Adjust nutrition targets based on restaurant meal budget
-function adjustTargetsForRestaurantBudget(
-  weeklyTargets: any,
-  restaurantCalories: Array<{ day: string; mealType: string; calories: number }>
-): any {
-  if (!weeklyTargets || !weeklyTargets.days) return weeklyTargets;
-
-  const adjustedDays = { ...weeklyTargets.days };
-
-  // For each day, subtract restaurant calories from daily total and redistribute
-  restaurantCalories.forEach(({ day, mealType, calories }) => {
-    const dayKey = day.toLowerCase();
-    const dayTargets = adjustedDays[dayKey];
-
-    if (!dayTargets) return;
-
-    console.log(`[BUDGET-ADJUST] ${day} ${mealType}: reducing by ${calories} calories`);
-
-    // Calculate remaining calories for home meals
-    const remainingCalories = Math.max(0, weeklyTargets.dailyCalories - calories);
-
-    // Get home meal slots for this day (excluding the restaurant meal)
-    const homeMealSlots = [];
-    if (mealType !== 'breakfast' && dayTargets.breakfast?.source === 'home') homeMealSlots.push('breakfast');
-    if (mealType !== 'lunch' && dayTargets.lunch?.source === 'home') homeMealSlots.push('lunch');
-    if (mealType !== 'dinner' && dayTargets.dinner?.source === 'home') homeMealSlots.push('dinner');
-
-    if (homeMealSlots.length === 0) return; // No home meals to adjust
-
-    // Redistribute remaining calories across home meals
-    if (homeMealSlots.length === 1) {
-      // One home meal gets all remaining calories (capped at 1200)
-      const slot = homeMealSlots[0] as 'breakfast' | 'lunch' | 'dinner';
-      const newCalories = Math.min(remainingCalories, 1200);
-      const proportion = newCalories / weeklyTargets.dailyCalories;
-
-      adjustedDays[dayKey][slot] = {
-        ...dayTargets[slot],
-        calories: newCalories,
-        protein: Math.round(weeklyTargets.macros.protein * proportion),
-        carbs: Math.round(weeklyTargets.macros.carbs * proportion),
-        fat: Math.round(weeklyTargets.macros.fat * proportion)
-      };
-    } else if (homeMealSlots.length === 2) {
-      // Two home meals - distribute 40/60
-      const smallerMeal = Math.round(remainingCalories * 0.4);
-      const largerMeal = remainingCalories - smallerMeal;
-
-      homeMealSlots.forEach((slot, index) => {
-        const slotTyped = slot as 'breakfast' | 'lunch' | 'dinner';
-        const calories = index === 0 ? smallerMeal : largerMeal;
-        const proportion = calories / weeklyTargets.dailyCalories;
-
-        adjustedDays[dayKey][slotTyped] = {
-          ...dayTargets[slotTyped],
-          calories,
-          protein: Math.round(weeklyTargets.macros.protein * proportion),
-          carbs: Math.round(weeklyTargets.macros.carbs * proportion),
-          fat: Math.round(weeklyTargets.macros.fat * proportion)
-        };
-      });
-    }
-  });
-
-  return {
-    ...weeklyTargets,
-    days: adjustedDays
-  };
-}
-
 // Convert new nutrition targets to legacy format for backward compatibility
 function convertToLegacyTargets(weeklyTargets: any, day?: string): any {
   if (!weeklyTargets) return null;
@@ -407,7 +338,8 @@ async function generateHomeMealsForSchedule(
   homeMeals: Array<{day: string, mealType: string}>,
   surveyData: any,
   nutritionTargets: any,
-  weeklyNutritionTargets?: any
+  weeklyNutritionTargets?: any,
+  targetsByDay?: Record<string, any>
 ): Promise<any> {
   const startTime = Date.now();
   console.log(`[HOME-MEALS-7DAY] 🏠 Generating ${homeMeals.length} home meals for 7-day schedule...`);
@@ -440,7 +372,7 @@ async function generateHomeMealsForSchedule(
   // Try Phase 2 plan+parallel architecture first (NEW DEFAULT)
   try {
     console.log(`[HOME-MEALS-7DAY] 🚀 Trying Phase 2: Plan+Parallel architecture...`);
-    const result = await generateHomeMealsParallel(homeMeals, surveyData, nutritionTargets, weeklyNutritionTargets, feedbackContext);
+    const result = await generateHomeMealsParallel(homeMeals, surveyData, nutritionTargets, weeklyNutritionTargets, feedbackContext, targetsByDay);
     const totalTime = Date.now() - startTime;
     console.log(`[HOME-MEALS-7DAY] ✅ Phase 2 completed successfully in ${totalTime}ms`);
     return result;
@@ -1000,7 +932,8 @@ async function generateMealDetails(
   plannedMealsChunk: any[],
   surveyData: any,
   nutritionTargets: any,
-  chunkName: string
+  chunkName: string,
+  targetsByDay?: Record<string, any>
 ): Promise<any> {
   console.log(`[HOME-MEALS-7DAY] 📋 Phase 2: Generating details for ${chunkName} (${plannedMealsChunk.length} meals)...`);
   const startTime = Date.now();
@@ -1009,11 +942,18 @@ async function generateMealDetails(
   // before the count was in the grammar.
   const DetailSchema = pinnedMealDetail(plannedMealsChunk.length);
 
+  // A7. Prefer the chunk's own day over the week-level object, which is
+  // Monday's. A chunk can span days (Fri-Sun), so the first day is not exact —
+  // but it is strictly closer than always being Monday, and formatNutritionTargets
+  // already carries the exact per-day numbers into the prompt when they vary.
+  const chunkDay = plannedMealsChunk[0]?.day?.toLowerCase();
+  const effectiveTargets = (chunkDay && targetsByDay?.[chunkDay]) || nutritionTargets;
+
   // Create detail prompt with planned meals and user context
   const detailPrompt = createDetailPrompt(plannedMealsChunk, {
     homeMeals: plannedMealsChunk.map(m => ({day: m.day, mealType: m.mealType})),
     surveyData,
-    nutritionTargets,
+    nutritionTargets: effectiveTargets,
     scheduleText: `Details for ${chunkName}`
   });
 
@@ -1147,7 +1087,8 @@ async function generateHomeMealsParallel(
   surveyData: any,
   nutritionTargets: any,
   weeklyNutritionTargets?: any,
-  feedbackContext?: MealFeedbackContext | null
+  feedbackContext?: MealFeedbackContext | null,
+  targetsByDay?: Record<string, any>
 ): Promise<any> {
   const startTime = Date.now();
   console.log(`[HOME-MEALS-7DAY] 🚀 Starting plan+parallel generation for ${homeMeals.length} home meals...`);
@@ -1235,7 +1176,7 @@ async function generateHomeMealsParallel(
 
     // Generate details for all chunks in parallel
     const detailResults = await Promise.all(
-      chunks.map(chunk => generateMealDetails(chunk.meals, surveyData, nutritionTargets, chunk.name))
+      chunks.map(chunk => generateMealDetails(chunk.meals, surveyData, nutritionTargets, chunk.name, targetsByDay))
     );
 
     // Merge all detail results
@@ -1282,7 +1223,7 @@ async function generateHomeMealsParallel(
 
     if (undetailed.length > 0) {
       console.warn(`[HOME-MEALS-7DAY] 🔁 Detail top-up: ${undetailed.length}/${plannedMeals.length} meals missing detail (${undetailed.map(slotKey).join(', ')})`);
-      const topUp = await generateMealDetails(undetailed, surveyData, nutritionTargets, 'top-up');
+      const topUp = await generateMealDetails(undetailed, surveyData, nutritionTargets, 'top-up', targetsByDay);
       for (const m of topUp.meals as any[]) {
         // Same content bar on the way back in. A hollow meal is worse than an
         // absent one: it renders as a card reading "0 cal / 0g protein" with no
@@ -1538,8 +1479,18 @@ async function handleGenerate_home(req: NextRequest) {
     }
     console.log(`[HOME-GENERATION] 📊 Calculated nutrition targets: ${nutritionTargets.dailyCalories} calories/day`);
 
+    // A7. Per-day legacy targets. The week-level `nutritionTargets` above is
+    // Monday's, because convertToLegacyTargets falls through to
+    // Object.values(days)[0] when given no day — under a variable named
+    // `avgDay`, which is not an average. Everything that knows which day it is
+    // generating should read from here instead.
+    const targetsByDay: Record<string, any> = {};
+    Object.keys(adjustedTargets?.days ?? {}).forEach(day => {
+      targetsByDay[day] = convertToLegacyTargets(adjustedTargets, day);
+    });
+
     // Generate home meals (now includes grocery list)
-    const homeMealPlan = await generateHomeMealsForSchedule(homeMealsSchedule, surveyData, nutritionTargets, adjustedTargets);
+    const homeMealPlan = await generateHomeMealsForSchedule(homeMealsSchedule, surveyData, nutritionTargets, adjustedTargets, targetsByDay);
 
     // Enhance meals with Pexels images
     console.log(`[HOME-GENERATION] 🖼️ Enhancing meals with images...`);
