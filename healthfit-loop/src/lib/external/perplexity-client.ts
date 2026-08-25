@@ -14,6 +14,7 @@ import { parseChoice } from '@/lib/ai/validate';
 import { logUsage } from '@/lib/ai/usage';
 import { createLimiter } from '@/lib/utils/concurrency';
 import { corroborate } from '@/lib/external/link-check';
+import { computeStoreTotals } from '@/lib/utils/store-totals';
 
 /**
  * Process-wide gate on every Perplexity request.
@@ -146,9 +147,10 @@ export interface GroceryItemWithPrices {
 export interface GroceryPriceResponse {
   items: GroceryItemWithPrices[];
   stores: GroceryStore[];
-  storeTotals: { store: string; total: number }[];
+  storeTotals: { store: string; total: number; itemCount: number; comparable: boolean }[];
+  comparableItemCount?: number;
   recommendedStore: string;
-  savings: string;  // "Save $16.50 vs Store X"
+  savings: string;  // "Save $16.50 on 24 shared items vs Store X"
   priceSearchSuccess: boolean;
   error?: string;
 }
@@ -542,20 +544,19 @@ Return as JSON only, no other text:
     // better answer regardless: an arithmetic result should come from
     // arithmetic, and the model was previously free to return a total that did
     // not match the prices printed beside it.
-    const totalsByStore = new Map<string, number>();
-    for (const item of pricedItems) {
-      for (const option of item.storeOptions) {
-        totalsByStore.set(option.store, (totalsByStore.get(option.store) || 0) + (option.price || 0));
-      }
-    }
-    const storeTotals = [...totalsByStore.entries()]
-      .map(([store, total]) => ({ store, total: Math.round(total * 100) / 100 }))
-      .sort((a, b) => a.total - b.total);
+    const { totals: storeTotals, comparableItemCount, skippedStores } =
+      computeStoreTotals(pricedItems);
 
-    const cheapest = storeTotals[0];
-    const dearest = storeTotals[storeTotals.length - 1];
-    const savings = cheapest && dearest && storeTotals.length > 1 && dearest.total > cheapest.total
-      ? `Save $${(dearest.total - cheapest.total).toFixed(2)} vs ${dearest.store}`
+    if (skippedStores.length > 0) {
+      console.warn(`[PERPLEXITY-GROCERY] ⚠️ Excluded from price comparison (too few items priced): ${skippedStores.join(', ')}`);
+    }
+    console.log(`[PERPLEXITY-GROCERY] ⚖️ Comparing ${storeTotals.filter(t => t.comparable).length} store(s) over ${comparableItemCount} shared item(s)`);
+
+    const comparable = storeTotals.filter(t => t.comparable);
+    const cheapest = comparable[0];
+    const dearest = comparable[comparable.length - 1];
+    const savings = cheapest && dearest && comparable.length > 1 && dearest.total > cheapest.total
+      ? `Save $${(dearest.total - cheapest.total).toFixed(2)} on ${comparableItemCount} shared items vs ${dearest.store}`
       : '';
 
     console.log(`[PERPLEXITY-GROCERY] ✅ Got prices for ${pricedItems.length} items`);
@@ -565,6 +566,7 @@ Return as JSON only, no other text:
       items: pricedItems,
       stores,
       storeTotals,
+      comparableItemCount,
       recommendedStore: cheapest?.store || '',
       savings,
       priceSearchSuccess: true,
