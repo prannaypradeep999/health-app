@@ -14,6 +14,7 @@ import { parseChoice } from '@/lib/ai/validate';
 import { logUsage } from '@/lib/ai/usage';
 import { createLimiter } from '@/lib/utils/concurrency';
 import { corroborate } from '@/lib/external/link-check';
+import { parseReceipt, sourceHostsFrom, type SearchItem } from '@/lib/verification/receipt';
 import { computeStoreTotals, planPriceChunks } from '@/lib/utils/store-totals';
 
 /**
@@ -108,6 +109,15 @@ export interface PerplexityMenuResponse {
   extractionSuccess: boolean;
   linksFound: number;
   linkCorroboration?: Record<string, 'cited' | 'uncited'>;
+  /**
+   * Hop 1's own answer, kept so downstream can check hop 2 and hop 3 against
+   * it. Undefined means the hop-1 payload did not parse — which is distinct
+   * from an empty menu, and the difference decides whether an unmatched dish is
+   * a fabrication or simply unknowable.
+   */
+  searchItems?: SearchItem[];
+  /** Hosts hop 1 actually retrieved from. Evidence for link corroboration. */
+  sourceHosts?: string[];
   error?: string;
 }
 
@@ -311,6 +321,14 @@ export class PerplexityClient {
       const content = data.choices?.[0]?.message?.content || '';
       const citations = data.citations || [];
 
+      // Hop 1 is the only hop that looked at the internet. Its answer used to be
+      // handed to hop 2 as a string and dropped on the floor. Parsing it here is
+      // what makes every downstream grounding check possible.
+      const receipt = parseReceipt(content);
+      if (!receipt) {
+        console.warn(`[PERPLEXITY] ⚠️ Hop-1 payload did not parse as MenuSearchSchema; grounding checks will report unchecked`);
+      }
+
       console.log(`[PERPLEXITY] ✅ Raw response received in ${Date.now() - startTime}ms`);
       console.log(`[PERPLEXITY] 📄 Content length: ${content.length} characters`);
       console.log(`[PERPLEXITY] 🔗 Citations found: ${citations.length}`);
@@ -355,7 +373,9 @@ export class PerplexityClient {
         sources: citationUrls.slice(0, 5),
         extractionSuccess: (structuredData.menuItems?.length || 0) > 0,
         linksFound: linksFound,
-        linkCorroboration: corroboration
+        linkCorroboration: corroboration,
+        searchItems: receipt?.items,
+        sourceHosts: receipt ? sourceHostsFrom(receipt, citationUrls) : undefined
       };
 
     } catch (error) {
