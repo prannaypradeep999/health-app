@@ -2,6 +2,7 @@ import { prisma } from '@/lib/db';
 import { withPexelsRetry, HttpError } from '@/lib/utils/retry';
 import { createLimiter } from '@/lib/utils/concurrency';
 import { routeRemainingMs } from '@/lib/utils/route-budget';
+import { FOOD_FALLBACKS, WORKOUT_FALLBACKS, isFallbackStale, pickFallback } from './fallback-images';
 
 /**
  * Process-wide, deliberately not per-instance: Pexels counts concurrent
@@ -211,15 +212,19 @@ export class PexelsClient {
         where: { normalizedKey }
       });
 
-      if (cached) {
+      if (cached && !isFallbackStale(cached)) {
         // Cache hit - removed verbose logging
 
-        // Update cache usage stats
+        // Update cache usage stats. updatedAt is passed through unchanged so it
+        // keeps meaning "when imageUrl was last written" — @updatedAt would
+        // otherwise bump it on every read, and a popular fallback would never
+        // reach its TTL.
         await prisma.foodImage.update({
           where: { id: cached.id },
           data: {
             hitCount: { increment: 1 },
-            lastUsed: new Date()
+            lastUsed: new Date(),
+            updatedAt: cached.updatedAt
           }
         });
 
@@ -229,6 +234,10 @@ export class PexelsClient {
           searchQuery: cached.searchQuery,
           cached: true
         };
+      }
+
+      if (cached) {
+        console.log(`[PEXELS] ♻️ Fallback for "${normalizedKey}" is stale, retrying Pexels`);
       }
     } catch (error) {
       console.error('[PEXELS] Cache lookup error:', error);
@@ -475,15 +484,17 @@ export class PexelsClient {
         where: { normalizedKey }
       });
 
-      if (cached) {
+      if (cached && !isFallbackStale(cached)) {
         console.log(`[PEXELS] ✅ Cache hit for workout "${normalizedKey}"`);
 
-        // Update cache usage stats
+        // See the food path: updatedAt is preserved so a read cannot reset the
+        // fallback TTL.
         await prisma.workoutImage.update({
           where: { id: cached.id },
           data: {
             hitCount: { increment: 1 },
-            lastUsed: new Date()
+            lastUsed: new Date(),
+            updatedAt: cached.updatedAt
           }
         });
 
@@ -493,6 +504,10 @@ export class PexelsClient {
           searchQuery: cached.searchQuery,
           cached: true
         };
+      }
+
+      if (cached) {
+        console.log(`[PEXELS] ♻️ Fallback for workout "${normalizedKey}" is stale, retrying Pexels`);
       }
     } catch (error) {
       console.error('[PEXELS] Workout cache lookup error:', error);
@@ -620,32 +635,14 @@ export class PexelsClient {
    * Provides fallback images when Pexels fails
    */
   private getFallbackImage(mealType?: string | null): string {
-    const fallbacks = {
-      'breakfast': 'https://images.unsplash.com/photo-1551782450-a2132b4ba21d?w=400&h=300&fit=crop',
-      'lunch': 'https://images.unsplash.com/photo-1546793665-c74683f339c1?w=400&h=300&fit=crop',
-      'dinner': 'https://images.unsplash.com/photo-1565299624946-b28f40a0ca4b?w=400&h=300&fit=crop',
-      'default': 'https://images.unsplash.com/photo-1567620905732-2d1ec7ab7445?w=400&h=300&fit=crop'
-    };
-
-    return fallbacks[mealType as keyof typeof fallbacks] || fallbacks.default;
+    return pickFallback(FOOD_FALLBACKS, mealType);
   }
 
   /**
    * Provides workout fallback images
    */
   private getWorkoutFallbackImage(muscleGroup?: string | null): string {
-    const fallbacks = {
-      'chest': 'https://images.unsplash.com/photo-1571019613540-996a182a2d6c?w=400&h=300&fit=crop',
-      'back': 'https://images.unsplash.com/photo-1599058917212-d750089bc07e?w=400&h=300&fit=crop',
-      'legs': 'https://images.unsplash.com/photo-1571019614242-c5c5dee9f50b?w=400&h=300&fit=crop',
-      'arms': 'https://images.unsplash.com/photo-1581009146145-b5ef050c2e1e?w=400&h=300&fit=crop',
-      'shoulders': 'https://images.unsplash.com/photo-1574680096145-d05b474e2155?w=400&h=300&fit=crop',
-      'core': 'https://images.unsplash.com/photo-1558618666-fcd25c85cd64?w=400&h=300&fit=crop',
-      'full body': 'https://images.unsplash.com/photo-1518611012118-696072aa579a?w=400&h=300&fit=crop',
-      'default': 'https://images.unsplash.com/photo-1571019613540-996a182a2d6c?w=400&h=300&fit=crop'
-    };
-
-    return fallbacks[muscleGroup as keyof typeof fallbacks] || fallbacks.default;
+    return pickFallback(WORKOUT_FALLBACKS, muscleGroup);
   }
 }
 
