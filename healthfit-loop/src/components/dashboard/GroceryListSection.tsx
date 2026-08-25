@@ -24,7 +24,7 @@ import {
 interface StoreOption {
   store: string;
   displayName: string;
-  price: number;
+  price: number | null;
   isRecommended: boolean;
   reason?: string;
   storeAddress?: string;  // Street address only (e.g., "123 Main St")
@@ -42,6 +42,66 @@ interface GroceryItemWithPrices {
   usedInMeals?: { day: string; meal: string; dishName: string }[];
   firstUseDay?: string;
   perishability?: 'high' | 'medium' | 'low';
+  // Pages the search returned for this item's batch. Not proof of this item's
+  // price — Sonar cites per response, not per item.
+  sources?: string[];
+  pricedAs?: string;
+}
+
+/**
+ * A null price means the store was not priced for this item. Rendered as $0.00 it
+ * reads as free, and the store that failed to price the item looks cheapest.
+ */
+function formatPrice(price: number | null | undefined, confidence?: 'exact' | 'estimate'): string {
+  if (typeof price !== 'number') return 'no price';
+  return `${confidence === 'estimate' ? '~' : ''}$${price.toFixed(2)}`;
+}
+
+/**
+ * The model's self-report, qualified by whether the search returned anything to
+ * cite. "Exact but uncited" used to render identically to "exact and cited",
+ * and it is the state where the claim is most likely to be wrong.
+ */
+function PriceConfidenceBadge({
+  confidence,
+  sourceCount,
+  className = '',
+}: {
+  confidence?: 'exact' | 'estimate';
+  sourceCount: number;
+  className?: string;
+}) {
+  if (!confidence) return null;
+
+  if (confidence !== 'exact') {
+    return (
+      <Badge
+        variant="outline"
+        title="Inferred from typical local pricing rather than read off a listing"
+        className={`text-[9px] h-4 text-amber-600 border-amber-300 ${className}`}
+      >
+        estimate
+      </Badge>
+    );
+  }
+
+  return sourceCount > 0 ? (
+    <Badge
+      variant="outline"
+      title={`The search returned ${sourceCount} source${sourceCount === 1 ? '' : 's'} for this batch of items`}
+      className={`text-[9px] h-4 text-green-600 border-green-300 ${className}`}
+    >
+      found
+    </Badge>
+  ) : (
+    <Badge
+      variant="outline"
+      title="Reported as a found price, but the search returned no sources for this batch"
+      className={`text-[9px] h-4 text-gray-600 border-gray-300 ${className}`}
+    >
+      reported
+    </Badge>
+  );
 }
 
 interface GroceryStore {
@@ -291,7 +351,7 @@ export function GroceryListSection({
       const perish = item.perishability ? ` | ${item.perishability} perishability` : '';
       text += `• ${itemName} (${item.quantity})${firstUse}${perish}`;
       if (bestOption) {
-        text += ` - $${bestOption.price.toFixed(2)} at ${bestOption.store}`;
+        text += ` - ${formatPrice(bestOption.price, bestOption.priceConfidence)} at ${bestOption.store}`;
       }
       text += '\n';
     });
@@ -632,7 +692,7 @@ export function GroceryListSection({
                           )}
                           <div className="flex items-center justify-center gap-1">
                             <p className={`font-bold ${option.isRecommended ? 'text-green-600' : 'text-gray-900'}`}>
-                              {option.priceConfidence === 'estimate' ? '~' : ''}${option.price.toFixed(2)}
+                              {formatPrice(option.price, option.priceConfidence)}
                               {option.isRecommended && <Star className="w-3 h-3 inline ml-1 text-yellow-500" weight="fill" />}
                             </p>
                           </div>
@@ -640,15 +700,10 @@ export function GroceryListSection({
                             {option.displayName}
                           </p>
                           <div className="flex flex-col gap-1 mt-1">
-                            {option.priceConfidence && (
-                              <Badge variant="outline" className={`text-[9px] h-4 ${
-                                option.priceConfidence === 'exact'
-                                  ? 'text-green-600 border-green-300'
-                                  : 'text-amber-600 border-amber-300'
-                              }`}>
-                                {option.priceConfidence}
-                              </Badge>
-                            )}
+                            <PriceConfidenceBadge
+                              confidence={option.priceConfidence}
+                              sourceCount={item.sources?.length ?? 0}
+                            />
                             {option.reason && (
                               <Badge className="text-[10px] bg-green-100 text-green-700 border-0">
                                 {option.reason}
@@ -684,17 +739,13 @@ export function GroceryListSection({
                         <div className="text-right flex-shrink-0 ml-2">
                           <div className="flex items-center gap-1">
                             <p className={`font-bold ${option.isRecommended ? 'text-green-600' : 'text-gray-900'}`}>
-                              {option.priceConfidence === 'estimate' ? '~' : ''}${option.price.toFixed(2)}
+                              {formatPrice(option.price, option.priceConfidence)}
                             </p>
-                            {option.priceConfidence && (
-                              <Badge variant="outline" className={`text-[9px] h-4 ml-1 ${
-                                option.priceConfidence === 'exact'
-                                  ? 'text-green-600 border-green-300'
-                                  : 'text-amber-600 border-amber-300'
-                              }`}>
-                                {option.priceConfidence}
-                              </Badge>
-                            )}
+                            <PriceConfidenceBadge
+                              confidence={option.priceConfidence}
+                              sourceCount={item.sources?.length ?? 0}
+                              className="ml-1"
+                            />
                           </div>
                           {option.reason && (
                             <p className="text-[10px] text-green-600 mt-1">{option.reason}</p>
@@ -718,19 +769,42 @@ export function GroceryListSection({
                       <span className={`font-bold ${
                         displayOptions[0].isRecommended ? 'text-green-600' : 'text-gray-900'
                       }`}>
-                        {displayOptions[0].priceConfidence === 'estimate' ? '~' : ''}${displayOptions[0].price.toFixed(2)}
+                        {formatPrice(displayOptions[0].price, displayOptions[0].priceConfidence)}
                       </span>
-                      {displayOptions[0].priceConfidence && (
-                        <Badge variant="outline" className={`text-[9px] h-4 ${
-                          displayOptions[0].priceConfidence === 'exact'
-                            ? 'text-green-600 border-green-300'
-                            : 'text-amber-600 border-amber-300'
-                        }`}>
-                          {displayOptions[0].priceConfidence}
-                        </Badge>
-                      )}
+                      <PriceConfidenceBadge
+                        confidence={displayOptions[0].priceConfidence}
+                        sourceCount={item.sources?.length ?? 0}
+                      />
                     </div>
                   </div>
+                )}
+
+                {/* Search sources, not price proof: these are the pages the
+                    search returned for this item's batch. */}
+                {hasRealPrices && (item.sources?.length ?? 0) > 0 && (
+                  <details className="border-t border-gray-200 bg-white px-4 py-2">
+                    <summary className="text-[11px] text-gray-500 cursor-pointer">
+                      Search sources ({item.sources!.length})
+                    </summary>
+                    <ul className="mt-1 space-y-0.5">
+                      {item.sources!.map((url, i) => (
+                        <li key={i}>
+                          <a
+                            href={url}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="text-[11px] text-blue-600 hover:underline break-all"
+                          >
+                            {url}
+                          </a>
+                        </li>
+                      ))}
+                    </ul>
+                    <p className="text-[10px] text-gray-400 mt-1">
+                      Pages the price search returned for this batch of items, not a
+                      source for this item&apos;s price specifically.
+                    </p>
+                  </details>
                 )}
               </div>
             );

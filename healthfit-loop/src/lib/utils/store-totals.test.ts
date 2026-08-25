@@ -75,6 +75,30 @@ test('a single store is comparable with itself', () => {
   assert.equal(totals[0].total, 3);
 });
 
+test('an unpriced option does not make its store the cheapest', () => {
+  const items = [
+    { item: 'a', storeOptions: [{ store: 'X', price: 10 }, { store: 'Y', price: 8 }] },
+    { item: 'b', storeOptions: [{ store: 'X', price: 5 }, { store: 'Y', price: 4 }] },
+    // Y could not price this one. Counting the null as 0 used to keep item c in
+    // the intersection, so X was charged 5 for it and Y was charged nothing.
+    { item: 'c', storeOptions: [{ store: 'X', price: 5 }, { store: 'Y', price: null }] },
+  ] as any[];
+
+  const { totals, comparableItemCount } = computeStoreTotals(items);
+  assert.equal(comparableItemCount, 2);
+  assert.equal(totals.find(t => t.store === 'X')!.total, 15);
+  assert.equal(totals.find(t => t.store === 'Y')!.total, 12);
+});
+
+test('a zero price is treated as missing, not free', () => {
+  const items = [
+    { item: 'a', storeOptions: [{ store: 'X', price: 4 }, { store: 'Y', price: 0 }] },
+  ] as any[];
+  const { totals } = computeStoreTotals(items);
+  assert.equal(totals.length, 1);
+  assert.equal(totals[0].store, 'X');
+});
+
 test('a short list stays a single request', () => {
   assert.equal(planPriceChunks(12).chunkSize, 15);
   assert.equal(planPriceChunks(12).chunkCount, 1);

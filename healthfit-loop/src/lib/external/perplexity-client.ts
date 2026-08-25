@@ -129,7 +129,7 @@ export interface GroceryStoreSearchResponse {
 export interface StoreOption {
   store: string;
   displayName: string;  // Item name with brand if relevant (e.g., "TJ's Free Range Chicken Breast")
-  price: number;
+  price: number | null;  // null when no price could be established — never 0
   isRecommended: boolean;
   reason?: string;  // "Best value", "Lowest price", "Best quality"
   storeAddress: string;  // Street address only (e.g., "123 Main St")
@@ -142,6 +142,10 @@ export interface GroceryItemWithPrices {
   uses: string;
   category: string;
   storeOptions: StoreOption[];
+  // The pages the search returned for this item's chunk. Our annotation, not a
+  // model output — it is deliberately absent from the Zod schema, because
+  // asking a model for URLs is how the ordering links got invented.
+  sources?: string[];
 }
 
 export interface GroceryPriceResponse {
@@ -658,6 +662,13 @@ Return as JSON only, no other text:
         throw new Error(`Price lookup returned an unusable response (${parsed.reason}): ${parsed.detail}`);
       }
 
+      // Sonar cites per response, not per item, so this is what the search
+      // retrieved for the whole chunk. The UI must not present it as proof of
+      // any one item's price.
+      const chunkCitations: string[] = (priceResult.data?.citations || [])
+        .map((c: any) => (typeof c === 'string' ? c : c?.url))
+        .filter((u: any): u is string => typeof u === 'string' && u.length > 0);
+
       // `reason` is optional on StoreOption; nullable in the schema for the same
       // strict-mode reason as `distance` above, and mapped back so the key
       // disappears from the JSON rather than serialising as null.
@@ -666,6 +677,7 @@ Return as JSON only, no other text:
         quantity: i.quantity,
         uses: i.uses,
         category: i.category,
+        sources: chunkCitations.slice(0, 3),
         storeOptions: i.storeOptions.map(o => ({
           store: o.store,
           displayName: o.displayName,

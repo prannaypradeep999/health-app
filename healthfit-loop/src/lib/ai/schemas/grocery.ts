@@ -60,10 +60,17 @@ export const GroceryStoreSearchSchema = z.object({
 export const GroceryStoreOption = z.object({
   store: z.string(),
   displayName: z.string(),
-  // A grocery item priced outside this range is a parse error, not a bargain.
-  // Unbounded, a negative price shrank a store's total and helped it win the
-  // cheapest-store comparison.
-  price: z.number().min(0.01).max(500),
+  // Bounded because unbounded, a negative price shrank a store's total and
+  // helped it win the cheapest-store comparison.
+  //
+  // Nullable because the model needs a way to say it does not know. Measured
+  // 2026-08-25: with `price` a required non-nullable number, Sonar returned 0
+  // for every option alongside reason "the current shelf price could not be
+  // verified from the available result" — and the same call with no
+  // response_format returned `price: null`. Zero is not a cheap price, it is a
+  // missing one, and it made whichever store failed to price an item look
+  // cheapest.
+  price: z.number().min(0.01).max(500).nullable(),
   priceConfidence: z.enum(PRICE_CONFIDENCE),
   isRecommended: z.boolean(),
   reason: z.string().nullable(),

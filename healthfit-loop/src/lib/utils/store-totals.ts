@@ -7,7 +7,7 @@ export interface StoreTotal {
 
 interface PricedItemLike {
   item?: string;
-  storeOptions: Array<{ store: string; price?: number }>;
+  storeOptions: Array<{ store: string; price?: number | null }>;
 }
 
 export function canonicalStoreKey(name: string): string {
@@ -47,6 +47,10 @@ export function computeStoreTotals(items: PricedItemLike[]): {
     item.storeOptions?.forEach(option => {
       const key = canonicalStoreKey(option.store);
       if (!key) return;
+      // A null price means the store was not priced for this item, not that the
+      // item is free. Counting it as 0 would put it in the intersection and
+      // drag the store's total down, which is how it would win the comparison.
+      if (typeof option.price !== 'number' || option.price <= 0) return;
       if (!displayName.has(key)) displayName.set(key, option.store);
       if (!pricedIndexes.has(key)) pricedIndexes.set(key, new Set());
       if (!priceAt.has(key)) priceAt.set(key, new Map());
