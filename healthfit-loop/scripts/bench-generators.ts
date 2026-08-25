@@ -1068,7 +1068,7 @@ async function main() {
     for (const f of chosen) {
       for (const s of sites) {
         // planFor would hit the API, so the sites that depend on it can't dry-run.
-        if (s.name === 'meal-detail' || s.name === 'grocery-list') {
+        if (s.name === 'meal-detail' || s.name === 'grocery-list' || s.name === 'grocery-prices') {
           console.log(`${s.name.padEnd(18)} ${f.name.padEnd(18)} — skipped, needs a live upstream plan`);
           continue;
         }
