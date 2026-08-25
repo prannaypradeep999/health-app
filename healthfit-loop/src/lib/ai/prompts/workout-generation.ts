@@ -417,6 +417,11 @@ activeRecovery. Use null for the ones that do not apply: a training day has
 activeRecovery: null, a rest day has warmup: null, exercises: null and
 cooldown: null. Never omit a key.
 
+- "rpeTarget" is Rate of Perceived Exertion on a 1-10 scale, where 10 is
+  maximal effort. Never a percentage. 6-8 for most working sets.
+- "estimatedTime" and "restTime" must lead with a number: "45 minutes",
+  "90 seconds". Not "about an hour".
+
 Return ONLY this JSON:
 {
   "days": [

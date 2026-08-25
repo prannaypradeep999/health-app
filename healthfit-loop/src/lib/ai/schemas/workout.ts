@@ -45,7 +45,9 @@ export const Exercise = z.object({
   weightGuidance: z.object({
     method: z.string(),
     suggestion: z.string(),
-    rpeTarget: z.number(),
+    // The UI renders this as "RPE {n}/10". Unbounded, a model answering on a
+    // percentage scale produced "(RPE 85/10)".
+    rpeTarget: z.number().min(1).max(10),
     warmupSets: z.string(),
   }).strict(),
   modifications: z.object({
