@@ -395,7 +395,10 @@ const SITES: Site[] = [
 
       for (const day of got) {
         // parseInt('about an hour') is NaN, which the UI renders as "NaNmin".
-        if (!/\d/.test(String(day.estimatedTime))) {
+        // Rest days are exempt, as they are for zero-calories below: the model
+        // answers "Rest day" there, which is honest, and the header omits it.
+        // Flagging them buried the real cases under 15 false positives.
+        if (!day.restDay && !/\d/.test(String(day.estimatedTime))) {
           findings.push({
             family: 'ARITHMETIC', severity: 'error', code: 'unparseable-duration',
             where: `weeklyPlan.${day.day}`,
