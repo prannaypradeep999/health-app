@@ -260,7 +260,9 @@ async function handleGenerate_groceries(req: NextRequest) {
       savings: priceResponse.savings,
       location: storeResponse.location,
       pricesUpdatedAt: new Date().toISOString(),
-      priceSearchSuccess: true
+      priceSearchSuccess: priceResponse.priceSearchSuccess,
+      pricedItemCount: priceResponse.pricedItemCount,
+      requestedItemCount: priceResponse.requestedItemCount
     };
 
     // Step 6: Update the meal plan with enriched grocery data

@@ -14,7 +14,7 @@ import { parseChoice } from '@/lib/ai/validate';
 import { logUsage } from '@/lib/ai/usage';
 import { createLimiter } from '@/lib/utils/concurrency';
 import { corroborate } from '@/lib/external/link-check';
-import { computeStoreTotals } from '@/lib/utils/store-totals';
+import { computeStoreTotals, planPriceChunks } from '@/lib/utils/store-totals';
 
 /**
  * Process-wide gate on every Perplexity request.
@@ -152,6 +152,10 @@ export interface GroceryPriceResponse {
   recommendedStore: string;
   savings: string;  // "Save $16.50 on 24 shared items vs Store X"
   priceSearchSuccess: boolean;
+  pricedItemCount?: number;
+  requestedItemCount?: number;
+  chunksFailed?: number;
+  chunksTotal?: number;
   error?: string;
 }
 
@@ -496,8 +500,11 @@ Return as JSON only, no other text:
    * driven by the meal plan, so this is the normal case for a full week, not an
    * outlier.
    *
-   * At most 3 chunks, matching PERPLEXITY_MAX_CONCURRENT, so they issue as one
-   * wave rather than queueing behind each other. The 15-item floor keeps short
+   * One wave up to 240 items — the chunk count stays at or below
+   * PERPLEXITY_MAX_CONCURRENT, so the requests issue together rather than
+   * queueing behind each other. Past that the list gets more chunks rather than
+   * bigger ones and they queue: slower than one wave, but a request that
+   * finishes beats a request that times out. The 15-item floor keeps short
    * lists as the single request they already were.
    */
   async getGroceryPrices(
@@ -507,7 +514,7 @@ Return as JSON only, no other text:
     userGoal: string,
     outerSignal?: AbortSignal
   ): Promise<GroceryPriceResponse> {
-    const chunkSize = Math.max(15, Math.ceil(items.length / PERPLEXITY_MAX_CONCURRENT));
+    const { chunkSize } = planPriceChunks(items.length, PERPLEXITY_MAX_CONCURRENT);
     const chunks: typeof items[] = [];
     for (let i = 0; i < items.length; i += chunkSize) chunks.push(items.slice(i, i + chunkSize));
 
@@ -562,6 +569,7 @@ Return as JSON only, no other text:
     console.log(`[PERPLEXITY-GROCERY] ✅ Got prices for ${pricedItems.length} items`);
     console.log(`[PERPLEXITY-GROCERY] 💡 Recommended store: ${cheapest?.store || 'none'}`);
 
+    const chunksFailed = failures.length;
     return {
       items: pricedItems,
       stores,
@@ -569,7 +577,14 @@ Return as JSON only, no other text:
       comparableItemCount,
       recommendedStore: cheapest?.store || '',
       savings,
-      priceSearchSuccess: true,
+      // True only when nothing failed. A run that lost two of three chunks is
+      // two thirds unpriced, and it used to be indistinguishable from a
+      // complete one.
+      priceSearchSuccess: chunksFailed === 0,
+      pricedItemCount: pricedItems.length,
+      requestedItemCount: items.length,
+      chunksFailed,
+      chunksTotal: chunks.length,
     };
   }
 

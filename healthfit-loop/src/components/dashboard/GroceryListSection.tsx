@@ -59,12 +59,14 @@ interface GroceryList {
   pantryStaples?: GroceryItemWithPrices[];
   snacks?: GroceryItemWithPrices[];
   stores?: GroceryStore[];
-  storeTotals?: { store: string; total: number }[];
+  storeTotals?: { store: string; total: number; itemCount?: number; comparable?: boolean }[];
   recommendedStore?: string;
   savings?: string;
   location?: string;
   pricesUpdatedAt?: string;
   priceSearchSuccess?: boolean;
+  pricedItemCount?: number;
+  requestedItemCount?: number;
   priceError?: string;
   totalEstimatedCost?: number;   // Legacy
   weeklyBudgetUsed?: string;     // Legacy
@@ -158,27 +160,34 @@ export function GroceryListSection({
   const [viewMode, setViewMode] = useState<'all' | 'next3days' | 'perishable'>('all');
   const [sortBy, setSortBy] = useState<'category' | 'day' | 'perishability'>('category');
 
-  // Check if we have real prices (stores + successful price lookup)
+  // Prices are real when we have totals to show. This no longer keys off
+  // priceSearchSuccess: that flag is now false for a partial run, and a partial
+  // run still has prices for most of the list worth rendering.
   const hasRealPrices = !!(
     groceryList?.stores &&
     groceryList.stores.length > 0 &&
-    groceryList.priceSearchSuccess === true &&
     groceryList.storeTotals &&
     groceryList.storeTotals.length > 0
   );
 
+  // Some chunks failed, but not all of them. Distinct from both the complete
+  // run and the no-prices-at-all one.
+  const isPartial = groceryList?.priceSearchSuccess === false && hasRealPrices;
+
   console.log('[GROCERY-SECTION] 💰 Price availability check:', {
     hasRealPrices,
+    isPartial,
     hasStores: !!groceryList?.stores && groceryList.stores.length > 0,
     priceSearchSuccess: groceryList?.priceSearchSuccess,
     hasStoreTotals: !!groceryList?.storeTotals && groceryList.storeTotals.length > 0
   });
 
-  // Check if we have stores but prices failed
+  // Stores found and nothing priced at all.
   const hasStoresNoPrices = !!(
     groceryList?.stores &&
     groceryList.stores.length > 0 &&
-    groceryList.priceSearchSuccess === false
+    groceryList.priceSearchSuccess === false &&
+    !hasRealPrices
   );
 
   // Loading/Error state
@@ -390,6 +399,22 @@ export function GroceryListSection({
                 </button>
               );
             })}
+          </div>
+        )}
+
+        {/* Message when only some of the list came back priced */}
+        {isPartial && (
+          <div className="mt-4 p-3 bg-amber-50 border border-amber-200 rounded-lg flex items-start gap-2">
+            <Warning className="w-5 h-5 text-amber-600 flex-shrink-0 mt-0.5" weight="fill" />
+            <div>
+              <p className="text-sm text-amber-800">
+                <span className="font-medium">Partial price comparison.</span>{' '}
+                Priced {groceryList.pricedItemCount ?? 0} of {groceryList.requestedItemCount ?? 0} items.
+              </p>
+              <p className="text-xs text-amber-600 mt-1">
+                The rest are listed below without prices, and the store totals cover only the priced ones.
+              </p>
+            </div>
           </div>
         )}
 

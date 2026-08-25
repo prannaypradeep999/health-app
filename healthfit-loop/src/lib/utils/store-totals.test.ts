@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { canonicalStoreKey, computeStoreTotals } from './store-totals';
+import { canonicalStoreKey, computeStoreTotals, planPriceChunks } from './store-totals';
 
 test('possessives and punctuation collapse to one key', () => {
   assert.equal(canonicalStoreKey("Trader Joe's"), canonicalStoreKey('Trader Joes'));
@@ -73,4 +73,26 @@ test('a single store is comparable with itself', () => {
   const { totals } = computeStoreTotals(items);
   assert.equal(totals[0].comparable, true);
   assert.equal(totals[0].total, 3);
+});
+
+test('a short list stays a single request', () => {
+  assert.equal(planPriceChunks(12).chunkSize, 15);
+  assert.equal(planPriceChunks(12).chunkCount, 1);
+});
+
+test('a medium list splits across the concurrency limit', () => {
+  const { chunkSize, chunkCount } = planPriceChunks(60);
+  assert.equal(chunkSize, 20);
+  assert.equal(chunkCount, 3);
+});
+
+test('a long list adds chunks rather than growing them past the ceiling', () => {
+  const { chunkSize, chunkCount } = planPriceChunks(300);
+  assert.ok(chunkSize <= 40, `chunk size ${chunkSize} exceeds the ceiling`);
+  assert.ok(chunkCount > 3, 'a 300-item list should need more than 3 chunks');
+});
+
+test('the ceiling is where the old formula started timing out', () => {
+  // 120 items used to produce 3 requests of 40; anything larger grew from there.
+  assert.ok(planPriceChunks(120).chunkSize <= 40);
 });

@@ -98,3 +98,20 @@ export function computeStoreTotals(items: PricedItemLike[]): {
 
   return { totals, comparableItemCount: intersection.length, skippedStores };
 }
+
+// Below this, chunking costs more in round trips than it saves.
+const MIN_CHUNK = 15;
+// Above this, one request carries too many items across too many stores and
+// reconstructs the timeout the chunking was introduced to avoid. Past this
+// point the list gets more chunks, not bigger ones — they queue past the
+// concurrency limit, which is slower than three requests but finishes.
+const MAX_CHUNK = 40;
+
+export function planPriceChunks(
+  itemCount: number,
+  maxConcurrent = 3
+): { chunkSize: number; chunkCount: number } {
+  const even = Math.ceil(itemCount / maxConcurrent);
+  const chunkSize = Math.min(MAX_CHUNK, Math.max(MIN_CHUNK, even));
+  return { chunkSize, chunkCount: Math.max(1, Math.ceil(itemCount / chunkSize)) };
+}
