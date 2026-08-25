@@ -147,12 +147,19 @@ function getUsageMap(homeMeals: any[]): Map<string, GroceryUsage[]> {
     const day = (meal.day || '').toLowerCase();
     const mealType = meal.mealType || 'meal';
     const dishName = meal.primary?.name || meal.name || 'Meal';
-    const ingredients = meal.primary?.ingredients || [];
+    // A meal option carries both `ingredients` (display strings) and
+    // `ingredientsWithNutrition` (objects). Reading only the first meant a meal
+    // that lost it produced no grocery entries at all — the same wrong-field
+    // failure A3 found in isUsableMeal.
+    const ingredients: any[] = Array.isArray(meal.primary?.ingredients) && meal.primary.ingredients.length
+      ? meal.primary.ingredients
+      : (meal.primary?.ingredientsWithNutrition || []);
 
     if (!day || !Array.isArray(ingredients)) return;
 
-    ingredients.forEach((ingredient: string) => {
-      const name = extractIngredientName(ingredient);
+    ingredients.forEach((ingredient: any) => {
+      const raw = typeof ingredient === 'string' ? ingredient : (ingredient?.name || '');
+      const name = extractIngredientName(raw);
       const key = normalizeGroceryKey(name);
       if (!key) return;
       const entry = usageMap.get(key) || [];
@@ -217,29 +224,57 @@ export function enhanceGroceryListWithUsage(
   return enhanced;
 }
 
+export type GroceryCategory =
+  | 'proteins' | 'vegetables' | 'grains' | 'dairy' | 'pantryStaples' | 'snacks';
+
+// Order is load-bearing. `dairy` before `grains` so "cream cheese" does not fall
+// through; `proteins` first because "chicken broth" is more useful shelved with
+// proteins than with pantry staples. This is a heuristic on a fallback path — it
+// does not need to be right about "xanthan gum", it needs to stop putting
+// chicken and spinach in the same bucket.
+const CATEGORY_TERMS: Array<[GroceryCategory, string[]]> = [
+  ['proteins', ['chicken', 'beef', 'pork', 'turkey', 'lamb', 'salmon', 'tuna', 'shrimp',
+    'cod', 'tilapia', 'egg', 'tofu', 'tempeh', 'seitan', 'lentil', 'chickpea',
+    'black bean', 'kidney bean', 'steak', 'bacon', 'sausage', 'ground']],
+  ['dairy', ['milk', 'yogurt', 'cheese', 'butter', 'cream', 'feta', 'mozzarella',
+    'parmesan', 'cheddar', 'ricotta', 'cottage']],
+  ['grains', ['rice', 'quinoa', 'oat', 'pasta', 'bread', 'tortilla', 'couscous',
+    'barley', 'farro', 'noodle', 'bagel', 'cereal', 'flour']],
+  ['vegetables', ['spinach', 'kale', 'broccoli', 'carrot', 'onion', 'garlic', 'pepper',
+    'tomato', 'cucumber', 'lettuce', 'zucchini', 'mushroom', 'potato',
+    'cauliflower', 'asparagus', 'celery', 'cabbage', 'avocado', 'apple',
+    'banana', 'berry', 'berries', 'lemon', 'lime', 'orange', 'peas', 'corn']],
+  ['snacks', ['chip', 'cracker', 'granola bar', 'popcorn', 'pretzel', 'trail mix']],
+];
+
+export function categorizeGroceryItem(name: string): GroceryCategory {
+  const n = (name || '').toLowerCase();
+  if (!n) return 'pantryStaples';
+  for (const [category, terms] of CATEGORY_TERMS) {
+    if (terms.some(term => n.includes(term))) return category;
+  }
+  return 'pantryStaples';
+}
+
 export function buildFallbackGroceryList(homeMeals: any[]): Record<string, any> {
   const usageMap = getUsageMap(homeMeals);
   const categorized: Record<string, GroceryItem[]> = {
-    proteins: [],
-    vegetables: [],
-    grains: [],
-    dairy: [],
-    pantryStaples: [],
-    snacks: []
+    proteins: [], vegetables: [], grains: [], dairy: [], pantryStaples: [], snacks: [],
   };
 
-  usageMap.forEach((usages, key) => {
-    const name = key;
-    const item: GroceryItem = {
+  usageMap.forEach((usages, name) => {
+    const category = categorizeGroceryItem(name);
+    categorized[category].push({
       name,
-      quantity: 'varies',
-      category: 'pantryStaples',
+      // No amounts survive the usage map, so quantity is the honest count of
+      // meals the item appears in rather than the placeholder 'varies'. A count
+      // is at least actionable at the shelf; 'varies' never was.
+      quantity: usages.length === 1 ? '1 meal' : `${usages.length} meals`,
+      category,
       usedInMeals: usages,
       firstUseDay: getFirstUseDay(usages),
-      perishability: getPerishability(name)
-    };
-
-    categorized.pantryStaples.push(item);
+      perishability: getPerishability(name),
+    });
   });
 
   return categorized;

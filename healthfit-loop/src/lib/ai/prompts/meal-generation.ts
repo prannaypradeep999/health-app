@@ -1235,6 +1235,7 @@ export function createPlanningPrompt(
   feedbackContext?: MealFeedbackContext
 ): string {
   const { homeMeals, nutritionTargets, scheduleText, surveyData } = context;
+  const strictExclusionsWarning = formatStrictExclusions(surveyData);
 
   return `Plan a high-level 7-day home meal structure for ${homeMeals.length} meals.
 
@@ -1254,6 +1255,8 @@ USER PROFILE:
 - Allergies: ${(surveyData.foodAllergies || []).join(', ') || 'none'}
 - Budget: $${Math.round((surveyData.monthlyFoodBudget || 200) / 4)}/week
 
+${strictExclusionsWarning}
+
 REQUIREMENTS:
 1. Create a diverse meal plan with NO repeated main proteins across consecutive days
 2. Use at least 4-5 different primary proteins across the week
@@ -1262,6 +1265,9 @@ REQUIREMENTS:
 5. Variety in meal formats: bowls, plates, salads, wraps, soups, stir-fries
 6. Each meal should hit calorie targets ±50 calories
 7. Consider batch cooking opportunities
+8. Never plan a dish whose defining ingredient appears in the avoid list above.
+   The detail stage is forbidden from renaming your dishes, so an avoided
+   ingredient chosen here cannot be corrected later.
 
 Return JSON with this EXACT structure:
 {
