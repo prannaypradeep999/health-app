@@ -585,8 +585,14 @@ async function generateWorkoutPlan(surveyData: any): Promise<WorkoutPlan> {
   const planResult = await planWorkout(surveyData, workoutPrefs, feedbackContext, libraryExercises);
   const weeklyOutline: any[] = planResult.weeklyPlan || [];
 
-  if (weeklyOutline.length === 0) {
-    throw new Error('Planning phase returned no days');
+  // A short week is not a degraded plan the user can work around: the day picker
+  // selects by name, so a missing day is a dead tab. The schema bound should make
+  // this unreachable; if it fires, the message names the days it did get.
+  if (weeklyOutline.length !== 7) {
+    throw new Error(
+      `Planning phase returned ${weeklyOutline.length} days, expected 7. ` +
+      `Days present: ${weeklyOutline.map((d: any) => d.day).join(', ') || 'none'}`
+    );
   }
 
   // Split into 3 chunks for parallel Phase 2 calls
@@ -712,6 +718,15 @@ async function generateWorkoutPlan(surveyData: any): Promise<WorkoutPlan> {
     validationResult.errors.forEach(err => console.error(`  ❌ ${err}`));
   }
   validationResult.warnings.forEach(warn => console.warn(`  ⚠️ ${warn}`));
+
+  // Errors only. They are structural — a missing day name, a training day with no
+  // exercises, a rest day with no activeRecovery — and produce a plan the UI
+  // cannot render. Warnings are range checks: an unusual plan, not a broken one.
+  if (!validationResult.valid) {
+    throw new Error(
+      `Workout plan failed validation: ${validationResult.errors.slice(0, 3).join('; ')}`
+    );
+  }
 
   return sanitizedWorkoutPlan;
 }

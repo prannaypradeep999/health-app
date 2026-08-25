@@ -19,7 +19,10 @@ export const WorkoutPlanSchema = z.object({
   progressionTips: z.array(z.string()),
   safetyReminders: z.array(z.string()),
   equipmentNeeded: z.array(z.string()),
-  weeklyPlan: z.array(WorkoutDayOutline),
+  // A week is seven days and the prompt enumerates them by name, so pinning the
+  // count cannot force filler — it can only stop the array closing early. An
+  // unbounded array let a four-day answer to a seven-day request ship a 200.
+  weeklyPlan: z.array(WorkoutDayOutline).length(7),
 }).strict();
 
 const TimedMovement = z.object({
