@@ -43,3 +43,5 @@ export type {
   FoodProfile,
   WorkoutProfile
 } from './profile-generation';
+// Re-export restaurant menu prompts
+export * from './restaurant-menu';
