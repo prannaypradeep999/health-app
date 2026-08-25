@@ -1745,6 +1745,7 @@ export function MealPlanPage({ onNavigate, generationStatus, nutritionTargets: n
                     <h3 className="text-lg font-semibold text-gray-900 mb-4 flex items-center">
                       <div className="w-1 h-6 bg-green-600 rounded-full mr-3"></div>
                       Nutrition Facts
+                      <span className="ml-2 text-sm font-normal text-gray-600">per serving</span>
                     </h3>
                     <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
                       <div className="bg-white rounded-lg p-3 text-center border border-green-200">

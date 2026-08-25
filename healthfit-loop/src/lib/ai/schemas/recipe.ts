@@ -29,7 +29,9 @@ export const RecipeSchema = z.object({
   prepTime: z.string(),
   cookTime: z.string(),
   totalTime: z.string(),
-  servings: z.number(),
+  // The divisor between the whole-recipe ingredient sums and the per-serving
+  // nutrition block. Zero makes that division meaningless; 400 is not a recipe.
+  servings: z.number().int().min(1).max(12),
   difficulty: z.string(),
   cuisine: z.string(),
   tags: z.array(z.string()),

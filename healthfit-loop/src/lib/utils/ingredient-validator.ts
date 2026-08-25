@@ -35,6 +35,7 @@ export function validateIngredientSums(
     protein?: number;
     carbs?: number;
     fat?: number;
+    servings?: number;
     ingredientsWithNutrition?: IngredientNutrition[];
   }
 ): IngredientValidationResult {
@@ -62,59 +63,76 @@ export function validateIngredientSums(
     { calories: 0, protein: 0, carbs: 0, fat: 0 }
   );
 
+  // ingredientsWithNutrition is whole-recipe — an ingredient line is a shopping
+  // quantity. The stated nutrition is per serving, because it is the number
+  // already shown on the meal plan card. Comparing them undivided made every
+  // multi-serving recipe report a mismatch it did not have.
+  const servings = typeof mealData.servings === 'number'
+    && Number.isFinite(mealData.servings)
+    && mealData.servings >= 1
+      ? mealData.servings
+      : 1;
+
+  const perServing = {
+    calories: summed.calories / servings,
+    protein: summed.protein / servings,
+    carbs: summed.carbs / servings,
+    fat: summed.fat / servings,
+  };
+
   const THRESHOLD_WARNING = 10;
   const THRESHOLD_ERROR = 20;
 
   const calorieDeviation = calories > 0
-    ? Math.abs(calories - summed.calories) / calories * 100
+    ? Math.abs(calories - perServing.calories) / calories * 100
     : 0;
   const proteinDeviation = protein > 0
-    ? Math.abs(protein - summed.protein) / protein * 100
+    ? Math.abs(protein - perServing.protein) / protein * 100
     : 0;
   const carbsDeviation = carbs > 0
-    ? Math.abs(carbs - summed.carbs) / carbs * 100
+    ? Math.abs(carbs - perServing.carbs) / carbs * 100
     : 0;
   const fatDeviation = fat > 0
-    ? Math.abs(fat - summed.fat) / fat * 100
+    ? Math.abs(fat - perServing.fat) / fat * 100
     : 0;
 
   if (calorieDeviation > THRESHOLD_ERROR) {
     errors.push(
-      `${mealName}: Calorie mismatch - ingredients sum to ${summed.calories} but stated ${calories} (${calorieDeviation.toFixed(1)}% off)`
+      `${mealName}: Calorie mismatch - ingredients come to ${Math.round(perServing.calories)} per serving but stated ${calories} (${calorieDeviation.toFixed(1)}% off)`
     );
   } else if (calorieDeviation > THRESHOLD_WARNING) {
     warnings.push(
-      `${mealName}: Calorie deviation - ingredients sum to ${summed.calories} vs stated ${calories} (${calorieDeviation.toFixed(1)}% off)`
+      `${mealName}: Calorie deviation - ingredients come to ${Math.round(perServing.calories)} per serving vs stated ${calories} (${calorieDeviation.toFixed(1)}% off)`
     );
   }
 
   if (proteinDeviation > THRESHOLD_ERROR) {
     errors.push(
-      `${mealName}: Protein mismatch - ingredients sum to ${summed.protein}g but stated ${protein}g`
+      `${mealName}: Protein mismatch - ingredients come to ${Math.round(perServing.protein)}g per serving but stated ${protein}g`
     );
   } else if (proteinDeviation > THRESHOLD_WARNING) {
     warnings.push(
-      `${mealName}: Protein deviation - ingredients sum to ${summed.protein}g vs stated ${protein}g`
+      `${mealName}: Protein deviation - ingredients come to ${Math.round(perServing.protein)}g per serving vs stated ${protein}g`
     );
   }
 
   if (carbsDeviation > THRESHOLD_ERROR) {
     errors.push(
-      `${mealName}: Carbs mismatch - ingredients sum to ${summed.carbs}g but stated ${carbs}g`
+      `${mealName}: Carbs mismatch - ingredients come to ${Math.round(perServing.carbs)}g per serving but stated ${carbs}g`
     );
   } else if (carbsDeviation > THRESHOLD_WARNING) {
     warnings.push(
-      `${mealName}: Carbs deviation - ingredients sum to ${summed.carbs}g vs stated ${carbs}g`
+      `${mealName}: Carbs deviation - ingredients come to ${Math.round(perServing.carbs)}g per serving vs stated ${carbs}g`
     );
   }
 
   if (fatDeviation > THRESHOLD_ERROR) {
     errors.push(
-      `${mealName}: Fat mismatch - ingredients sum to ${summed.fat}g but stated ${fat}g`
+      `${mealName}: Fat mismatch - ingredients come to ${Math.round(perServing.fat)}g per serving but stated ${fat}g`
     );
   } else if (fatDeviation > THRESHOLD_WARNING) {
     warnings.push(
-      `${mealName}: Fat deviation - ingredients sum to ${summed.fat}g vs stated ${fat}g`
+      `${mealName}: Fat deviation - ingredients come to ${Math.round(perServing.fat)}g per serving vs stated ${fat}g`
     );
   }
 
@@ -124,16 +142,16 @@ export function validateIngredientSums(
     errors,
     details: {
       ingredientCount: ingredients.length,
-      summedCalories: summed.calories,
+      summedCalories: perServing.calories,
       statedCalories: calories,
       calorieDeviation,
-      summedProtein: summed.protein,
+      summedProtein: perServing.protein,
       statedProtein: protein,
       proteinDeviation,
-      summedCarbs: summed.carbs,
+      summedCarbs: perServing.carbs,
       statedCarbs: carbs,
       carbsDeviation,
-      summedFat: summed.fat,
+      summedFat: perServing.fat,
       statedFat: fat,
       fatDeviation
     }

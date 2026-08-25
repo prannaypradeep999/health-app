@@ -223,7 +223,8 @@ export async function POST(req: NextRequest) {
     const recipeData = parsed.data;
 
     // Value-level checks strict mode cannot express: the per-ingredient numbers
-    // have to add up to the totals. Warn-only — the recipe is still usable.
+    // are whole-recipe and have to add up to servings × the stated per-serving
+    // totals. Warn-only — the recipe is still usable.
     const validation = validateIngredientSums(
       recipeData.name,
       {
@@ -231,6 +232,7 @@ export async function POST(req: NextRequest) {
         protein: recipeData.nutrition.protein,
         carbs: recipeData.nutrition.carbs,
         fat: recipeData.nutrition.fat,
+        servings: recipeData.servings,
         ingredientsWithNutrition: recipeData.ingredientsWithNutrition
       }
     );

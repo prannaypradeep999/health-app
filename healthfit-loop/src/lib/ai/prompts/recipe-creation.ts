@@ -357,14 +357,20 @@ const ROUNDING_RULES = `
 - Final nutrition totals should be clean, round numbers`;
 
 const SUM_VERIFICATION = `
-⚠️ CRITICAL - INGREDIENT SUM VERIFICATION:
-1. List EVERY ingredient in "ingredientsWithNutrition" with its nutrition values
-2. The SUM of all ingredient values MUST EQUAL the nutrition totals:
-   - Sum of ingredient calories = nutrition.calories
-   - Sum of ingredient protein = nutrition.protein
-   - Sum of ingredient carbs = nutrition.carbs
-   - Sum of ingredient fat = nutrition.fat
-3. VERIFY your math before finalizing the recipe.`;
+⚠️ CRITICAL - PER-SERVING VS WHOLE-RECIPE:
+"ingredientsWithNutrition" describes the WHOLE RECIPE — the quantities someone
+would buy and cook, matching "ingredients" and "groceryList" exactly.
+"nutrition" describes ONE SERVING.
+
+1. List EVERY ingredient in "ingredientsWithNutrition" with its nutrition
+   values for the amount actually used in the recipe.
+2. The relation between them is division by "servings":
+   - Sum of ingredient calories ÷ servings = nutrition.calories
+   - Sum of ingredient protein  ÷ servings = nutrition.protein
+   - Sum of ingredient carbs    ÷ servings = nutrition.carbs
+   - Sum of ingredient fat      ÷ servings = nutrition.fat
+3. VERIFY this division before finalizing. If the numbers do not divide
+   cleanly, adjust the ingredient quantities — not the servings count.`;
 
 export const RECIPE_SYSTEM_PREAMBLE = `You are a professional chef and nutritionist. Respond only with valid JSON recipe data.
 ${INGREDIENT_REFERENCE}
@@ -375,7 +381,9 @@ export const createRecipeGenerationPrompt = (context: RecipeContext): string => 
   const nutritionSection = context.nutritionTargets ? `
 ⚠️ CRITICAL - EXACT NUTRITION REQUIREMENTS (NON-NEGOTIABLE):
 These macros are ALREADY displayed to the user in their meal plan.
-Your recipe MUST produce these EXACT values:
+They are PER SERVING. Your "nutrition" object MUST contain these EXACT values,
+and your ingredient quantities must be scaled so that the whole recipe divided
+by "servings" produces them:
 
 - Calories: ${context.nutritionTargets.calories} cal
 - Protein: ${context.nutritionTargets.protein}g
@@ -435,33 +443,33 @@ RESPONSE FORMAT - Return ONLY valid JSON:
   "prepTime": "15 min",
   "cookTime": "25 min",
   "totalTime": "40 min",
-  "servings": 2,
+  "servings": 1,
   "difficulty": "Easy|Medium|Hard",
   "cuisine": "Type of cuisine",
   "tags": ["healthy", "protein-rich", "quick"],
   "groceryList": [
     {
       "ingredient": "Chicken breast",
-      "amount": "1 lb",
+      "amount": "6 oz",
       "category": "Meat",
       "note": "boneless, skinless"
     },
     {
       "ingredient": "Olive oil",
-      "amount": "2 tbsp",
+      "amount": "1 tbsp",
       "category": "Pantry",
       "note": "extra virgin"
     }
   ],
   "ingredientsWithNutrition": [
-    { "item": "1 lb chicken breast", "calories": 760, "protein": 140, "carbs": 0, "fat": 16 },
-    { "item": "2 tbsp olive oil", "calories": 240, "protein": 0, "carbs": 0, "fat": 28 },
+    { "item": "6 oz chicken breast", "calories": 280, "protein": 52, "carbs": 0, "fat": 6 },
+    { "item": "1 tbsp olive oil", "calories": 120, "protein": 0, "carbs": 0, "fat": 14 },
     { "item": "1 tsp salt", "calories": 0, "protein": 0, "carbs": 0, "fat": 0 },
     { "item": "1/2 tsp black pepper", "calories": 0, "protein": 0, "carbs": 0, "fat": 0 }
   ],
   "ingredients": [
-    "1 lb chicken breast, boneless and skinless",
-    "2 tbsp extra virgin olive oil",
+    "6 oz chicken breast, boneless and skinless",
+    "1 tbsp extra virgin olive oil",
     "1 tsp salt",
     "1/2 tsp black pepper"
   ],
