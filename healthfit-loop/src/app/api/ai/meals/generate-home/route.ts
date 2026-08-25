@@ -1,4 +1,4 @@
-import { NextRequest, NextResponse } from 'next/server';
+import { NextRequest, NextResponse, after } from 'next/server';
 import { withRouteBudget, routeRemainingMs } from '@/lib/utils/route-budget';
 import { cookies } from 'next/headers';
 import { prisma } from '@/lib/db';
@@ -810,23 +810,24 @@ async function triggerGroceryPriceLookup(surveyId: string) {
     const baseUrl = process.env.NEXT_PUBLIC_BASE_URL || process.env.VERCEL_URL || 'http://localhost:3000';
     const url = baseUrl.startsWith('http') ? baseUrl : `https://${baseUrl}`;
 
-    // Fire and forget - don't await
-    fetch(`${url}/api/ai/meals/generate-groceries`, {
+    // Awaited by the caller inside after(), which keeps the serverless instance
+    // alive past the response. Orphaning this promise dropped prices whenever
+    // the platform reclaimed the instance first — invisibly, since it always
+    // completes locally.
+    const res = await fetch(`${url}/api/ai/meals/generate-groceries`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
         'Cookie': `survey_id=${surveyId}`
       }
-    }).then(async res => {
-      if (res.ok) {
-        const data = await res.json();
-        console.log(`[HOME-MEALS] ✅ Grocery prices complete: ${data.itemCount} items, best store: ${data.recommendedStore}`);
-      } else {
-        console.warn('[HOME-MEALS] ⚠️ Grocery price lookup failed:', res.status);
-      }
-    }).catch(err => {
-      console.error('[HOME-MEALS] ❌ Grocery price lookup error:', err.message);
     });
+
+    if (res.ok) {
+      const data = await res.json();
+      console.log(`[HOME-MEALS] ✅ Grocery prices complete: ${data.itemCount} items, best store: ${data.recommendedStore}`);
+    } else {
+      console.warn('[HOME-MEALS] ⚠️ Grocery price lookup failed:', res.status);
+    }
   } catch (error) {
     console.error('[HOME-MEALS] ❌ Failed to trigger grocery price lookup:', error);
   }
@@ -1652,8 +1653,9 @@ async function handleGenerate_home(req: NextRequest) {
         console.log(`[HOME-GENERATION] ✅ Created new meal plan ${mealPlan.id} (legacy mode)`);
       }
 
-      // Trigger grocery price lookup in background
-      triggerGroceryPriceLookup(surveyData.id);
+      // Runs after the response is flushed, but the platform keeps the instance
+      // alive for it.
+      after(triggerGroceryPriceLookup(surveyData.id));
 
     } catch (dbError) {
       console.error(`[HOME-GENERATION] ❌ Failed to save home meal plan:`, dbError);
