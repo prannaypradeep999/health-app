@@ -37,6 +37,7 @@ export * from './workout';
 export * from './meals';
 export * from './recipe';
 export * from './restaurants';
+export * from './menu-search';
 export * from './grocery';
 
 import { GroceryList, MealSlot } from './shared';

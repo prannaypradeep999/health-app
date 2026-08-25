@@ -3,6 +3,7 @@ import { withPerplexityRetry, withGPTRetry, HttpError } from '@/lib/utils/retry'
 import { MODELS, tuning } from '@/lib/ai/models';
 import {
   MenuExtractionSchema,
+  MenuSearchSchema,
   GroceryPricesSchema,
   GroceryStoreSearchSchema,
   toStrictJsonSchema
@@ -252,7 +253,11 @@ export class PerplexityClient {
           }
         ],
         temperature: 0.2,
-        top_p: 0.9
+        top_p: 0.9,
+        // Sonar's /chat/completions is grammar-enforcing here, same as the two
+        // grocery calls below. Without it this returned prose that a second
+        // model reshaped, so every link was two hops from any HTTP response.
+        response_format: toStrictJsonSchema('menu_search', MenuSearchSchema)
       };
 
       console.log(`[PERPLEXITY] 🚀 Making API request to ${this.baseUrl}`);

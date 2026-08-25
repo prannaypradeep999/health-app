@@ -1,5 +1,4 @@
 import { normalizeRestriction } from '@/lib/utils/restriction-validator';
-import { radiusMilesFor } from '@/lib/utils/distance';
 
 /** The survey fields the two restaurant-menu prompts read. */
 export interface MenuPromptSurvey {
@@ -78,25 +77,17 @@ export function createMenuSearchPrompt(restaurant: any, surveyData: MenuPromptSu
   const restaurantCity = restaurant?.city || surveyData?.city || 'Unknown City';
   const restaurantCuisine = restaurant?.cuisine || 'Mixed';
 
-  // Calculate distance context for validation
-  const userLocation = `${surveyData?.streetAddress || ''} ${surveyData?.city || ''}, ${surveyData?.state || ''} ${surveyData?.zipCode || ''}`.trim();
-  const distancePreference = surveyData?.distancePreference || 'moderate';
-  const maxDistance = `${radiusMilesFor(distancePreference)} miles`;
+  // Distance is decided on coordinates before this prompt runs. Asking the model
+  // to re-verify it invited a refusal, which under a min(1) schema is a parse
+  // failure rather than a graceful skip.
 
   return `Find the current menu with prices AND online ordering links for "${restaurantName}" restaurant located at ${restaurantAddress}, ${restaurantCity}.
-
-⚠️ DISTANCE VALIDATION REQUIRED:
-- User Location: ${userLocation}
-- Restaurant Address: ${restaurantAddress}, ${restaurantCity}
-- Maximum Distance: ${maxDistance} (user preference: ${distancePreference})
-- IMPORTANT: Verify this restaurant is within ${maxDistance} of ${userLocation}. If the restaurant appears to be farther than ${maxDistance}, skip menu extraction and note the distance issue.
 
 RESTAURANT DETAILS:
 - Name: ${restaurantName}
 - Address: ${restaurantAddress}
 - City: ${restaurantCity}
 - Cuisine Type: ${restaurantCuisine}
-- Distance Requirement: Must be within ${maxDistance} of user location
 
 CRITICAL - ORDERING LINKS SEARCH:
 You MUST specifically search for this restaurant on these delivery platforms:
@@ -106,7 +97,8 @@ You MUST specifically search for this restaurant on these delivery platforms:
 4. Restaurant's own website for direct ordering
 
 For each platform, provide the ACTUAL URL if the restaurant is listed there.
-If you cannot find the restaurant on a platform, DO NOT include that platform.
+Set a platform to null if you did not find the restaurant on it. Every platform
+key must be present.
 NEVER make up or guess URLs - only include links you actually find.
 
 MENU SEARCH REQUIREMENTS:
@@ -115,18 +107,17 @@ MENU SEARCH REQUIREMENTS:
 3. Focus on healthier options when possible
 4. Look for recent/current menu information (2024-2025)
 
+REPORT WHAT THE MENU SAYS, DO NOT ESTIMATE:
+- price: the listed price, or null if the menu does not publish one.
+- statedCalories: only a calorie count the menu itself publishes. Null otherwise.
+  Do not estimate. A later step estimates, and labels its estimates as estimates.
+- sourceUrl: the page you read the item from, or null.
+
 USER PREFERENCES (prioritize when selecting items):
 - Dietary Restrictions: ${dietaryRestrictions || 'None'}
 - Preferred Cuisines: ${preferredCuisines || 'Any'}
 - Goal: ${surveyData.goal || 'General wellness'}
 ${buildAllergyBlock(surveyData)}
-INFORMATION TO INCLUDE:
-- Exact dish names and prices
-- Brief descriptions of items
-- Any nutritional info if available
-- VERIFIED ordering/delivery links (DoorDash, Uber Eats, GrubHub, direct website)
-- Menu categories (breakfast, lunch, dinner)
-
 Please provide comprehensive menu information with VERIFIED ordering links only.`;
 }
 

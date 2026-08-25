@@ -43,7 +43,21 @@ test('the search prompt still carries what it always carried', () => {
   assert.match(p, /doordash\.com/);
   assert.match(p, /ubereats\.com/);
   assert.match(p, /grubhub\.com/);
-  assert.match(p, /3 miles/, 'distancePreference "medium" maps to 3 miles');
+});
+
+test('the search prompt no longer asks the model to re-check distance', () => {
+  // Distance is decided on coordinates before this prompt runs. Under a min(1)
+  // schema, a model that "skips extraction" because it thinks the restaurant is
+  // too far produces a parse failure rather than a graceful skip.
+  const p = createMenuSearchPrompt(restaurant, survey);
+  assert.doesNotMatch(p, /miles/);
+  assert.doesNotMatch(p, /skip menu extraction/i);
+});
+
+test('the search prompt asks for null on a missing platform, which strict mode requires', () => {
+  const p = createMenuSearchPrompt(restaurant, survey);
+  assert.match(p, /Set a platform to null/);
+  assert.doesNotMatch(p, /DO NOT include that platform/);
 });
 
 test('the structuring prompt carries the allergies and the diet rule', () => {
