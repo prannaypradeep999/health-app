@@ -12,6 +12,8 @@
  *   npx tsx scripts/bench-generators.ts --dry            # build prompts, call nothing
  *   npx tsx scripts/bench-generators.ts --n=3
  *   npx tsx scripts/bench-generators.ts --site=meal-detail --fixture=restricted
+ *   npx tsx scripts/bench-generators.ts --no-links       # skip HTTP link probing
+ *   npx tsx scripts/bench-generators.ts --fail-on=error  # exit 1 on any error finding
  *
  * Results go to stdout as markdown and to bench-results/<ISO>.json.
  */
@@ -1110,12 +1112,15 @@ async function main() {
   }
 
   console.log('\n## Results\n');
-  console.log('| Site | Fixture | Model | n | Pass | p50 ms | p95 ms | In | Out | Peak % | $/1k |');
-  console.log('|---|---|---|---|---|---|---|---|---|---|---|');
+  console.log('| Site | Fixture | Model | n | Pass | CMPL | ARITH | ADHR | LINKS | p50 ms | Out | $/1k |');
+  console.log('|---|---|---|---|---|---|---|---|---|---|---|---|');
   for (const r of results) {
+    const c = r.familyCounts;
+    const cell = (x: { error: number; warn: number }) =>
+      x.error === 0 && x.warn === 0 ? '·' : `${x.error}e/${x.warn}w`;
     console.log(`| ${r.site} | ${r.fixture} | ${r.model} | ${r.n} | ${Math.round(r.schemaPassRate * 100)}% | ` +
-      `${r.latencyP50Ms} | ${r.latencyP95Ms} | ${r.avgPromptTokens} | ${r.avgCompletionTokens} | ` +
-      `${r.peakCeilingPct}% | ${r.estCostPer1000Runs} |`);
+      `${cell(c.COMPLETENESS)} | ${cell(c.ARITHMETIC)} | ${cell(c.ADHERENCE)} | ${cell(c.LINKS)} | ` +
+      `${r.latencyP50Ms} | ${r.avgCompletionTokens} | ${r.estCostPer1000Runs} |`);
   }
 
   const totalPer1k = Math.round(results.reduce((a, r) => a + r.estCostPer1000Runs, 0) * 100) / 100;
@@ -1133,6 +1138,29 @@ async function main() {
     tight.forEach(r => console.log(`   ${r.site}/${r.fixture}: peak ${r.peakCeilingPct}% of ${r.maxTokens}`));
   }
 
+  const allFindings = results.flatMap(r => r.findings.map(f => ({ ...f, site: r.site, fixture: r.fixture })));
+  const errors = allFindings.filter(f => f.severity === 'error');
+  const warns = allFindings.filter(f => f.severity === 'warn');
+
+  if (allFindings.length > 0) {
+    console.log(`\n## Findings — ${errors.length} error, ${warns.length} warn\n`);
+    // Grouped by code rather than by site: a code that fires across many sites
+    // is one bug, and reading it site-by-site hides that.
+    const byCode = new Map<string, typeof allFindings>();
+    for (const f of allFindings) byCode.set(f.code, [...(byCode.get(f.code) ?? []), f]);
+    const ordered = [...byCode.entries()].sort((a, b) => b[1].length - a[1].length);
+    for (const [code, group] of ordered) {
+      const sev = group.some(f => f.severity === 'error') ? '✗' : '⚠';
+      console.log(`${sev} ${code} — ${group.length} occurrence(s) [${group[0].family}]`);
+      for (const f of group.slice(0, 3)) {
+        console.log(`    ${f.site}/${f.fixture} ${f.where}: ${f.message}`);
+      }
+      if (group.length > 3) console.log(`    … and ${group.length - 3} more`);
+    }
+  } else {
+    console.log('\nNo findings across any family. ✅');
+  }
+
   mkdirSync('bench-results', { recursive: true });
   const out = `bench-results/${new Date().toISOString().replace(/[:.]/g, '-')}.json`;
   writeFileSync(out, JSON.stringify({
@@ -1141,8 +1169,21 @@ async function main() {
     rates: RATES,
     n,
     results,
+    findings: allFindings,
   }, null, 2));
   console.log(`\nWrote ${out}`);
+
+  // The gate. Default is to report and exit 0 so an exploratory run is never
+  // blocked; CI and regression runs pass --fail-on=error.
+  const failOn = arg('fail-on');
+  if (failOn === 'error' && errors.length > 0) {
+    console.error(`\n❌ ${errors.length} error-level finding(s). Failing because --fail-on=error.`);
+    process.exit(1);
+  }
+  if (failOn === 'warn' && allFindings.length > 0) {
+    console.error(`\n❌ ${allFindings.length} finding(s). Failing because --fail-on=warn.`);
+    process.exit(1);
+  }
 }
 
 main().catch(e => { console.error(e); process.exit(1); });

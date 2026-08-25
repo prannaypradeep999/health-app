@@ -8,7 +8,9 @@
     "postinstall": "prisma generate",
     "start": "next start",
     "lint": "next lint",
-    "bench": "tsx scripts/bench-generators.ts"
+    "bench": "tsx scripts/bench-generators.ts",
+    "eval": "tsx scripts/bench-generators.ts --fail-on=error",
+    "test:eval": "tsx --test \"scripts/eval/*.test.ts\""
   },
   "dependencies": {
     "@phosphor-icons/react": "^2.1.10",
