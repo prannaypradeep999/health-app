@@ -40,6 +40,7 @@ import {
   pinnedWorkoutDetail,
 } from '../src/lib/ai/schemas/index';
 import { MODELS } from '../src/lib/ai/models';
+import { tally, type Finding, type CheckResult, type Family } from './eval/types';
 
 import { fixtures, homeMealsFrom, scheduleTextFrom, menuProseFixture, type Fixture } from './fixtures/surveys';
 
@@ -125,8 +126,16 @@ interface Site {
    * for this fixture (e.g. the fixture has no restaurant slots).
    */
   build: (f: Fixture) => Promise<{ prompt: string; schema: z.ZodType } | null>;
-  /** Site-specific quality signal, beyond "did it parse". */
-  inspect?: (data: any, f: Fixture) => string;
+  /**
+   * Site-specific quality signal, beyond "did it parse".
+   *
+   * `summary` is the one-line console note this used to return as a bare string.
+   * `findings` is the gate-able part: structured entries the runner tallies by
+   * family and the exit code is derived from.
+   *
+   * Async because the LINKS family makes HTTP requests.
+   */
+  check?: (data: any, f: Fixture) => CheckResult | Promise<CheckResult>;
 }
 
 /** Cache upstream plans so N iterations of the detail site don't re-plan N times. */
@@ -148,6 +157,13 @@ async function planFor(f: Fixture): Promise<any> {
   return res.parsed;
 }
 
+/**
+ * Whether LINKS-family checks may make HTTP requests. Set from --no-links in
+ * main(). Module-level rather than threaded through every check signature: the
+ * flag is process-wide and read-only after startup.
+ */
+export let PROBE_LINKS = true;
+
 const SITES: Site[] = [
   {
     name: 'meal-planning',
@@ -162,10 +178,13 @@ const SITES: Site[] = [
         schema: pinnedMealPlan(homeMeals.length),
       };
     },
-    inspect: (d, f) => {
+    check: (d, f) => {
       const want = homeMealsFrom(f.surveyData.weeklyMealSchedule).length;
       const slots = new Set(d.mealPlan.map((m: any) => `${m.day}|${m.mealType}`));
-      return `${d.mealPlan.length}/${want} entries, ${slots.size} distinct slots`;
+      return {
+        summary: `${d.mealPlan.length}/${want} entries, ${slots.size} distinct slots`,
+        findings: [],
+      };
     },
   },
   {
@@ -186,9 +205,12 @@ const SITES: Site[] = [
         schema: pinnedMealDetail(chunk.length),
       };
     },
-    inspect: (d) => {
+    check: (d) => {
       const slots = new Set(d.meals.map((m: any) => `${m.day}|${m.mealType}`));
-      return `${d.meals.length} entries, ${slots.size} distinct slots`;
+      return {
+        summary: `${d.meals.length} entries, ${slots.size} distinct slots`,
+        findings: [],
+      };
     },
   },
   {
@@ -201,8 +223,11 @@ const SITES: Site[] = [
         schema: GroceryListSchema,
       };
     },
-    inspect: (d) => Object.entries(d.groceryList as Record<string, any[]>)
-      .map(([k, v]) => `${k}=${v.length}`).join(' '),
+    check: (d) => ({
+      summary: Object.entries(d.groceryList as Record<string, any[]>)
+        .map(([k, v]) => `${k}=${v.length}`).join(' '),
+      findings: [],
+    }),
   },
   {
     name: 'meal-legacy',
@@ -219,7 +244,7 @@ const SITES: Site[] = [
         schema: pinnedHomeMealsLegacy(homeMeals.length),
       };
     },
-    inspect: (d) => `${d.homeMeals.length} meals, grocery present`,
+    check: (d) => ({ summary: `${d.homeMeals.length} meals, grocery present`, findings: [] }),
   },
   {
     name: 'workout-planning',
@@ -228,7 +253,10 @@ const SITES: Site[] = [
       prompt: createWorkoutPlanningPrompt(f.surveyData, f.workoutPrefs),
       schema: WorkoutPlanSchema,
     }),
-    inspect: (d) => `${d.weeklyPlan.length} days, ${d.weeklyPlan.filter((x: any) => x.restDay).length} rest`,
+    check: (d) => ({
+      summary: `${d.weeklyPlan.length} days, ${d.weeklyPlan.filter((x: any) => x.restDay).length} rest`,
+      findings: [],
+    }),
   },
   {
     name: 'workout-detail',
@@ -249,11 +277,14 @@ const SITES: Site[] = [
     // The branch invariant strict mode cannot express: training days need
     // exercises, rest days need activeRecovery. This is the failure the
     // superRefine catches locally, so the bench has to report it too.
-    inspect: (d) => {
+    check: (d) => {
       const bad = d.days.filter((x: any) =>
         (!x.restDay && (!x.exercises || x.exercises.length === 0)) ||
         (x.restDay && !x.activeRecovery));
-      return `${d.days.length} days, ${bad.length} violating the rest/train branch`;
+      return {
+        summary: `${d.days.length} days, ${bad.length} violating the rest/train branch`,
+        findings: [],
+      };
     },
   },
   {
@@ -277,10 +308,13 @@ const SITES: Site[] = [
       } as any),
       schema: RecipeSchema,
     }),
-    inspect: (d, f) => {
+    check: (d, f) => {
       const want = f.nutritionTargets.mealTargets.dinner.calories;
       const off = Math.round(Math.abs(d.nutrition.calories - want) / want * 100);
-      return `${d.ingredientsWithNutrition.length} ingredients, ${d.nutrition.calories} cal (${off}% off target)`;
+      return {
+        summary: `${d.ingredientsWithNutrition.length} ingredients, ${d.nutrition.calories} cal (${off}% off target)`,
+        findings: [],
+      };
     },
   },
   {
@@ -309,10 +343,13 @@ IMPORTANT: orderingLinks must carry all four keys. Use null for any platform you
 did not find a real URL for. Extract 6-12 menu items maximum.`,
       schema: MenuExtractionSchema,
     }),
-    inspect: (d) => {
+    check: (d) => {
       const links = Object.values(d.orderingLinks).filter(
         (u: any) => typeof u === 'string' && u.startsWith('http')).length;
-      return `${d.menuItems.length} items, ${links} usable links`;
+      return {
+        summary: `${d.menuItems.length} items, ${links} usable links`,
+        findings: [],
+      };
     },
   },
 ];
@@ -412,6 +449,10 @@ interface BenchResult {
   estCostPer1000Runs: number;
   failures: string[];
   notes: string[];
+  /** Every structured finding across all n runs, deduplicated by code+where+message. */
+  findings: Finding[];
+  /** findings rolled up per family, for the results table and the exit gate. */
+  familyCounts: Record<Family, { error: number; warn: number }>;
 }
 
 const percentile = (xs: number[], p: number) => {
@@ -421,20 +462,48 @@ const percentile = (xs: number[], p: number) => {
 };
 const mean = (xs: number[]) => (xs.length ? Math.round(xs.reduce((a, b) => a + b, 0) / xs.length) : 0);
 
-async function runSite(site: Site, f: Fixture, n: number): Promise<BenchResult | null> {
+/**
+ * Collapse identical findings across the n runs of a site.
+ *
+ * Without this, `--n=5` reports the same wrong calorie count five times and the
+ * error total says more about n than about the model.
+ */
+function dedupeFindings(findings: Finding[]): Finding[] {
+  const seen = new Map<string, Finding>();
+  for (const f of findings) {
+    seen.set(`${f.family}|${f.code}|${f.where}|${f.message}`, f);
+  }
+  return [...seen.values()];
+}
+
+async function runSite(site: Site, f: Fixture, n: number, probeLinks: boolean): Promise<BenchResult | null> {
   const built = await site.build(f);
   if (!built) return null;
 
+  PROBE_LINKS = probeLinks;
+
   const outcomes: CallOutcome[] = [];
   const notes: string[] = [];
+  const findings: Finding[] = [];
 
   for (let i = 0; i < n; i++) {
     const o = await callOnce(site.model, built.prompt, built.schema,
       site.name.replace(/-/g, '_'), site.maxTokens, site.temperature);
     outcomes.push(o);
-    if (o.parsed && site.inspect) {
-      try { notes.push(site.inspect(o.parsed, f)); }
-      catch (e) { notes.push(`inspect threw: ${e}`); }
+    if (o.parsed && site.check) {
+      try {
+        const result = await site.check(o.parsed, f);
+        notes.push(result.summary);
+        findings.push(...result.findings);
+      } catch (e) {
+        // A checker that throws is a harness bug, not a model failure. Make it
+        // loud rather than letting it read as a clean run.
+        notes.push(`⚠️ check threw: ${e}`);
+        findings.push({
+          family: 'COMPLETENESS', severity: 'error', code: 'checker-crashed',
+          where: site.name, message: String(e),
+        });
+      }
     }
     process.stdout.write(o.error ? '✗' : '·');
   }
@@ -472,6 +541,8 @@ async function runSite(site: Site, f: Fixture, n: number): Promise<BenchResult |
       : 0,
     failures: outcomes.filter(o => o.error).map(o => o.error!),
     notes: [...new Set(notes)],
+    findings: dedupeFindings(findings),
+    familyCounts: tally(dedupeFindings(findings)),
   };
 }
 
@@ -484,6 +555,7 @@ function arg(name: string, fallback?: string) {
 
 async function main() {
   const dry = process.argv.includes('--dry');
+  const probeLinks = !process.argv.includes('--no-links');
   const n = Number(arg('n', '3'));
   const siteFilter = arg('site');
   const fixtureFilter = arg('fixture');
@@ -530,7 +602,7 @@ async function main() {
     for (const s of sites) {
       process.stdout.write(`${s.name.padEnd(18)} ${f.name.padEnd(18)} `);
       try {
-        const r = await runSite(s, f, n);
+        const r = await runSite(s, f, n, probeLinks);
         if (!r) { console.log('— n/a for this fixture'); continue; }
         results.push(r);
         console.log(`  ${Math.round(r.schemaPassRate * 100)}% pass, p50 ${r.latencyP50Ms}ms, ` +
