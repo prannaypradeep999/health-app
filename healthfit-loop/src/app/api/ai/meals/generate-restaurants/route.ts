@@ -4,6 +4,10 @@ import { cookies } from 'next/headers';
 import { prisma } from '@/lib/db';
 import { googlePlacesClient, Restaurant } from '@/lib/external/places-client';
 import { perplexityClient } from '@/lib/external/perplexity-client';
+import { verifyLinks, isUsableLink } from '@/lib/external/link-check';
+import { radiusMilesFor, milesBetween } from '@/lib/utils/distance';
+import { buildRestaurantFacts } from '@/lib/utils/restaurant-facts';
+import { runVerification, verifyRestaurantPayload } from '@/lib/verification';
 import { getAuthUserId } from '@/lib/auth';
 import {
   createRestaurantMealGenerationPrompt,
@@ -125,8 +129,7 @@ async function findAndSelectBestRestaurants(surveyData: any): Promise<Restaurant
     console.log(`[RESTAURANT-SEARCH] 🍽️ Cuisines: ${cuisines.join(', ')}`);
     
     // Convert distance preference to miles (strict enforcement)
-    const radiusMiles = surveyData.distancePreference === 'close' ? 1.0 :
-                        surveyData.distancePreference === 'far' ? 8.0 : 3.0;
+    const radiusMiles = radiusMilesFor(surveyData.distancePreference);
 
     console.log(`[RESTAURANT-SEARCH] 📏 Distance preference: ${surveyData.distancePreference} → ${radiusMiles} miles radius (STRICT)`);
 
@@ -166,22 +169,45 @@ async function findAndSelectBestRestaurants(surveyData: any): Promise<Restaurant
     );
     
     console.log(`[RESTAURANT-SEARCH] 📊 Found ${uniqueRestaurants.length} unique restaurants total`);
-    
+
+    // A search radius biases results; it does not bound them. Places returns by
+    // prominence within the radius, and the fallback search uses its own. This
+    // is the only place a restaurant's actual distance is ever checked.
+    const origin = await googlePlacesClient.geocodeAddress(location);
+    const withDistance = uniqueRestaurants.map(r => ({
+      ...r,
+      distanceMiles:
+        origin && typeof r.lat === 'number' && typeof r.lng === 'number'
+          ? milesBetween(origin, { lat: r.lat, lng: r.lng })
+          : undefined,
+    }));
+
+    const inRange = withDistance.filter(
+      // Unknown distance is kept: a missing coordinate is our gap, not the
+      // restaurant's fault, and dropping it would silently shrink the pool.
+      r => r.distanceMiles === undefined || r.distanceMiles <= radiusMiles
+    );
+
+    const droppedFar = withDistance.length - inRange.length;
+    if (droppedFar > 0) {
+      console.log(`[RESTAURANT-SEARCH] 📏 Dropped ${droppedFar} restaurant(s) beyond ${radiusMiles} miles`);
+    }
+
     // If we have 8 or fewer restaurants, just return them all
-    if (uniqueRestaurants.length <= 8) {
-      console.log(`[RESTAURANT-SEARCH] ✅ Returning all ${uniqueRestaurants.length} restaurants (no AI selection needed)`);
-      return uniqueRestaurants;
+    if (inRange.length <= 8) {
+      console.log(`[RESTAURANT-SEARCH] ✅ Returning all ${inRange.length} restaurants (no AI selection needed)`);
+      return inRange;
     }
 
     // Use AI to select the best 8-10 restaurants (more to account for filtering)
-    const selectionPrompt = createRestaurantSelectionPrompt(uniqueRestaurants, surveyData);
+    const selectionPrompt = createRestaurantSelectionPrompt(inRange, surveyData);
 
     // Calculate estimated tokens (rough estimate: 1 token ≈ 4 characters)
     const estimatedTokens = Math.ceil(selectionPrompt.length / 4);
     console.log(`[RESTAURANT-SEARCH] 📤 Sending GPT restaurant selection request:`);
     console.log(`[RESTAURANT-SEARCH]   - Prompt length: ${selectionPrompt.length} chars`);
     console.log(`[RESTAURANT-SEARCH]   - Estimated tokens: ${estimatedTokens}`);
-    console.log(`[RESTAURANT-SEARCH]   - Restaurants to choose from: ${uniqueRestaurants.length}`);
+    console.log(`[RESTAURANT-SEARCH]   - Restaurants to choose from: ${inRange.length}`);
     console.log(`[RESTAURANT-SEARCH]   - Model: ${MODELS.PLANNING}`);
 
     const gptResult = await withGPTRetry(async (signal) => {
@@ -212,7 +238,7 @@ async function findAndSelectBestRestaurants(surveyData: any): Promise<Restaurant
 
     if (!gptResult.success) {
       console.warn('[RESTAURANT-SEARCH] ⚠️ Using fallback after retry failures');
-      return uniqueRestaurants.slice(0, 8);
+      return inRange.slice(0, 8);
     }
     const data = gptResult.data;
 
@@ -224,7 +250,7 @@ async function findAndSelectBestRestaurants(surveyData: any): Promise<Restaurant
     const parsed = parseChoice(RestaurantSelectionSchema, data.choices?.[0], 'restaurant-selection');
     if (!parsed.ok) {
       console.warn(`[RESTAURANT-SEARCH] ⚠️ ${parsed.reason}: ${parsed.detail} — using first 8 restaurants`);
-      return uniqueRestaurants.slice(0, 8);
+      return inRange.slice(0, 8);
     }
 
     // Map selected restaurants back to original data to preserve all fields
@@ -234,7 +260,7 @@ async function findAndSelectBestRestaurants(surveyData: any): Promise<Restaurant
 
     // Create a lookup map for original restaurants
     const restaurantLookup = new Map<string, Restaurant>();
-    uniqueRestaurants.forEach(r => {
+    inRange.forEach(r => {
       if (r.placeId) restaurantLookup.set(r.placeId, r);
       if (r.name) restaurantLookup.set(r.name.toLowerCase(), r);
     });
@@ -260,21 +286,18 @@ async function findAndSelectBestRestaurants(surveyData: any): Promise<Restaurant
           rating: fullRestaurant.rating, // Explicitly preserve rating from original Google Places data
           selectionReason: selected.reason,
         } as Restaurant & { selectionReason?: string });
-      } else if (selected.name && selected.address) {
-        console.log(`[RESTAURANT-SEARCH] ⚠️ Using GPT-provided data for: ${selected.name}`);
-        selectedRestaurants.push({
-          ...selected,
-          rating: selected.rating || 0 // Set rating from GPT or default to 0
-        } as unknown as Restaurant);
       } else {
-        console.warn(`[RESTAURANT-SEARCH] ⚠️ Could not match restaurant: ${JSON.stringify(selected).substring(0, 100)}`);
+        // A selection we cannot match is a name the model produced, not a place
+        // Google returned. Passing it through shipped invented restaurants —
+        // with invented addresses — straight to the user.
+        console.warn(`[RESTAURANT-SEARCH] ⚠️ Dropping unmatched selection (not in the Places result set): ${selected.name}`);
       }
     }
 
     // If mapping resulted in empty array, fall back to original restaurants
     if (selectedRestaurants.length === 0) {
       console.warn('[RESTAURANT-SEARCH] ⚠️ GPT selection mapping failed, using original restaurants');
-      selectedRestaurants = uniqueRestaurants.slice(0, 8);
+      selectedRestaurants = inRange.slice(0, 8);
     }
 
     const totalSearchTime = Date.now() - startTime;
@@ -357,17 +380,41 @@ async function extractMenuInformation(restaurants: Restaurant[], surveyData: any
       // Count valid ordering links. `!== ''` used to be the test, which counted
       // the literal string "null" as a link — the same value that reaches the UI
       // as an order button leading nowhere. Same URL test as
-      // normalizeOrderingLinks so the count and the rendered buttons agree.
+      // normalizeOrderingLinks so the count and the rendered buttons agree;
+      // verifyLinks then removes the ones that do not answer.
       const orderingLinks = menuResponse.orderingLinks || {};
-      const isUsableLink = (link: unknown): link is string =>
-        typeof link === 'string' && /^https?:\/\/\S+$/i.test(link.trim());
-      const linksFound = Object.values(orderingLinks).filter(isUsableLink).length;
       const menuItems = menuResponse.menuItems || [];
+
+      // B4. Places already told us this restaurant's website; asking the model
+      // to guess `direct` and then believing the guess is strictly worse than
+      // using the answer we were handed. Places wins when it has one — it is
+      // the only source here that looked the business up rather than recalled
+      // it. The model's value survives only as the fallback.
+      const placesWebsite = (restaurant as { website?: string }).website;
+      const candidateLinks = {
+        ...orderingLinks,
+        direct: isUsableLink(placesWebsite) ? placesWebsite : orderingLinks.direct ?? null,
+      };
+
+      // B1. Nothing had ever requested one of these URLs. A 404 doordash link
+      // renders as an order button that leads nowhere, which is worse than no
+      // button — the user drives somewhere on the strength of it. 6s rather
+      // than the 8s default: this phase owns ~22s of the route budget and a
+      // link check must not be what spends it.
+      const resolvedLinks = await verifyLinks(candidateLinks, { timeoutMs: 6000 });
+      const rejected = Object.keys(candidateLinks).filter(
+        (k) => isUsableLink((candidateLinks as Record<string, unknown>)[k]) && !(k in resolvedLinks)
+      );
+      if (rejected.length > 0) {
+        console.log(`[MENU-EXTRACTION] ${restaurant.name}: dropped unreachable links: ${rejected.join(', ')}`);
+      }
+
+      const linksFound = Object.values(resolvedLinks).filter(isUsableLink).length;
 
       console.log(`[MENU-EXTRACTION] ${restaurant.name}: ${menuItems.length} menu items, ${linksFound} ordering links`);
 
       // Log each found link
-      Object.entries(orderingLinks).forEach(([platform, url]) => {
+      Object.entries(resolvedLinks).forEach(([platform, url]) => {
         if (isUsableLink(url)) {
           console.log(`[MENU-EXTRACTION]   ✅ ${platform}: ${url.substring(0, 60)}...`);
         }
@@ -376,8 +423,8 @@ async function extractMenuInformation(restaurants: Restaurant[], surveyData: any
       return {
         ...restaurant,
         menuData: menuItems,
-        menuUrl: orderingLinks.doordash || orderingLinks.ubereats || orderingLinks.grubhub || orderingLinks.direct,
-        orderingLinks: orderingLinks,
+        menuUrl: resolvedLinks.doordash || resolvedLinks.ubereats || resolvedLinks.grubhub || resolvedLinks.direct,
+        orderingLinks: resolvedLinks,
         menuSource: 'Perplexity',
         sources: menuResponse.sources,
         extractionSuccess: menuResponse.extractionSuccess,
@@ -812,6 +859,32 @@ async function handleGenerate_restaurants(req: NextRequest) {
       console.log(`[RESTRICTION-VALIDATOR] ✅ All meals pass restriction checks`);
     }
     
+    // Grounding: compare the meals the user will see against hop 1's own answer.
+    //
+    // Three model calls produced these meals and only the first looked at the
+    // internet. `searchItems` and `sourceHosts` are that first call's payload,
+    // which extractMenuData used to hand to hop 2 as a string and drop. Every
+    // comparison below runs on data already in memory, so this costs nothing
+    // against ROUTE_TOTAL_BUDGET_MS — there is no headroom left to spend.
+    //
+    // Computed once here rather than inside each persistence branch, because
+    // both branches store the same report.
+    const restaurantFactsForPlan = buildRestaurantFacts(selectedRestaurants);
+    const menuEvidence: Record<string, { searchItems?: any[]; sourceHosts?: string[] }> = {};
+    // `?? []` guards the one statement in this block that sits outside
+    // runVerification's catch. Verification must not be able to fail a
+    // generation the user is waiting on, and a bare for-of over a nullish value
+    // would do exactly that.
+    for (const m of restaurantMenuData ?? []) {
+      const key = String(m?.restaurant ?? '').toLowerCase().trim();
+      if (key) menuEvidence[key] = { searchItems: m?.searchItems, sourceHosts: m?.sourceHosts };
+    }
+    const verification = runVerification(
+      () => verifyRestaurantPayload(selectedRestaurantMeals, menuEvidence, restaurantFactsForPlan),
+      'restaurants'
+    );
+    console.log(`[VERIFY] restaurants: ${JSON.stringify(verification.counts)}`);
+
     // Update existing meal plan with restaurant data
     const weekOfDate = getStartOfWeek();
     
@@ -878,10 +951,20 @@ async function handleGenerate_restaurants(req: NextRequest) {
           return updatedDay;
         });
         
+        // Places facts travel beside the model-authored meal objects, not on
+        // them: a rating on a model output is a rating the model would invent.
+        const restaurantFacts = restaurantFactsForPlan;
+
         const updatedContext = {
           ...existingContext,
           days: updatedDays,
           restaurantMeals: selectedRestaurantMeals,
+          restaurantFacts,
+          // Sidecar, like restaurantFacts above: verdicts about the model's
+          // output, never fields on it. Keyed by generator because home meals
+          // write their own report into this same object — a bare `verification`
+          // key would have whichever route finished last erase the other.
+          verification: { ...(existingContext.verification ?? {}), restaurants: verification },
           restrictionViolations: [
             ...(existingContext.restrictionViolations || []),
             ...(restrictionViolations || [])
@@ -918,6 +1001,8 @@ async function handleGenerate_restaurants(req: NextRequest) {
         
         const completePlan = {
           restaurantMeals: selectedRestaurantMeals,
+          restaurantFacts: restaurantFactsForPlan,
+          verification: { restaurants: verification },
           weeklySchedule: surveyData.weeklyMealSchedule,
           restrictionViolations: restrictionViolations || [],
           metadata: {

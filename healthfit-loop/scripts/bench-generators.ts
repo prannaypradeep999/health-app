@@ -12,6 +12,8 @@
  *   npx tsx scripts/bench-generators.ts --dry            # build prompts, call nothing
  *   npx tsx scripts/bench-generators.ts --n=3
  *   npx tsx scripts/bench-generators.ts --site=meal-detail --fixture=restricted
+ *   npx tsx scripts/bench-generators.ts --no-links       # skip HTTP link probing
+ *   npx tsx scripts/bench-generators.ts --fail-on=error  # exit 1 on any error finding
  *
  * Results go to stdout as markdown and to bench-results/<ISO>.json.
  */
@@ -24,6 +26,8 @@ import {
   createDetailPrompt,
   createGroceryPrompt,
   createHomeMealGenerationPrompt,
+  createRestaurantSelectionPrompt,
+  createRestaurantMealGenerationPrompt,
 } from '../src/lib/ai/prompts/meal-generation';
 import { createWorkoutPlanningPrompt, createWorkoutDetailPrompt } from '../src/lib/ai/prompts/workout-generation';
 import { createRecipeGenerationPrompt } from '../src/lib/ai/prompts/recipe-creation';
@@ -31,17 +35,31 @@ import { createRecipeGenerationPrompt } from '../src/lib/ai/prompts/recipe-creat
 import { GroceryListSchema } from '../src/lib/ai/schemas/meals';
 import { WorkoutPlanSchema } from '../src/lib/ai/schemas/workout';
 import { RecipeSchema } from '../src/lib/ai/schemas/recipe';
-import { MenuExtractionSchema } from '../src/lib/ai/schemas/restaurants';
+import { MenuExtractionSchema, RestaurantSelectionSchema } from '../src/lib/ai/schemas/restaurants';
+import { GroceryPricesSchema } from '../src/lib/ai/schemas/grocery';
+import { createGroceryPricePrompt } from '../src/lib/ai/prompts/grocery-prices';
 import {
   toStrictJsonSchema,
   pinnedMealPlan,
   pinnedMealDetail,
   pinnedHomeMealsLegacy,
   pinnedWorkoutDetail,
+  pinnedRestaurantMeals,
 } from '../src/lib/ai/schemas/index';
 import { MODELS } from '../src/lib/ai/models';
+import { tally, type Finding, type CheckResult, type Family } from './eval/types';
+import { checkAtwater, checkTarget, checkSum } from './eval/arithmetic';
+import { checkCount, checkSlots, checkNonEmpty } from './eval/completeness';
+import { rulesFor, checkText } from './eval/adherence';
+import { checkOrderingLinks } from './eval/links';
+import { verdictsToFindings, checkMenuAgainstProse } from './eval/grounding';
+import { verifyWorkoutPlan, equipmentFromGymAccess } from '../src/lib/verification';
 
-import { fixtures, homeMealsFrom, scheduleTextFrom, menuProseFixture, type Fixture } from './fixtures/surveys';
+import {
+  fixtures, homeMealsFrom, scheduleTextFrom, menuProseFixture,
+  restaurantSlotsFrom, nearbyRestaurantsFixture, restaurantMenuDataFixture,
+  type Fixture,
+} from './fixtures/surveys';
 
 // ---------------------------------------------------------------- config
 
@@ -64,6 +82,10 @@ const RATES: Record<string, { in: number; out: number }> = {
   'gpt-5.6-luna': { in: 0.2, out: 1.2 },
   'gpt-5.6-terra': { in: 1.25, out: 10 },
   'gpt-5.6-sol': { in: 5, out: 30 },
+  // Perplexity Sonar. Search requests also carry a per-request fee that this
+  // table does not model, so the $/1k figure for grocery-prices is a floor.
+  'sonar': { in: 1, out: 1 },
+  'sonar-pro': { in: 3, out: 15 },
 };
 
 /**
@@ -125,8 +147,18 @@ interface Site {
    * for this fixture (e.g. the fixture has no restaurant slots).
    */
   build: (f: Fixture) => Promise<{ prompt: string; schema: z.ZodType } | null>;
-  /** Site-specific quality signal, beyond "did it parse". */
-  inspect?: (data: any, f: Fixture) => string;
+  /**
+   * Site-specific quality signal, beyond "did it parse".
+   *
+   * `summary` is the one-line console note this used to return as a bare string.
+   * `findings` is the gate-able part: structured entries the runner tallies by
+   * family and the exit code is derived from.
+   *
+   * Async because the LINKS family makes HTTP requests.
+   */
+  check?: (data: any, f: Fixture) => CheckResult | Promise<CheckResult>;
+  /** Which API to call. Defaults to 'openai'. Perplexity is OpenAI-compatible on the wire. */
+  provider?: 'openai' | 'perplexity';
 }
 
 /** Cache upstream plans so N iterations of the detail site don't re-plan N times. */
@@ -148,6 +180,58 @@ async function planFor(f: Fixture): Promise<any> {
   return res.parsed;
 }
 
+/**
+ * Whether LINKS-family checks may make HTTP requests. Set from --no-links in
+ * main(). Module-level rather than threaded through every check signature: the
+ * flag is process-wide and read-only after startup.
+ */
+export let PROBE_LINKS = true;
+
+/**
+ * Check one MealSlot envelope: both options, every family except LINKS.
+ *
+ * `alternative` is checked as strictly as `primary`. Production's isUsableMeal
+ * looks only at primary, which is one of the reasons a broken alternative
+ * reaches the UI unnoticed.
+ */
+function checkMealSlot(slot: any, f: Fixture): Finding[] {
+  const out: Finding[] = [];
+  const rules = rulesFor(f.surveyData);
+  const target = f.nutritionTargets.mealTargets[String(slot.mealType).toLowerCase()];
+
+  for (const which of ['primary', 'alternative'] as const) {
+    const meal = slot?.[which];
+    if (!meal) {
+      out.push({ family: 'COMPLETENESS', severity: 'error', code: 'missing-option',
+        where: `${slot.day}.${slot.mealType}`, message: `no ${which} option` });
+      continue;
+    }
+    const where = `${slot.day}.${slot.mealType}.${which}`;
+
+    out.push(...checkAtwater(where, {
+      calories: meal.estimatedCalories, protein: meal.protein,
+      carbs: meal.carbs, fat: meal.fat,
+    }));
+
+    if (target) out.push(...checkTarget(where, meal.estimatedCalories, target.calories));
+
+    // The grocery prompt reads ingredientsWithNutrition, so an empty one means
+    // this meal contributes nothing downstream even though it renders fine.
+    out.push(...checkNonEmpty(where, 'no-ingredients', meal.ingredientsWithNutrition, 2));
+    out.push(...checkNonEmpty(where, 'no-instructions', meal.instructions, 2));
+
+    const ing = (meal.ingredientsWithNutrition ?? []) as Array<{ item: string; calories: number }>;
+    if (ing.length > 0) {
+      out.push(...checkSum(where, 'ingredient-sum', ing.map(i => i.calories), meal.estimatedCalories));
+    }
+
+    const text = [meal.name, meal.description, ...(meal.ingredients ?? []), ...ing.map(i => i.item)].join(' ');
+    out.push(...checkText(where, text, rules));
+  }
+
+  return out;
+}
+
 const SITES: Site[] = [
   {
     name: 'meal-planning',
@@ -162,10 +246,25 @@ const SITES: Site[] = [
         schema: pinnedMealPlan(homeMeals.length),
       };
     },
-    inspect: (d, f) => {
-      const want = homeMealsFrom(f.surveyData.weeklyMealSchedule).length;
-      const slots = new Set(d.mealPlan.map((m: any) => `${m.day}|${m.mealType}`));
-      return `${d.mealPlan.length}/${want} entries, ${slots.size} distinct slots`;
+    check: (d, f) => {
+      const want = homeMealsFrom(f.surveyData.weeklyMealSchedule);
+      const got = d.mealPlan as Array<{ day: string; mealType: string; name?: string; description?: string }>;
+      const rules = rulesFor(f.surveyData);
+      const findings: Finding[] = [
+        ...checkCount('mealPlan', 'plan-count', got.length, want.length),
+        ...checkSlots('mealPlan', got, want),
+      ];
+      // Planning is where a dish is named, and the detail phase is forbidden to
+      // rename it — so an excluded ingredient chosen here can never be corrected.
+      for (const m of got) {
+        findings.push(...checkText(`${m.day}.${m.mealType}`,
+          `${m.name ?? ''} ${m.description ?? ''}`, rules));
+      }
+      const slots = new Set(got.map(m => `${m.day}|${m.mealType}`));
+      return {
+        summary: `${got.length}/${want.length} entries, ${slots.size} distinct slots`,
+        findings,
+      };
     },
   },
   {
@@ -186,9 +285,20 @@ const SITES: Site[] = [
         schema: pinnedMealDetail(chunk.length),
       };
     },
-    inspect: (d) => {
-      const slots = new Set(d.meals.map((m: any) => `${m.day}|${m.mealType}`));
-      return `${d.meals.length} entries, ${slots.size} distinct slots`;
+    check: async (d, f) => {
+      const plan = await planFor(f);
+      const days = [...new Set(plan.mealPlan.map((m: any) => m.day))].slice(0, 2);
+      const want = plan.mealPlan
+        .filter((m: any) => days.includes(m.day))
+        .map((m: any) => ({ day: m.day, mealType: m.mealType }));
+      const got = d.meals as any[];
+      const findings: Finding[] = [
+        ...checkCount('meals', 'detail-count', got.length, want.length),
+        ...checkSlots('meals', got, want),
+      ];
+      for (const slot of got) findings.push(...checkMealSlot(slot, f));
+      const slots = new Set(got.map((m: any) => `${m.day}|${m.mealType}`));
+      return { summary: `${got.length} entries, ${slots.size} distinct slots`, findings };
     },
   },
   {
@@ -201,8 +311,39 @@ const SITES: Site[] = [
         schema: GroceryListSchema,
       };
     },
-    inspect: (d) => Object.entries(d.groceryList as Record<string, any[]>)
-      .map(([k, v]) => `${k}=${v.length}`).join(' '),
+    check: async (d, f) => {
+      const plan = await planFor(f);
+      const list = d.groceryList as Record<string, Array<{ name: string; quantity: string; uses: string }>>;
+      const all = Object.values(list).flat();
+      const rules = rulesFor(f.surveyData);
+      const findings: Finding[] = [
+        ...checkNonEmpty('groceryList', 'empty-grocery-list', all, 8),
+      ];
+      // A plan with N meals that yields a handful of items has silently dropped
+      // most of the shopping.
+      if (all.length > 0 && all.length < plan.mealPlan.length) {
+        findings.push({
+          family: 'COMPLETENESS', severity: 'warn', code: 'thin-grocery-list',
+          where: 'groceryList',
+          message: `${all.length} items for ${plan.mealPlan.length} planned meals`,
+        });
+      }
+      for (const item of all) {
+        findings.push(...checkText(`groceryList.${item.name}`, item.name, rules));
+        // 'varies' is what buildFallbackGroceryList emits; a real list never has it.
+        if (!item.quantity || /^(varies|as needed|some)$/i.test(item.quantity.trim())) {
+          findings.push({
+            family: 'COMPLETENESS', severity: 'error', code: 'unpriceable-quantity',
+            where: `groceryList.${item.name}`,
+            message: `quantity "${item.quantity}" cannot be shopped or priced`,
+          });
+        }
+      }
+      return {
+        summary: Object.entries(list).map(([k, v]) => `${k}=${v.length}`).join(' '),
+        findings,
+      };
+    },
   },
   {
     name: 'meal-legacy',
@@ -219,7 +360,17 @@ const SITES: Site[] = [
         schema: pinnedHomeMealsLegacy(homeMeals.length),
       };
     },
-    inspect: (d) => `${d.homeMeals.length} meals, grocery present`,
+    check: (d, f) => {
+      const all = homeMealsFrom(f.surveyData.weeklyMealSchedule);
+      const want = all.slice(0, Math.ceil(all.length / 2));
+      const got = d.homeMeals as any[];
+      const findings: Finding[] = [
+        ...checkCount('homeMeals', 'legacy-count', got.length, want.length),
+        ...checkSlots('homeMeals', got, want),
+      ];
+      for (const slot of got) findings.push(...checkMealSlot(slot, f));
+      return { summary: `${got.length} meals, grocery present`, findings };
+    },
   },
   {
     name: 'workout-planning',
@@ -228,7 +379,48 @@ const SITES: Site[] = [
       prompt: createWorkoutPlanningPrompt(f.surveyData, f.workoutPrefs),
       schema: WorkoutPlanSchema,
     }),
-    inspect: (d) => `${d.weeklyPlan.length} days, ${d.weeklyPlan.filter((x: any) => x.restDay).length} rest`,
+    check: (d, f) => {
+      const want = f.workoutPrefs.availableDays ?? [];
+      const got = d.weeklyPlan as Array<{ day: string; restDay: boolean; estimatedTime: string; estimatedCalories: number }>;
+      const findings: Finding[] = [];
+
+      // weeklyPlan is not count-pinned, so a short week ships with a 200.
+      const training = got.filter(x => !x.restDay).map(x => String(x.day).toLowerCase());
+      const missing = want.map(d => d.toLowerCase()).filter(d => !training.includes(d));
+      if (missing.length > 0) {
+        findings.push({
+          family: 'COMPLETENESS', severity: 'error', code: 'missing-training-day',
+          where: 'weeklyPlan',
+          message: `available day(s) with no training session: ${missing.join(', ')}`,
+        });
+      }
+
+      for (const day of got) {
+        // parseInt('about an hour') is NaN, which the UI renders as "NaNmin".
+        // Rest days are exempt, as they are for zero-calories below: the model
+        // answers "Rest day" there, which is honest, and the header omits it.
+        // Flagging them buried the real cases under 15 false positives.
+        if (!day.restDay && !/\d/.test(String(day.estimatedTime))) {
+          findings.push({
+            family: 'ARITHMETIC', severity: 'error', code: 'unparseable-duration',
+            where: `weeklyPlan.${day.day}`,
+            message: `estimatedTime "${day.estimatedTime}" contains no digits`,
+          });
+        }
+        if (!day.restDay && !(day.estimatedCalories > 0)) {
+          findings.push({
+            family: 'ARITHMETIC', severity: 'error', code: 'zero-calories',
+            where: `weeklyPlan.${day.day}`,
+            message: `training day with estimatedCalories ${day.estimatedCalories}`,
+          });
+        }
+      }
+
+      return {
+        summary: `${got.length} days, ${got.filter(x => x.restDay).length} rest`,
+        findings,
+      };
+    },
   },
   {
     name: 'workout-detail',
@@ -249,11 +441,52 @@ const SITES: Site[] = [
     // The branch invariant strict mode cannot express: training days need
     // exercises, rest days need activeRecovery. This is the failure the
     // superRefine catches locally, so the bench has to report it too.
-    inspect: (d) => {
-      const bad = d.days.filter((x: any) =>
-        (!x.restDay && (!x.exercises || x.exercises.length === 0)) ||
-        (x.restDay && !x.activeRecovery));
-      return `${d.days.length} days, ${bad.length} violating the rest/train branch`;
+    check: (d, f) => {
+      const days = d.days as any[];
+      const findings: Finding[] = [];
+      for (const day of days) {
+        const where = `days.${day.day}`;
+        if (!day.restDay) {
+          findings.push(...checkNonEmpty(where, 'no-exercises', day.exercises, 3));
+          for (const ex of day.exercises ?? []) {
+            if (!/\d/.test(String(ex.reps))) {
+              findings.push({
+                family: 'ARITHMETIC', severity: 'error', code: 'unparseable-reps',
+                where: `${where}.${ex.name}`, message: `reps "${ex.reps}" contains no digits`,
+              });
+            }
+            if (!/\d/.test(String(ex.restTime))) {
+              findings.push({
+                family: 'ARITHMETIC', severity: 'error', code: 'unparseable-rest',
+                where: `${where}.${ex.name}`, message: `restTime "${ex.restTime}" contains no digits`,
+              });
+            }
+            const rpe = ex.weightGuidance?.rpeTarget;
+            if (typeof rpe === 'number' && (rpe < 1 || rpe > 10)) {
+              findings.push({
+                family: 'ARITHMETIC', severity: 'error', code: 'rpe-out-of-range',
+                where: `${where}.${ex.name}`, message: `rpeTarget ${rpe} is outside 1-10`,
+              });
+            }
+          }
+        } else if (!day.activeRecovery) {
+          findings.push({
+            family: 'COMPLETENESS', severity: 'error', code: 'rest-without-recovery',
+            where, message: 'rest day carries no activeRecovery object',
+          });
+        }
+      }
+      // This replaces an 'injury-unreviewed' warn that told a human to go look.
+      // The same code the request path runs now names the movement and the
+      // injury it contradicts, so the finding is actionable instead of a chore.
+      findings.push(...verdictsToFindings(verifyWorkoutPlan(days as any[], {
+        equipmentAccess: equipmentFromGymAccess((f.workoutPrefs as any).gymAccess),
+        injuryConsiderations: f.workoutPrefs.injuryConsiderations ?? [],
+        availableDays: (f.workoutPrefs as any).availableDays ?? [],
+      })));
+
+      const bad = findings.filter(x => x.severity === 'error').length;
+      return { summary: `${days.length} days, ${bad} error-level findings`, findings };
     },
   },
   {
@@ -277,10 +510,45 @@ const SITES: Site[] = [
       } as any),
       schema: RecipeSchema,
     }),
-    inspect: (d, f) => {
-      const want = f.nutritionTargets.mealTargets.dinner.calories;
-      const off = Math.round(Math.abs(d.nutrition.calories - want) / want * 100);
-      return `${d.ingredientsWithNutrition.length} ingredients, ${d.nutrition.calories} cal (${off}% off target)`;
+    check: (d, f) => {
+      const want = f.nutritionTargets.mealTargets.dinner;
+      const findings: Finding[] = [
+        ...checkAtwater('recipe', {
+          calories: d.nutrition.calories, protein: d.nutrition.protein,
+          carbs: d.nutrition.carbs, fat: d.nutrition.fat,
+        }),
+        ...checkTarget('recipe', d.nutrition.calories, want.calories),
+        ...checkNonEmpty('recipe.ingredients', 'no-ingredients', d.ingredientsWithNutrition, 3),
+        ...checkText('recipe',
+          [d.dishName ?? '', ...(d.ingredientsWithNutrition ?? []).map((i: any) => i.item)].join(' '),
+          rulesFor(f.surveyData)),
+      ];
+
+      const ing = (d.ingredientsWithNutrition ?? []) as Array<{ calories: number }>;
+      const sum = ing.reduce((a, i) => a + i.calories, 0);
+      const servings = Number(d.servings) || 1;
+      findings.push(...checkSum('recipe', 'ingredient-sum', ing.map(i => i.calories), d.nutrition.calories));
+
+      // Per-serving vs whole-recipe: if dividing the ingredient sum by servings
+      // lands on the stated nutrition, the two numbers are in different units.
+      if (servings > 1 && sum > 0) {
+        const asWhole = Math.abs(sum - d.nutrition.calories) / d.nutrition.calories;
+        const asPerServing = Math.abs(sum / servings - d.nutrition.calories) / d.nutrition.calories;
+        if (asWhole > 0.2 && asPerServing < 0.1) {
+          findings.push({
+            family: 'ARITHMETIC', severity: 'error', code: 'serving-unit-mismatch',
+            where: 'recipe',
+            message: `ingredients total ${Math.round(sum)} cal for ${servings} servings; ` +
+                     `nutrition states ${d.nutrition.calories}, which is the per-serving figure`,
+          });
+        }
+      }
+
+      const off = Math.round(Math.abs(d.nutrition.calories - want.calories) / want.calories * 100);
+      return {
+        summary: `${ing.length} ingredients, ${d.nutrition.calories} cal (${off}% off target)`,
+        findings,
+      };
     },
   },
   {
@@ -309,10 +577,278 @@ IMPORTANT: orderingLinks must carry all four keys. Use null for any platform you
 did not find a real URL for. Extract 6-12 menu items maximum.`,
       schema: MenuExtractionSchema,
     }),
-    inspect: (d) => {
-      const links = Object.values(d.orderingLinks).filter(
-        (u: any) => typeof u === 'string' && u.startsWith('http')).length;
-      return `${d.menuItems.length} items, ${links} usable links`;
+    check: async (d, f) => {
+      const items = d.menuItems as Array<{ name: string; price: number; description: string; estimatedCalories: number; category: string }>;
+      const rules = rulesFor(f.surveyData);
+      const findings: Finding[] = [
+        ...checkNonEmpty('menuItems', 'no-menu-items', items, 6),
+      ];
+
+      for (const item of items) {
+        const where = `menuItems.${item.name}`;
+        if (!(item.price > 0)) {
+          findings.push({ family: 'ARITHMETIC', severity: 'error', code: 'nonpositive-price',
+            where, message: `price ${item.price}` });
+        }
+        if (!(item.estimatedCalories > 0)) {
+          findings.push({ family: 'ARITHMETIC', severity: 'error', code: 'zero-calories',
+            where, message: `estimatedCalories ${item.estimatedCalories}` });
+        }
+        findings.push(...checkText(where, `${item.name} ${item.description}`, rules));
+      }
+
+      // The prose above is the only thing this hop was shown. Anything in the
+      // output that is not in it was invented — which is the whole failure mode
+      // the other four families cannot see, because an invented dish at an
+      // invented price is perfectly self-consistent.
+      findings.push(...checkMenuAgainstProse('menuItems', items ?? []));
+
+      // Ground truth from menuProseFixture: DoorDash and direct exist, Uber Eats
+      // and Grubhub explicitly do not. Anything under those two keys is invented.
+      const links = d.orderingLinks as Record<string, string | null>;
+      for (const platform of ['ubereats', 'grubhub']) {
+        const v = links?.[platform];
+        if (typeof v === 'string' && /^https?:\/\//i.test(v.trim())) {
+          findings.push({
+            family: 'LINKS', severity: 'error', code: 'fabricated-link',
+            where: `orderingLinks.${platform}`,
+            message: `source prose says no ${platform} listing was found, but a URL was produced: ${v}`,
+          });
+        }
+      }
+
+      findings.push(...await checkOrderingLinks('orderingLinks', links ?? {}, { probeNetwork: PROBE_LINKS }));
+
+      const usable = Object.values(links ?? {}).filter(
+        u => typeof u === 'string' && u.startsWith('http')).length;
+      return { summary: `${items.length} items, ${usable} usable links`, findings };
+    },
+  },
+  {
+    name: 'restaurant-selection',
+    model: M.PLANNING, maxTokens: 4000, temperature: 0.3,
+    build: async (f) => ({
+      prompt: createRestaurantSelectionPrompt(nearbyRestaurantsFixture, f.surveyData),
+      schema: RestaurantSelectionSchema,
+    }),
+    check: (d, f) => {
+      const picked = d.selectedRestaurants as Array<{ name: string; placeId: string; cuisine: string; rating: number }>;
+      const findings: Finding[] = [];
+
+      // The prompt asks for 8-10 and the schema pins nothing, so both ends drift.
+      if (picked.length < 8 || picked.length > 10) {
+        findings.push({
+          family: 'COMPLETENESS', severity: 'error', code: 'selection-count',
+          where: 'selectedRestaurants',
+          message: `${picked.length} selected, prompt asks for 8-10`,
+        });
+      }
+
+      // A restaurant not in the supplied list was invented. This is the check
+      // that catches a GPT-authored restaurant entering the pool.
+      const known = new Map(nearbyRestaurantsFixture.map(r => [r.placeId, r]));
+      const knownNames = new Set(nearbyRestaurantsFixture.map(r => r.name.toLowerCase()));
+      for (const r of picked) {
+        const where = `selectedRestaurants.${r.name}`;
+        if (!known.has(r.placeId)) {
+          findings.push({
+            family: 'ADHERENCE', severity: 'error', code: 'invented-restaurant',
+            where, message: `placeId "${r.placeId}" was not in the supplied list`,
+          });
+        }
+        if (!knownNames.has(r.name.toLowerCase())) {
+          findings.push({
+            family: 'ADHERENCE', severity: 'error', code: 'invented-restaurant-name',
+            where, message: `"${r.name}" was not in the supplied list`,
+          });
+        }
+        const source = known.get(r.placeId);
+        if (source && Math.abs(source.rating - r.rating) > 0.01) {
+          findings.push({
+            family: 'ARITHMETIC', severity: 'error', code: 'altered-rating',
+            where, message: `rating ${r.rating} does not match the supplied ${source.rating}`,
+          });
+        }
+      }
+
+      const dupes = picked.length - new Set(picked.map(r => r.placeId)).size;
+      if (dupes > 0) {
+        findings.push({
+          family: 'COMPLETENESS', severity: 'error', code: 'duplicate-restaurant',
+          where: 'selectedRestaurants', message: `${dupes} duplicate placeId(s)`,
+        });
+      }
+
+      return { summary: `${picked.length} selected, ${dupes} duplicates`, findings };
+    },
+  },
+  {
+    name: 'restaurant-meals',
+    model: M.DETAIL, maxTokens: 12000, temperature: 0.5,
+    build: async (f) => {
+      const slots = restaurantSlotsFrom(f.surveyData.weeklyMealSchedule);
+      // allHomeSchedule fixtures have no eating-out slots; skip rather than fake one.
+      if (slots.length === 0) return null;
+      return {
+        prompt: createRestaurantMealGenerationPrompt({
+          restaurantMealsSchedule: slots,
+          restaurantMenuData: restaurantMenuDataFixture,
+          surveyData: f.surveyData,
+          nutritionTargets: f.nutritionTargets,
+        }),
+        schema: pinnedRestaurantMeals(slots.length),
+      };
+    },
+    check: async (d, f) => {
+      const want = restaurantSlotsFrom(f.surveyData.weeklyMealSchedule);
+      const got = d.restaurantMeals as any[];
+      const rules = rulesFor(f.surveyData);
+      const findings: Finding[] = [
+        ...checkCount('restaurantMeals', 'restaurant-count', got.length, want.length),
+        ...checkSlots('restaurantMeals', got, want),
+      ];
+
+      // Ground truth: which links each restaurant actually has.
+      const truth = new Map(restaurantMenuDataFixture.map(r => [r.name.toLowerCase(), r]));
+
+      for (const slot of got) {
+        for (const which of ['primary', 'alternative'] as const) {
+          const meal = slot?.[which];
+          if (!meal) continue;
+          const where = `${slot.day}.${slot.mealType}.${which}`;
+          const target = f.nutritionTargets.mealTargets[String(slot.mealType).toLowerCase()];
+
+          findings.push(...checkAtwater(where, {
+            calories: meal.estimatedCalories, protein: meal.protein,
+            carbs: meal.carbs, fat: meal.fat,
+          }));
+          if (target) findings.push(...checkTarget(where, meal.estimatedCalories, target.calories));
+          findings.push(...checkText(where, `${meal.dish} ${meal.description}`, rules));
+
+          const source = truth.get(String(meal.restaurant).toLowerCase());
+          if (!source) {
+            findings.push({
+              family: 'ADHERENCE', severity: 'error', code: 'invented-restaurant',
+              where, message: `"${meal.restaurant}" is not in the supplied menu data`,
+            });
+            continue;
+          }
+
+          if (!source.menuItems.some(mi => mi.name.toLowerCase() === String(meal.dish).toLowerCase())) {
+            findings.push({
+              family: 'ADHERENCE', severity: 'error', code: 'invented-dish',
+              where, message: `"${meal.dish}" is not on ${source.name}'s supplied menu`,
+            });
+          }
+
+          // Every link must be one the fixture actually supplied. Anything else
+          // was authored by the model.
+          const supplied = source.orderingLinks as Record<string, string | null>;
+          for (const [platform, url] of Object.entries(meal.orderingLinks ?? {})) {
+            const usable = typeof url === 'string' && /^https?:\/\//i.test(url.trim());
+            if (!usable) continue;
+            if (supplied[platform] !== url) {
+              findings.push({
+                family: 'LINKS', severity: 'error', code: 'fabricated-link',
+                where: `${where}.orderingLinks.${platform}`,
+                message: supplied[platform]
+                  ? `expected ${supplied[platform]}, got ${url}`
+                  : `${platform} was marked "not available" for ${source.name}, but a URL was produced: ${url}`,
+              });
+            }
+          }
+
+          findings.push(...await checkOrderingLinks(
+            `${where}.orderingLinks`, meal.orderingLinks ?? {}, { probeNetwork: PROBE_LINKS }));
+        }
+      }
+
+      const fabricated = findings.filter(x => x.code === 'fabricated-link').length;
+      return { summary: `${got.length}/${want.length} slots, ${fabricated} fabricated links`, findings };
+    },
+  },
+  {
+    name: 'grocery-prices',
+    provider: 'perplexity',
+    model: MODELS.SEARCH, maxTokens: 8000, temperature: 0.2,
+    build: async (f) => {
+      const plan = await planFor(f);
+      // Mirror what generate-groceries sends: one chunk of the real list.
+      const items = [...new Set(plan.mealPlan.flatMap((m: any) => m.keyIngredients ?? []))]
+        .slice(0, 20)
+        .map((name: any) => ({ name: String(name), quantity: '1 unit', uses: 'meal plan', category: 'proteins' }));
+      if (items.length === 0) return null;
+      return {
+        prompt: createGroceryPricePrompt({
+          items,
+          storeNames: 'Whole Foods, Trader Joe\'s, Safeway',
+          city: f.surveyData.city,
+          userGoal: f.surveyData.primaryGoal,
+        }),
+        schema: GroceryPricesSchema,
+      };
+    },
+    check: (d) => {
+      const items = d.items as Array<{ item: string; storeOptions: Array<{ store: string; price: number; priceConfidence: string; isRecommended: boolean }> }>;
+      const findings: Finding[] = [...checkNonEmpty('items', 'no-priced-items', items, 1)];
+
+      // Every item must be priced at the same set of stores, or the cheapest-store
+      // comparison downstream is comparing different baskets.
+      const storeSets = items.map(i => [...new Set(i.storeOptions.map(o => o.store.trim().toLowerCase()))].sort().join('|'));
+      const distinct = new Set(storeSets);
+      if (distinct.size > 1) {
+        findings.push({
+          family: 'ARITHMETIC', severity: 'error', code: 'ragged-basket',
+          where: 'items',
+          message: `${distinct.size} different store sets across items — store totals would compare different baskets`,
+        });
+      }
+
+      // Near-identical store names split one store into two half-baskets.
+      const names = [...new Set(items.flatMap(i => i.storeOptions.map(o => o.store.trim())))];
+      const normalized = new Map<string, string[]>();
+      for (const n of names) {
+        const k = n.toLowerCase().replace(/[^a-z]/g, '');
+        normalized.set(k, [...(normalized.get(k) ?? []), n]);
+      }
+      for (const [, variants] of normalized) {
+        if (variants.length > 1) {
+          findings.push({
+            family: 'ARITHMETIC', severity: 'error', code: 'store-name-variants',
+            where: 'items', message: `same store under ${variants.length} spellings: ${variants.join(' / ')}`,
+          });
+        }
+      }
+
+      for (const item of items) {
+        const where = `items.${item.item}`;
+        const recommended = item.storeOptions.filter(o => o.isRecommended).length;
+        if (recommended !== 1) {
+          findings.push({
+            family: 'ADHERENCE', severity: 'error', code: 'recommendation-count',
+            where, message: `${recommended} options marked recommended, prompt requires exactly one`,
+          });
+        }
+        for (const o of item.storeOptions) {
+          if (!(o.price > 0) || o.price > 500) {
+            findings.push({
+              family: 'ARITHMETIC', severity: 'error', code: 'implausible-price',
+              where: `${where}.${o.store}`, message: `price ${o.price}`,
+            });
+          }
+        }
+        const prices = item.storeOptions.map(o => o.price);
+        if (prices.length > 1 && new Set(prices).size === 1) {
+          findings.push({
+            family: 'ARITHMETIC', severity: 'warn', code: 'identical-prices',
+            where, message: `all ${prices.length} stores quote ${prices[0]} — the prompt names this as a sign of estimating`,
+          });
+        }
+      }
+
+      const exact = items.flatMap(i => i.storeOptions).filter(o => o.priceConfidence === 'exact').length;
+      const total = items.flatMap(i => i.storeOptions).length;
+      return { summary: `${items.length} items, ${exact}/${total} options marked exact`, findings };
     },
   },
 ];
@@ -333,13 +869,22 @@ interface CallOutcome {
 
 async function callOnce(
   model: string, prompt: string, schema: z.ZodType,
-  schemaName: string, maxTokens: number, temperature: number
+  schemaName: string, maxTokens: number, temperature: number,
+  provider: 'openai' | 'perplexity' = 'openai'
 ): Promise<CallOutcome> {
   const t0 = Date.now();
   const blank: Omit<CallOutcome, 'parsed' | 'error'> = {
     finishReason: 'error', promptTokens: 0, completionTokens: 0, reasoningTokens: 0,
     latencyMs: 0, model,
   };
+
+  const endpoint = provider === 'perplexity'
+    ? 'https://api.perplexity.ai/chat/completions'
+    : 'https://api.openai.com/v1/chat/completions';
+  const apiKey = provider === 'perplexity' ? process.env.PERPLEXITY_API_KEY : KEY;
+  if (!apiKey) {
+    return { ...blank, parsed: null, error: `${provider} API key is not set`, latencyMs: 0 };
+  }
 
   // The 5.6 family renamed max_tokens and accepts only the default temperature.
   // Sending the legacy pair is a hard 400, not a silently-ignored field, so the
@@ -351,9 +896,9 @@ async function callOnce(
 
   let res: Response;
   try {
-    res = await fetch('https://api.openai.com/v1/chat/completions', {
+    res = await fetch(endpoint, {
       method: 'POST',
-      headers: { Authorization: `Bearer ${KEY}`, 'Content-Type': 'application/json' },
+      headers: { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
       body: JSON.stringify({
         model, messages: [{ role: 'system', content: prompt }],
         ...params,
@@ -412,6 +957,10 @@ interface BenchResult {
   estCostPer1000Runs: number;
   failures: string[];
   notes: string[];
+  /** Every structured finding across all n runs, deduplicated by code+where+message. */
+  findings: Finding[];
+  /** findings rolled up per family, for the results table and the exit gate. */
+  familyCounts: Record<Family, { error: number; warn: number }>;
 }
 
 const percentile = (xs: number[], p: number) => {
@@ -421,20 +970,48 @@ const percentile = (xs: number[], p: number) => {
 };
 const mean = (xs: number[]) => (xs.length ? Math.round(xs.reduce((a, b) => a + b, 0) / xs.length) : 0);
 
-async function runSite(site: Site, f: Fixture, n: number): Promise<BenchResult | null> {
+/**
+ * Collapse identical findings across the n runs of a site.
+ *
+ * Without this, `--n=5` reports the same wrong calorie count five times and the
+ * error total says more about n than about the model.
+ */
+function dedupeFindings(findings: Finding[]): Finding[] {
+  const seen = new Map<string, Finding>();
+  for (const f of findings) {
+    seen.set(`${f.family}|${f.code}|${f.where}|${f.message}`, f);
+  }
+  return [...seen.values()];
+}
+
+async function runSite(site: Site, f: Fixture, n: number, probeLinks: boolean): Promise<BenchResult | null> {
   const built = await site.build(f);
   if (!built) return null;
 
+  PROBE_LINKS = probeLinks;
+
   const outcomes: CallOutcome[] = [];
   const notes: string[] = [];
+  const findings: Finding[] = [];
 
   for (let i = 0; i < n; i++) {
     const o = await callOnce(site.model, built.prompt, built.schema,
-      site.name.replace(/-/g, '_'), site.maxTokens, site.temperature);
+      site.name.replace(/-/g, '_'), site.maxTokens, site.temperature, site.provider ?? 'openai');
     outcomes.push(o);
-    if (o.parsed && site.inspect) {
-      try { notes.push(site.inspect(o.parsed, f)); }
-      catch (e) { notes.push(`inspect threw: ${e}`); }
+    if (o.parsed && site.check) {
+      try {
+        const result = await site.check(o.parsed, f);
+        notes.push(result.summary);
+        findings.push(...result.findings);
+      } catch (e) {
+        // A checker that throws is a harness bug, not a model failure. Make it
+        // loud rather than letting it read as a clean run.
+        notes.push(`⚠️ check threw: ${e}`);
+        findings.push({
+          family: 'COMPLETENESS', severity: 'error', code: 'checker-crashed',
+          where: site.name, message: String(e),
+        });
+      }
     }
     process.stdout.write(o.error ? '✗' : '·');
   }
@@ -472,6 +1049,8 @@ async function runSite(site: Site, f: Fixture, n: number): Promise<BenchResult |
       : 0,
     failures: outcomes.filter(o => o.error).map(o => o.error!),
     notes: [...new Set(notes)],
+    findings: dedupeFindings(findings),
+    familyCounts: tally(dedupeFindings(findings)),
   };
 }
 
@@ -484,6 +1063,7 @@ function arg(name: string, fallback?: string) {
 
 async function main() {
   const dry = process.argv.includes('--dry');
+  const probeLinks = !process.argv.includes('--no-links');
   const n = Number(arg('n', '3'));
   const siteFilter = arg('site');
   const fixtureFilter = arg('fixture');
@@ -502,7 +1082,7 @@ async function main() {
     for (const f of chosen) {
       for (const s of sites) {
         // planFor would hit the API, so the sites that depend on it can't dry-run.
-        if (s.name === 'meal-detail' || s.name === 'grocery-list') {
+        if (s.name === 'meal-detail' || s.name === 'grocery-list' || s.name === 'grocery-prices') {
           console.log(`${s.name.padEnd(18)} ${f.name.padEnd(18)} — skipped, needs a live upstream plan`);
           continue;
         }
@@ -530,7 +1110,7 @@ async function main() {
     for (const s of sites) {
       process.stdout.write(`${s.name.padEnd(18)} ${f.name.padEnd(18)} `);
       try {
-        const r = await runSite(s, f, n);
+        const r = await runSite(s, f, n, probeLinks);
         if (!r) { console.log('— n/a for this fixture'); continue; }
         results.push(r);
         console.log(`  ${Math.round(r.schemaPassRate * 100)}% pass, p50 ${r.latencyP50Ms}ms, ` +
@@ -544,12 +1124,23 @@ async function main() {
   }
 
   console.log('\n## Results\n');
-  console.log('| Site | Fixture | Model | n | Pass | p50 ms | p95 ms | In | Out | Peak % | $/1k |');
-  console.log('|---|---|---|---|---|---|---|---|---|---|---|');
+  // Driven off the Family union rather than a hand-written column list: the
+  // previous version hardcoded four names, so adding a fifth family would have
+  // scored it, stored it, and then quietly left it out of the table.
+  const FAMILY_COLUMNS: Array<[Family, string]> = [
+    ['COMPLETENESS', 'CMPL'], ['ARITHMETIC', 'ARITH'], ['ADHERENCE', 'ADHR'],
+    ['LINKS', 'LINKS'], ['GROUNDING', 'GRND'],
+  ];
+  const headers = ['Site', 'Fixture', 'Model', 'n', 'Pass', ...FAMILY_COLUMNS.map(([, label]) => label), 'p50 ms', 'Out', '$/1k'];
+  console.log(`| ${headers.join(' | ')} |`);
+  console.log(`|${headers.map(() => '---').join('|')}|`);
   for (const r of results) {
+    const c = r.familyCounts;
+    const cell = (x: { error: number; warn: number }) =>
+      x.error === 0 && x.warn === 0 ? '·' : `${x.error}e/${x.warn}w`;
     console.log(`| ${r.site} | ${r.fixture} | ${r.model} | ${r.n} | ${Math.round(r.schemaPassRate * 100)}% | ` +
-      `${r.latencyP50Ms} | ${r.latencyP95Ms} | ${r.avgPromptTokens} | ${r.avgCompletionTokens} | ` +
-      `${r.peakCeilingPct}% | ${r.estCostPer1000Runs} |`);
+      `${FAMILY_COLUMNS.map(([f]) => cell(c[f])).join(' | ')} | ` +
+      `${r.latencyP50Ms} | ${r.avgCompletionTokens} | ${r.estCostPer1000Runs} |`);
   }
 
   const totalPer1k = Math.round(results.reduce((a, r) => a + r.estCostPer1000Runs, 0) * 100) / 100;
@@ -567,6 +1158,29 @@ async function main() {
     tight.forEach(r => console.log(`   ${r.site}/${r.fixture}: peak ${r.peakCeilingPct}% of ${r.maxTokens}`));
   }
 
+  const allFindings = results.flatMap(r => r.findings.map(f => ({ ...f, site: r.site, fixture: r.fixture })));
+  const errors = allFindings.filter(f => f.severity === 'error');
+  const warns = allFindings.filter(f => f.severity === 'warn');
+
+  if (allFindings.length > 0) {
+    console.log(`\n## Findings — ${errors.length} error, ${warns.length} warn\n`);
+    // Grouped by code rather than by site: a code that fires across many sites
+    // is one bug, and reading it site-by-site hides that.
+    const byCode = new Map<string, typeof allFindings>();
+    for (const f of allFindings) byCode.set(f.code, [...(byCode.get(f.code) ?? []), f]);
+    const ordered = [...byCode.entries()].sort((a, b) => b[1].length - a[1].length);
+    for (const [code, group] of ordered) {
+      const sev = group.some(f => f.severity === 'error') ? '✗' : '⚠';
+      console.log(`${sev} ${code} — ${group.length} occurrence(s) [${group[0].family}]`);
+      for (const f of group.slice(0, 3)) {
+        console.log(`    ${f.site}/${f.fixture} ${f.where}: ${f.message}`);
+      }
+      if (group.length > 3) console.log(`    … and ${group.length - 3} more`);
+    }
+  } else {
+    console.log('\nNo findings across any family. ✅');
+  }
+
   mkdirSync('bench-results', { recursive: true });
   const out = `bench-results/${new Date().toISOString().replace(/[:.]/g, '-')}.json`;
   writeFileSync(out, JSON.stringify({
@@ -575,8 +1189,21 @@ async function main() {
     rates: RATES,
     n,
     results,
+    findings: allFindings,
   }, null, 2));
   console.log(`\nWrote ${out}`);
+
+  // The gate. Default is to report and exit 0 so an exploratory run is never
+  // blocked; CI and regression runs pass --fail-on=error.
+  const failOn = arg('fail-on');
+  if (failOn === 'error' && errors.length > 0) {
+    console.error(`\n❌ ${errors.length} error-level finding(s). Failing because --fail-on=error.`);
+    process.exit(1);
+  }
+  if (failOn === 'warn' && allFindings.length > 0) {
+    console.error(`\n❌ ${allFindings.length} finding(s). Failing because --fail-on=warn.`);
+    process.exit(1);
+  }
 }
 
 main().catch(e => { console.error(e); process.exit(1); });

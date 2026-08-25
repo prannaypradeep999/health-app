@@ -91,7 +91,18 @@ export async function POST(req: Request) {
       where: { id: workoutLog.id },
       data: {
         completed: completedCount > 0,
-        totalCaloriesBurned: allExercises.reduce((sum, e) => sum + (estimatedCalories ?? 0), 0)
+        // estimatedCalories is the whole day's estimate, not this exercise's.
+        // Scale it by how much of the day the user actually completed. The
+        // reducer this replaces ignored its element and added the day's total
+        // once per logged exercise, so five exercises on a 280-cal day wrote 1400.
+        totalCaloriesBurned: (() => {
+          const dayCalories = typeof estimatedCalories === 'number' && Number.isFinite(estimatedCalories)
+            ? estimatedCalories
+            : 0;
+          const totalCount = allExercises.length;
+          if (totalCount === 0 || dayCalories === 0) return 0;
+          return Math.round(dayCalories * (completedCount / totalCount));
+        })()
       }
     });
 

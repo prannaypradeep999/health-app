@@ -4,6 +4,7 @@ import { cookies } from 'next/headers';
 import { prisma } from '@/lib/db';
 import { perplexityClient } from '@/lib/external/perplexity-client';
 import { normalizeGroceryKey } from '@/lib/utils/grocery-list';
+import { mergePricedItem } from '@/lib/utils/grocery-merge';
 
 export const runtime = 'nodejs';
 export const maxDuration = 60; // Allow up to 60 seconds for price lookups
@@ -225,12 +226,29 @@ async function handleGenerate_groceries(req: NextRequest) {
         continue;
       }
 
-      const original = originalItemMap.get(`${category}:${key}`);
-      groceryListWithPrices[category].push({
-        ...original,
-        ...item
-      });
-      if (key) pricedKeys.add(`${category}:${key}`);
+      let original = originalItemMap.get(`${category}:${key}`);
+      let matchedKey = key;
+
+      // A rename produces a different key, which used to look exactly like a
+      // skip: the merge lost the original's fields and the carry-through loop
+      // below then re-added the original unpriced, so one ingredient rendered
+      // as two rows. Fall back to a containment match on the normalised names.
+      if (!original) {
+        for (const [candidateKey, candidate] of originalItemMap) {
+          if (!candidateKey.startsWith(`${category}:`)) continue;
+          const bare = candidateKey.slice(category.length + 1);
+          if (!bare || pricedKeys.has(candidateKey)) continue;
+          if (key.includes(bare) || bare.includes(key)) {
+            original = candidate;
+            matchedKey = bare;
+            console.log(`[GROCERY-PRICES] 🔤 Matched renamed item "${item.item}" to "${candidate.name || candidate.item}"`);
+            break;
+          }
+        }
+      }
+
+      groceryListWithPrices[category].push(mergePricedItem(original, item));
+      if (matchedKey) pricedKeys.add(`${category}:${matchedKey}`);
     }
 
     // Items the model skipped used to vanish from the list entirely: ask for 40
@@ -260,7 +278,9 @@ async function handleGenerate_groceries(req: NextRequest) {
       savings: priceResponse.savings,
       location: storeResponse.location,
       pricesUpdatedAt: new Date().toISOString(),
-      priceSearchSuccess: true
+      priceSearchSuccess: priceResponse.priceSearchSuccess,
+      pricedItemCount: priceResponse.pricedItemCount,
+      requestedItemCount: priceResponse.requestedItemCount
     };
 
     // Step 6: Update the meal plan with enriched grocery data

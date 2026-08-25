@@ -19,7 +19,10 @@ export const WorkoutPlanSchema = z.object({
   progressionTips: z.array(z.string()),
   safetyReminders: z.array(z.string()),
   equipmentNeeded: z.array(z.string()),
-  weeklyPlan: z.array(WorkoutDayOutline),
+  // A week is seven days and the prompt enumerates them by name, so pinning the
+  // count cannot force filler — it can only stop the array closing early. An
+  // unbounded array let a four-day answer to a seven-day request ship a 200.
+  weeklyPlan: z.array(WorkoutDayOutline).length(7),
 }).strict();
 
 const TimedMovement = z.object({
@@ -42,7 +45,9 @@ export const Exercise = z.object({
   weightGuidance: z.object({
     method: z.string(),
     suggestion: z.string(),
-    rpeTarget: z.number(),
+    // The UI renders this as "RPE {n}/10". Unbounded, a model answering on a
+    // percentage scale produced "(RPE 85/10)".
+    rpeTarget: z.number().min(1).max(10),
     warmupSets: z.string(),
   }).strict(),
   modifications: z.object({

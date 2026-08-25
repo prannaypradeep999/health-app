@@ -1,5 +1,16 @@
 # FYTR Home Meal Generation Audit Results
 
+> **Historical — February 2026.** This documents a `gpt-4o-mini` /
+> `json_object` configuration that no longer exists. Models are now selected by
+> role in `src/lib/ai/models.ts` (`FAST`, `PLANNING`, `DETAIL`, `SEARCH`), and
+> every OpenAI call uses strict `json_schema`. The token-budget analysis below
+> still describes the shape of the problem; the specific model names, limits and
+> response-format claims do not describe this codebase. The 240s timeout below is
+> also gone — `src/lib/utils/retry.ts` now caps each attempt at 45s and enforces
+> one overall budget across retries rather than per attempt. For current
+> correctness findings see
+> `docs/superpowers/specs/2026-08-24-generation-correctness-audit.md`.
+
 ## Executive Summary
 
 **Problem**: Home meal generation is consistently timing out at 180s (3 minutes), and even after increasing to 240s, it's at risk of timeouts due to the massive scope of data being generated in a single API call.
@@ -10,8 +21,8 @@
 
 ### Core Home Meal Generation Flow
 - **`src/app/api/ai/meals/generate-home/route.ts`** - Main API endpoint
-- **`src/lib/ai/prompts/meal-generation.ts`** - Prompt generation (1,159 lines!)
-- **`src/lib/utils/retry.ts`** - Timeout configuration (now 240s)
+- **`src/lib/ai/prompts/meal-generation.ts`** - Prompt generation
+- **`src/lib/utils/retry.ts`** - Timeout configuration
 
 ### Supporting Files
 - **`src/lib/utils/nutrition.ts`** - Calorie/macro calculation

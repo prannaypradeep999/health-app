@@ -240,7 +240,13 @@ The user told us which days they can train. Scheduling a workout on any other
 day produces a plan they cannot follow. Do not add training days to "make the
 split work" — fit the split to the days given, and use the "day" values spelled
 exactly as above.
-` : ''}
+` : `
+DAY SCHEDULE:
+The user did not tell us which days they can train. Choose training and rest
+days that suit the split you picked, spread across the week with rest between
+sessions that work the same muscles. Do not present this as their schedule —
+it is your recommendation.
+`}
 
 Return ONLY this JSON:
 {
@@ -416,6 +422,11 @@ Every day object must carry all four of warmup, exercises, cooldown and
 activeRecovery. Use null for the ones that do not apply: a training day has
 activeRecovery: null, a rest day has warmup: null, exercises: null and
 cooldown: null. Never omit a key.
+
+- "rpeTarget" is Rate of Perceived Exertion on a 1-10 scale, where 10 is
+  maximal effort. Never a percentage. 6-8 for most working sets.
+- "estimatedTime" and "restTime" must lead with a number: "45 minutes",
+  "90 seconds". Not "about an hour".
 
 Return ONLY this JSON:
 {

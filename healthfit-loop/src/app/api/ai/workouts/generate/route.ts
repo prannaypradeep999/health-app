@@ -12,6 +12,7 @@ import { MODELS, tuning } from '@/lib/ai/models';
 import { logUsage } from '@/lib/ai/usage';
 import { WorkoutPlanSchema, pinnedWorkoutDetail, toStrictJsonSchema } from '@/lib/ai/schemas';
 import { parseChoice } from '@/lib/ai/validate';
+import { runVerification, verifyWorkoutPlan, equipmentFromGymAccess } from '@/lib/verification';
 
 export const runtime = 'nodejs';
 // 60s is the Hobby ceiling and is valid on every Vercel plan. Without this
@@ -105,6 +106,27 @@ async function handleGenerateWorkout(req: NextRequest) {
     const imageTime = Date.now() - imageStartTime;
     console.log(`[WORKOUT-GENERATION] ✅ Image enhancement completed in ${imageTime}ms`);
 
+    // Did the plan respect what the survey actually said? Equipment comes from
+    // the same gymAccess enum the prompt reads, expanded the same way, so the
+    // check cannot contradict a constraint the prompt itself imposed.
+    const workoutPrefsForVerify = (surveyData.workoutPreferencesJson || {}) as any;
+    const verification = runVerification(
+      () => verifyWorkoutPlan(
+        (enhancedWorkoutPlan?.weeklyPlan ?? []) as any[],
+        {
+          equipmentAccess: equipmentFromGymAccess(workoutPrefsForVerify.gymAccess),
+          injuryConsiderations: workoutPrefsForVerify.injuryConsiderations ?? [],
+          availableDays: workoutPrefsForVerify.availableDays ?? [],
+        }
+      ),
+      'workouts'
+    );
+    console.log(`[VERIFY] workouts: ${JSON.stringify(verification.counts)}`);
+
+    // A copy, not a mutation: enhancedWorkoutPlan is the model's output and the
+    // verdicts are about it, so they ride beside it rather than on it.
+    const persistedWorkoutPlan = { ...enhancedWorkoutPlan, verification };
+
     const totalTime = Date.now() - startTime;
     console.log(`[WORKOUT-GENERATION] 🏁 Total generation time: ${totalTime}ms (${(totalTime/1000).toFixed(2)}s)`);
 
@@ -123,7 +145,7 @@ async function handleGenerateWorkout(req: NextRequest) {
         createdWorkoutPlan = await prisma.workoutPlan.update({
           where: { id: existingPlan.id },
           data: {
-            planData: enhancedWorkoutPlan as any,
+            planData: persistedWorkoutPlan as any,
             status: 'active'
           }
         });
@@ -134,7 +156,7 @@ async function handleGenerateWorkout(req: NextRequest) {
             surveyId: surveyData.id,
             userId: userId || null,
             weekOf: weekOfDate,
-            planData: enhancedWorkoutPlan as any,
+            planData: persistedWorkoutPlan as any,
             status: 'active'
           }
         });
@@ -170,7 +192,7 @@ async function handleGenerateWorkout(req: NextRequest) {
 
     return NextResponse.json({
       success: true,
-      workoutPlan: enhancedWorkoutPlan,
+      workoutPlan: persistedWorkoutPlan,
       timings: {
         generationTime: `${generationTime}ms`,
         imageTime: `${imageTime}ms`,
@@ -585,8 +607,14 @@ async function generateWorkoutPlan(surveyData: any): Promise<WorkoutPlan> {
   const planResult = await planWorkout(surveyData, workoutPrefs, feedbackContext, libraryExercises);
   const weeklyOutline: any[] = planResult.weeklyPlan || [];
 
-  if (weeklyOutline.length === 0) {
-    throw new Error('Planning phase returned no days');
+  // A short week is not a degraded plan the user can work around: the day picker
+  // selects by name, so a missing day is a dead tab. The schema bound should make
+  // this unreachable; if it fires, the message names the days it did get.
+  if (weeklyOutline.length !== 7) {
+    throw new Error(
+      `Planning phase returned ${weeklyOutline.length} days, expected 7. ` +
+      `Days present: ${weeklyOutline.map((d: any) => d.day).join(', ') || 'none'}`
+    );
   }
 
   // Split into 3 chunks for parallel Phase 2 calls
@@ -712,6 +740,15 @@ async function generateWorkoutPlan(surveyData: any): Promise<WorkoutPlan> {
     validationResult.errors.forEach(err => console.error(`  ❌ ${err}`));
   }
   validationResult.warnings.forEach(warn => console.warn(`  ⚠️ ${warn}`));
+
+  // Errors only. They are structural — a missing day name, a training day with no
+  // exercises, a rest day with no activeRecovery — and produce a plan the UI
+  // cannot render. Warnings are range checks: an unusual plan, not a broken one.
+  if (!validationResult.valid) {
+    throw new Error(
+      `Workout plan failed validation: ${validationResult.errors.slice(0, 3).join('; ')}`
+    );
+  }
 
   return sanitizedWorkoutPlan;
 }

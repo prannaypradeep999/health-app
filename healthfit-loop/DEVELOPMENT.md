@@ -229,11 +229,11 @@ Verified 404. The `get_nutrition_targets` chat tool is dead. Real logic lives in
 break in production **and** locally whenever the dev server falls back to another
 port. Server-to-server HTTP hops like this should be direct function calls.
 
-### 🟠 Type errors are hidden, and there are 33 of them
+### 🟠 Type errors are hidden, and there are 29 of them
 
 `next.config.ts` sets `typescript.ignoreBuildErrors: true` and
 `eslint.ignoreDuringBuilds: true`, so `npm run build` passes while
-`npx tsc --noEmit` reports 32 errors:
+`npx tsc --noEmit` reports 29 errors (counted 2026-08-24):
 
 | File | Count |
 |---|---|
@@ -241,8 +241,7 @@ port. Server-to-server HTTP hops like this should be direct function calls.
 | `src/components/dashboard/MealPlanPage.tsx` | 7 |
 | `src/app/survey/page.tsx` | 6 |
 | `src/lib/ai/prompts/meal-generation.ts` | 3 |
-| `src/app/api/chat/route.ts` | 2 |
-| `WorkoutPlanPage.tsx`, `api/survey/route.ts`, `generate-restaurants`, `generate-groceries` | 1 each |
+| `WorkoutPlanPage.tsx`, `api/survey/route.ts`, `generate-restaurants` | 1 each |
 
 Not all are cosmetic. Real ones include:
 
@@ -288,10 +287,12 @@ Two full directory copies also sit beside the repo (`../healthfit-loop copy/`,
 `../healthfit-loop copybefore optimization/`) — untracked, but they make
 grep/search noisy.
 
-### 🟡 No tests at all
+### 🟡 Test coverage is partial, and there is no CI
 
-No test runner, no test files, no CI. `npx tsc --noEmit` is currently the only
-automated safety net, and it's failing (32 errors).
+Node's built-in runner covers the pure helpers extracted during the 2026-08-24
+correctness work — see `CLAUDE.md § Tests` for how to run it. Route handlers,
+React components and anything that talks to OpenAI, Perplexity, Places or Prisma
+are not covered. Nothing runs the suite automatically.
 
 ---
 

@@ -37,6 +37,7 @@ export * from './workout';
 export * from './meals';
 export * from './recipe';
 export * from './restaurants';
+export * from './menu-search';
 export * from './grocery';
 
 import { GroceryList, MealSlot } from './shared';
@@ -71,12 +72,3 @@ export const pinnedWorkoutDetail = (count: number) =>
 export const pinnedRestaurantMeals = (count: number) =>
   z.object({ restaurantMeals: exactly(RestaurantMealSlot, count) }).strict();
 
-/**
- * Store search is pinned at 3 and safe to pin: the prompt asks for exactly
- * three, its worked example shows three, and the system message already tells
- * the model to fall back to regional chains rather than return fewer. Three
- * small objects cannot truncate. The route 404s on an empty list, so a short
- * response was never usable anyway.
- */
-export const pinnedGroceryStores = (count: number) =>
-  z.object({ stores: exactly(GroceryStoreObject, count) }).strict();

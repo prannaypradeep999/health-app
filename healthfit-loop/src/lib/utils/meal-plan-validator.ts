@@ -57,8 +57,16 @@ export function validateMealPlan(
     // Validate each meal
     dayMeals.forEach(meal => {
       const mealType = meal.mealType?.toLowerCase();
-      const mealName = meal.recipeName || meal.dishName || 'Unnamed meal';
-      const calories = meal.calories ?? meal.estimatedCalories ?? 0;
+
+      // A MealSlot is { day, mealType, primary, alternative } — the nutrition
+      // lives on the option objects, not the envelope. This function read
+      // `meal.calories` and therefore scored every slot at 0 kcal, which made
+      // every meal simultaneously 100% off target and below the 150 cal floor.
+      // The envelope read stays as a fallback because the legacy path in
+      // generate-home/route.ts passes a flattened shape.
+      const option = meal.primary ?? meal;
+      const mealName = option.name || meal.recipeName || meal.dishName || 'Unnamed meal';
+      const calories = option.estimatedCalories ?? option.calories ?? meal.calories ?? 0;
 
       // Get target for this meal slot
       const mealTarget = dayTargets[mealType];
@@ -90,9 +98,9 @@ export function validateMealPlan(
       }
 
       // 3. MACRO CONSISTENCY CHECK
-      const protein = meal.protein || 0;
-      const carbs = meal.carbs || meal.carbohydrates || 0;
-      const fat = meal.fat || 0;
+      const protein = option.protein || 0;
+      const carbs = option.carbs || option.carbohydrates || 0;
+      const fat = option.fat || 0;
 
       const calculatedCalories = (protein * 4) + (carbs * 4) + (fat * 9);
       const macroDeviationPercent = calories > 0 ? Math.abs(calories - calculatedCalories) / calories * 100 : 0;

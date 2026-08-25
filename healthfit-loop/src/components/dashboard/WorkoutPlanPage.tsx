@@ -24,6 +24,7 @@ import Logo from '@/components/logo';
 import ExerciseLibraryModal from './ExerciseLibraryModal';
 import ExerciseLibraryTab from './ExerciseLibraryTab';
 import { getPlanDayIndex, getPlanDays, getDayStatus, isPlanExpired, getBrowserTimezone } from '@/lib/utils/date-utils';
+import { parseMinutes, isPlausibleRpe, reconcileDayEstimate } from '@/lib/utils/workout-numbers';
 
 const getWorkoutStorageKey = (workoutPlanId?: string) => {
   if (workoutPlanId) return `completedExercises:${workoutPlanId}`;
@@ -371,7 +372,10 @@ export function WorkoutPlanPage({ onNavigate, generationStatus }: WorkoutPlanPag
         console.log('Found workout for day:', workoutDay);
         return {
           focus: workoutDay.restDay ? "Rest Day" : workoutDay.focus,
-          duration: parseInt(workoutDay.estimatedTime),
+          duration: reconcileDayEstimate(
+            parseMinutes(workoutDay.estimatedTime),
+            Array.isArray(workoutDay.exercises) ? workoutDay.exercises.length : 0
+          ).minutes,
           calories: workoutDay.restDay ? 0 : workoutDay.estimatedCalories,
           exercises: workoutDay.exercises || [],
           restDay: workoutDay.restDay,
@@ -387,7 +391,7 @@ export function WorkoutPlanPage({ onNavigate, generationStatus }: WorkoutPlanPag
     console.log('No real workout data found - showing empty state');
     return {
       focus: "No workout data available",
-      duration: 0,
+      duration: null,
       calories: 0,
       exercises: [],
       restDay: false,
@@ -537,7 +541,7 @@ export function WorkoutPlanPage({ onNavigate, generationStatus }: WorkoutPlanPag
                   <div className="text-xs">
                     <span className="font-semibold text-blue-800">Weight: </span>
                     <span className="text-blue-700">{exercise.weightGuidance.suggestion}</span>
-                    {exercise.weightGuidance.rpeTarget && (
+                    {isPlausibleRpe(exercise.weightGuidance?.rpeTarget) && (
                       <span className="text-blue-600 ml-2">(RPE {exercise.weightGuidance.rpeTarget}/10)</span>
                     )}
                   </div>
@@ -918,7 +922,9 @@ export function WorkoutPlanPage({ onNavigate, generationStatus }: WorkoutPlanPag
             </div>
             <div className="flex items-center space-x-3 text-sm text-gray-600">
               <span>{currentWorkout.exercises.length} exercises</span>
-              <span className="text-purple-600 font-medium">{currentWorkout.duration}min</span>
+              {currentWorkout.duration !== null && (
+                <span className="text-purple-600 font-medium">{currentWorkout.duration}min</span>
+              )}
             </div>
           </div>
 

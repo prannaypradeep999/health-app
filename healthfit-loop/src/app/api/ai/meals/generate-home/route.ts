@@ -1,5 +1,5 @@
-import { NextRequest, NextResponse } from 'next/server';
-import { withRouteBudget } from '@/lib/utils/route-budget';
+import { NextRequest, NextResponse, after } from 'next/server';
+import { withRouteBudget, routeRemainingMs } from '@/lib/utils/route-budget';
 import { cookies } from 'next/headers';
 import { prisma } from '@/lib/db';
 import { calculateMacroTargets, UserProfile } from '@/lib/utils/nutrition';
@@ -8,6 +8,9 @@ import { validateMealPlan } from '@/lib/utils/meal-plan-validator';
 import { validateIngredientSums } from '@/lib/utils/ingredient-validator';
 import { validateRestrictions } from '@/lib/utils/restriction-validator';
 import { buildFallbackGroceryList, enhanceGroceryListWithUsage } from '@/lib/utils/grocery-list';
+import { isUsableMeal, isUsableOption } from '@/lib/utils/meal-usability';
+import { summarizeCompleteness } from '@/lib/utils/completeness';
+import { adjustTargetsForRestaurantBudget } from '@/lib/utils/restaurant-budget';
 import { createHomeMealGenerationPrompt, createPlanningPrompt, createDetailPrompt, createGroceryPrompt, HOME_MEAL_NUTRITION_METHOD, type MealFeedbackContext } from '@/lib/ai/prompts';
 import { pexelsClient } from '@/lib/external/pexels-client';
 import { withGPTRetry, HttpError } from '@/lib/utils/retry';
@@ -23,6 +26,7 @@ import {
   toStrictJsonSchema,
 } from '@/lib/ai/schemas';
 import { parseChoice } from '@/lib/ai/validate';
+import { runVerification, verifyGroceryCoverage } from '@/lib/verification';
 
 export const runtime = 'nodejs';
 // 60s is the Hobby ceiling and is valid on every Vercel plan. Without this
@@ -213,76 +217,6 @@ function hasRestaurantSlots(weeklySchedule: any): boolean {
   );
 }
 
-// Adjust nutrition targets based on restaurant meal budget
-function adjustTargetsForRestaurantBudget(
-  weeklyTargets: any,
-  restaurantCalories: Array<{ day: string; mealType: string; calories: number }>
-): any {
-  if (!weeklyTargets || !weeklyTargets.days) return weeklyTargets;
-
-  const adjustedDays = { ...weeklyTargets.days };
-
-  // For each day, subtract restaurant calories from daily total and redistribute
-  restaurantCalories.forEach(({ day, mealType, calories }) => {
-    const dayKey = day.toLowerCase();
-    const dayTargets = adjustedDays[dayKey];
-
-    if (!dayTargets) return;
-
-    console.log(`[BUDGET-ADJUST] ${day} ${mealType}: reducing by ${calories} calories`);
-
-    // Calculate remaining calories for home meals
-    const remainingCalories = Math.max(0, weeklyTargets.dailyCalories - calories);
-
-    // Get home meal slots for this day (excluding the restaurant meal)
-    const homeMealSlots = [];
-    if (mealType !== 'breakfast' && dayTargets.breakfast?.source === 'home') homeMealSlots.push('breakfast');
-    if (mealType !== 'lunch' && dayTargets.lunch?.source === 'home') homeMealSlots.push('lunch');
-    if (mealType !== 'dinner' && dayTargets.dinner?.source === 'home') homeMealSlots.push('dinner');
-
-    if (homeMealSlots.length === 0) return; // No home meals to adjust
-
-    // Redistribute remaining calories across home meals
-    if (homeMealSlots.length === 1) {
-      // One home meal gets all remaining calories (capped at 1200)
-      const slot = homeMealSlots[0] as 'breakfast' | 'lunch' | 'dinner';
-      const newCalories = Math.min(remainingCalories, 1200);
-      const proportion = newCalories / weeklyTargets.dailyCalories;
-
-      adjustedDays[dayKey][slot] = {
-        ...dayTargets[slot],
-        calories: newCalories,
-        protein: Math.round(weeklyTargets.macros.protein * proportion),
-        carbs: Math.round(weeklyTargets.macros.carbs * proportion),
-        fat: Math.round(weeklyTargets.macros.fat * proportion)
-      };
-    } else if (homeMealSlots.length === 2) {
-      // Two home meals - distribute 40/60
-      const smallerMeal = Math.round(remainingCalories * 0.4);
-      const largerMeal = remainingCalories - smallerMeal;
-
-      homeMealSlots.forEach((slot, index) => {
-        const slotTyped = slot as 'breakfast' | 'lunch' | 'dinner';
-        const calories = index === 0 ? smallerMeal : largerMeal;
-        const proportion = calories / weeklyTargets.dailyCalories;
-
-        adjustedDays[dayKey][slotTyped] = {
-          ...dayTargets[slotTyped],
-          calories,
-          protein: Math.round(weeklyTargets.macros.protein * proportion),
-          carbs: Math.round(weeklyTargets.macros.carbs * proportion),
-          fat: Math.round(weeklyTargets.macros.fat * proportion)
-        };
-      });
-    }
-  });
-
-  return {
-    ...weeklyTargets,
-    days: adjustedDays
-  };
-}
-
 // Convert new nutrition targets to legacy format for backward compatibility
 function convertToLegacyTargets(weeklyTargets: any, day?: string): any {
   if (!weeklyTargets) return null;
@@ -405,7 +339,8 @@ async function generateHomeMealsForSchedule(
   homeMeals: Array<{day: string, mealType: string}>,
   surveyData: any,
   nutritionTargets: any,
-  weeklyNutritionTargets?: any
+  weeklyNutritionTargets?: any,
+  targetsByDay?: Record<string, any>
 ): Promise<any> {
   const startTime = Date.now();
   console.log(`[HOME-MEALS-7DAY] 🏠 Generating ${homeMeals.length} home meals for 7-day schedule...`);
@@ -438,7 +373,7 @@ async function generateHomeMealsForSchedule(
   // Try Phase 2 plan+parallel architecture first (NEW DEFAULT)
   try {
     console.log(`[HOME-MEALS-7DAY] 🚀 Trying Phase 2: Plan+Parallel architecture...`);
-    const result = await generateHomeMealsParallel(homeMeals, surveyData, nutritionTargets, weeklyNutritionTargets, feedbackContext);
+    const result = await generateHomeMealsParallel(homeMeals, surveyData, nutritionTargets, weeklyNutritionTargets, feedbackContext, targetsByDay);
     const totalTime = Date.now() - startTime;
     console.log(`[HOME-MEALS-7DAY] ✅ Phase 2 completed successfully in ${totalTime}ms`);
     return result;
@@ -876,23 +811,24 @@ async function triggerGroceryPriceLookup(surveyId: string) {
     const baseUrl = process.env.NEXT_PUBLIC_BASE_URL || process.env.VERCEL_URL || 'http://localhost:3000';
     const url = baseUrl.startsWith('http') ? baseUrl : `https://${baseUrl}`;
 
-    // Fire and forget - don't await
-    fetch(`${url}/api/ai/meals/generate-groceries`, {
+    // Awaited by the caller inside after(), which keeps the serverless instance
+    // alive past the response. Orphaning this promise dropped prices whenever
+    // the platform reclaimed the instance first — invisibly, since it always
+    // completes locally.
+    const res = await fetch(`${url}/api/ai/meals/generate-groceries`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
         'Cookie': `survey_id=${surveyId}`
       }
-    }).then(async res => {
-      if (res.ok) {
-        const data = await res.json();
-        console.log(`[HOME-MEALS] ✅ Grocery prices complete: ${data.itemCount} items, best store: ${data.recommendedStore}`);
-      } else {
-        console.warn('[HOME-MEALS] ⚠️ Grocery price lookup failed:', res.status);
-      }
-    }).catch(err => {
-      console.error('[HOME-MEALS] ❌ Grocery price lookup error:', err.message);
     });
+
+    if (res.ok) {
+      const data = await res.json();
+      console.log(`[HOME-MEALS] ✅ Grocery prices complete: ${data.itemCount} items, best store: ${data.recommendedStore}`);
+    } else {
+      console.warn('[HOME-MEALS] ⚠️ Grocery price lookup failed:', res.status);
+    }
   } catch (error) {
     console.error('[HOME-MEALS] ❌ Failed to trigger grocery price lookup:', error);
   }
@@ -998,7 +934,8 @@ async function generateMealDetails(
   plannedMealsChunk: any[],
   surveyData: any,
   nutritionTargets: any,
-  chunkName: string
+  chunkName: string,
+  targetsByDay?: Record<string, any>
 ): Promise<any> {
   console.log(`[HOME-MEALS-7DAY] 📋 Phase 2: Generating details for ${chunkName} (${plannedMealsChunk.length} meals)...`);
   const startTime = Date.now();
@@ -1007,11 +944,18 @@ async function generateMealDetails(
   // before the count was in the grammar.
   const DetailSchema = pinnedMealDetail(plannedMealsChunk.length);
 
+  // A7. Prefer the chunk's own day over the week-level object, which is
+  // Monday's. A chunk can span days (Fri-Sun), so the first day is not exact —
+  // but it is strictly closer than always being Monday, and formatNutritionTargets
+  // already carries the exact per-day numbers into the prompt when they vary.
+  const chunkDay = plannedMealsChunk[0]?.day?.toLowerCase();
+  const effectiveTargets = (chunkDay && targetsByDay?.[chunkDay]) || nutritionTargets;
+
   // Create detail prompt with planned meals and user context
   const detailPrompt = createDetailPrompt(plannedMealsChunk, {
     homeMeals: plannedMealsChunk.map(m => ({day: m.day, mealType: m.mealType})),
     surveyData,
-    nutritionTargets,
+    nutritionTargets: effectiveTargets,
     scheduleText: `Details for ${chunkName}`
   });
 
@@ -1145,10 +1089,22 @@ async function generateHomeMealsParallel(
   surveyData: any,
   nutritionTargets: any,
   weeklyNutritionTargets?: any,
-  feedbackContext?: MealFeedbackContext | null
+  feedbackContext?: MealFeedbackContext | null,
+  targetsByDay?: Record<string, any>
 ): Promise<any> {
   const startTime = Date.now();
   console.log(`[HOME-MEALS-7DAY] 🚀 Starting plan+parallel generation for ${homeMeals.length} home meals...`);
+
+  // A4. Every degradation below used to be a console line and nothing else, so
+  // "we ran out of time" and "there was nothing to generate" produced identical
+  // responses. Each site records what it gave up and how much budget was left
+  // when it did — a generic "budget exhausted" is not actionable; the phase and
+  // the slot count are.
+  const degradationReasons: string[] = [];
+  const budgetNote = () => {
+    const left = routeRemainingMs();
+    return left === null ? 'no route budget in scope' : `${Math.max(0, Math.round(left / 1000))}s of route budget left`;
+  };
 
   try {
     // Phase 1: Plan all meals
@@ -1194,6 +1150,15 @@ async function generateHomeMealsParallel(
         console.log(`[HOME-MEALS-7DAY] 🔁 Planning top-up recovered ${plannedMeals.length}/${homeMeals.length} slots`);
       } catch (e) {
         console.error(`[HOME-MEALS-7DAY] ❌ Planning top-up failed: ${(e as Error).message} — continuing with ${plannedMeals.length} slots`);
+        degradationReasons.push(
+          `planning top-up failed with ${unplanned.length} slot(s) unplanned (${(e as Error).message}); ${budgetNote()}`
+        );
+      }
+      const stillUnplanned = homeMeals.filter(m => !plannedKeys.has(slotKey(m)));
+      if (stillUnplanned.length > 0) {
+        degradationReasons.push(
+          `planning left ${stillUnplanned.length} slot(s) unplanned after top-up: ${stillUnplanned.map(slotKey).join(', ')}`
+        );
       }
     }
 
@@ -1213,7 +1178,7 @@ async function generateHomeMealsParallel(
 
     // Generate details for all chunks in parallel
     const detailResults = await Promise.all(
-      chunks.map(chunk => generateMealDetails(chunk.meals, surveyData, nutritionTargets, chunk.name))
+      chunks.map(chunk => generateMealDetails(chunk.meals, surveyData, nutritionTargets, chunk.name, targetsByDay))
     );
 
     // Merge all detail results
@@ -1229,17 +1194,7 @@ async function generateHomeMealsParallel(
     // was never retried. Presence was standing in for content. The schema could
     // not catch it either — `z.array(z.string())` is satisfied by `[]` and
     // `z.number()` by `0`, so strict mode passed all of it.
-    const isUsableMeal = (m: any): boolean => {
-      const opts = [m?.primary, m?.alternative].filter(Boolean);
-      if (opts.length === 0) return false;
-      // The primary is what fills the slot; an empty alternative is a lesser
-      // problem, so only the primary gates a retry.
-      const o = opts[0];
-      return Number(o.estimatedCalories) > 0
-        && Number(o.protein) > 0
-        && Array.isArray(o.ingredients) && o.ingredients.length > 0
-        && Array.isArray(o.instructions) && o.instructions.length > 0;
-    };
+    // Moved to meal-usability.ts so it can be tested; see that file for the rest.
 
     // Detail top-up, same reasoning as planning: one extra call over just the
     // slots a chunk dropped or failed on, instead of shipping a short week.
@@ -1249,15 +1204,28 @@ async function generateHomeMealsParallel(
     const hollow = allMeals.filter(m => !isUsableMeal(m));
     if (hollow.length > 0) {
       console.warn(`[HOME-MEALS-7DAY] ⚠️ ${hollow.length} meals came back hollow (no recipe or zero macros): ${hollow.map(slotKey).join(', ')}`);
+      degradationReasons.push(
+        `${hollow.length} meal(s) arrived hollow and were dropped before the detail top-up: ${hollow.map(slotKey).join(', ')}`
+      );
       // Drop them so the top-up's results replace rather than collide with them.
       for (let i = allMeals.length - 1; i >= 0; i--) {
         if (!isUsableMeal(allMeals[i])) allMeals.splice(i, 1);
       }
     }
 
+    // Not a retry trigger — see isUsableMeal. But a week where every second
+    // choice is empty is a half-delivered week, and until now nothing said so.
+    const hollowAlternatives = (allMeals as any[]).filter((m) => !isUsableOption(m.alternative));
+    if (hollowAlternatives.length > 0) {
+      console.warn(`[HOME-MEALS-7DAY] ⚠️ ${hollowAlternatives.length}/${allMeals.length} meals have no usable alternative`);
+      degradationReasons.push(
+        `${hollowAlternatives.length}/${allMeals.length} meal(s) have no usable second choice`
+      );
+    }
+
     if (undetailed.length > 0) {
       console.warn(`[HOME-MEALS-7DAY] 🔁 Detail top-up: ${undetailed.length}/${plannedMeals.length} meals missing detail (${undetailed.map(slotKey).join(', ')})`);
-      const topUp = await generateMealDetails(undetailed, surveyData, nutritionTargets, 'top-up');
+      const topUp = await generateMealDetails(undetailed, surveyData, nutritionTargets, 'top-up', targetsByDay);
       for (const m of topUp.meals as any[]) {
         // Same content bar on the way back in. A hollow meal is worse than an
         // absent one: it renders as a card reading "0 cal / 0g protein" with no
@@ -1271,6 +1239,11 @@ async function generateHomeMealsParallel(
       const stillMissing = plannedMeals.filter(m => !detailedKeys.has(slotKey(m)));
       console.log(`[HOME-MEALS-7DAY] 🔁 Detail top-up: now ${allMeals.length}/${homeMeals.length} meals` +
         (stillMissing.length > 0 ? `, unrecovered: ${stillMissing.map(slotKey).join(', ')}` : ''));
+      if (stillMissing.length > 0) {
+        degradationReasons.push(
+          `detail top-up left ${stillMissing.length} slot(s) without a usable recipe: ${stillMissing.map(slotKey).join(', ')}; ${budgetNote()}`
+        );
+      }
     }
 
     if (allMeals.length < homeMeals.length) {
@@ -1290,6 +1263,58 @@ async function generateHomeMealsParallel(
         detailResults.map((r, i) => `Chunk ${i}: ${r.meals?.length || 0} meals`));
       throw new Error('No detailed meals generated - detail phase failed');
     }
+
+    // A1. These three validators were written, and every call site sat in
+    // generateHomeMealsLegacy — the path that only runs when this one throws.
+    // In practice nothing has ever validated a home meal plan. They report
+    // rather than block: a flawed week is still a week, and the user asked for
+    // one. What changes is that the response can now say so.
+    const planValidation = validateMealPlan(allMeals, weeklyNutritionTargets?.days ?? {});
+
+    const ingredientErrors: string[] = [];
+    for (const meal of allMeals as any[]) {
+      for (const option of [meal.primary, meal.alternative]) {
+        if (!option) continue;
+        const result = validateIngredientSums(option.name, {
+          estimatedCalories: option.estimatedCalories,
+          protein: option.protein,
+          carbs: option.carbs,
+          fat: option.fat,
+          ingredientsWithNutrition: option.ingredientsWithNutrition,
+        });
+        result.errors.forEach((e) => ingredientErrors.push(`${meal.day} ${meal.mealType}: ${e}`));
+      }
+    }
+
+    // validateRestrictions takes the survey's three restriction fields as an
+    // OBJECT — `{ dietPrefs, strictExclusions, foodAllergies }` — not a flat
+    // list. Check the signature in restriction-validator.ts before changing
+    // this; a flat array type-errors.
+    const userRestrictions = {
+      dietPrefs: surveyData.dietPrefs ?? [],
+      foodAllergies: surveyData.foodAllergies ?? [],
+      strictExclusions: (surveyData.strictExclusions as Record<string, string[]> | null) ?? undefined,
+    };
+    const hasRestrictions =
+      userRestrictions.dietPrefs.length > 0 ||
+      userRestrictions.foodAllergies.length > 0 ||
+      Object.values(userRestrictions.strictExclusions ?? {}).some((v) => v.length > 0);
+
+    // Skipped when the user has no restrictions: it would iterate every meal to
+    // prove nothing, inside a route sharing a 52-second deadline.
+    const restrictionResult = hasRestrictions
+      ? validateRestrictions(
+          (allMeals as any[]).flatMap((m) => [m.primary, m.alternative].filter(Boolean)),
+          userRestrictions
+        )
+      : { valid: true, violations: [] as any[] };
+
+    console.log(
+      `[HOME-MEALS-7DAY] 🔎 Validation: ${planValidation.errors.length} plan error(s), ` +
+      `${planValidation.warnings.length} warning(s), ${ingredientErrors.length} ingredient sum error(s), ` +
+      `${restrictionResult.violations.length} restriction violation(s)`
+    );
+    ingredientErrors.forEach((e) => console.error(`[HOME-MEALS-7DAY] ❌ ${e}`));
 
     // Phase 3: Generate grocery list
     console.log(`[HOME-MEALS-7DAY] 📋 Phase 4: Grocery consolidation...`);
@@ -1316,18 +1341,51 @@ async function generateHomeMealsParallel(
       groceryList = buildFallbackGroceryList(allMeals);
     }
 
+    // Does the list cover the recipes it was built from? Both sides are already
+    // in memory, so this costs no network time and cannot extend the deadline.
+    // Shadow mode: it logs and rides along in the payload, nothing branches on it.
+    const verification = runVerification(
+      () => verifyGroceryCoverage(
+        (allMeals as any[]).flatMap(m =>
+          [m?.primary, m?.alternative].filter(Boolean).flatMap((o: any) => (o.ingredients ?? []) as string[])
+        ),
+        Object.values(groceryList ?? {}).flat().map((i: any) => String(i?.name ?? i ?? ''))
+      ),
+      'groceries'
+    );
+    console.log(`[VERIFY] groceries: ${JSON.stringify(verification.counts)}`);
+
+    const completeness = summarizeCompleteness({
+      requested: homeMeals,
+      delivered: allMeals,
+      reasons: degradationReasons,
+    });
+    if (completeness.status !== 'complete') {
+      console.error(`[HOME-MEALS-7DAY] 📉 ${completeness.status}: ${completeness.deliveredSlots}/${completeness.requestedSlots} slots. Missing: ${completeness.missingSlots.join(', ')}. Reasons: ${completeness.reasons.join('; ') || 'none recorded'}`);
+    }
+
     const totalTime = Date.now() - startTime;
     console.log(`[HOME-MEALS-7DAY] 🏁 Total plan+parallel generation: ${totalTime}ms`);
 
     return {
+      completeness,
       homeMeals: allMeals,
       groceryList,
+      verification,
       metadata: {
         generationTime: totalTime,
         totalHomeMeals: allMeals.length,
         nutritionTargets,
         architecture: 'plan+parallel'
-      }
+      },
+      validation: {
+        planErrors: planValidation.errors,
+        planWarnings: planValidation.warnings,
+        ingredientErrors,
+        restrictionViolations: restrictionResult.violations,
+        dailySummaries: planValidation.dailySummaries,
+        hollowAlternatives: hollowAlternatives.length,
+      },
     };
 
   } catch (error) {
@@ -1438,8 +1496,18 @@ async function handleGenerate_home(req: NextRequest) {
     }
     console.log(`[HOME-GENERATION] 📊 Calculated nutrition targets: ${nutritionTargets.dailyCalories} calories/day`);
 
+    // A7. Per-day legacy targets. The week-level `nutritionTargets` above is
+    // Monday's, because convertToLegacyTargets falls through to
+    // Object.values(days)[0] when given no day — under a variable named
+    // `avgDay`, which is not an average. Everything that knows which day it is
+    // generating should read from here instead.
+    const targetsByDay: Record<string, any> = {};
+    Object.keys(adjustedTargets?.days ?? {}).forEach(day => {
+      targetsByDay[day] = convertToLegacyTargets(adjustedTargets, day);
+    });
+
     // Generate home meals (now includes grocery list)
-    const homeMealPlan = await generateHomeMealsForSchedule(homeMealsSchedule, surveyData, nutritionTargets, adjustedTargets);
+    const homeMealPlan = await generateHomeMealsForSchedule(homeMealsSchedule, surveyData, nutritionTargets, adjustedTargets, targetsByDay);
 
     // Enhance meals with Pexels images
     console.log(`[HOME-GENERATION] 🖼️ Enhancing meals with images...`);
@@ -1495,6 +1563,9 @@ async function handleGenerate_home(req: NextRequest) {
       homeMeals: homeMealPlan.homeMeals || [],
       restrictionViolations: homeMealPlan.restrictionViolations || [],
       groceryList: homeMealPlan.groceryList || null,
+      // Keyed by generator: the restaurant route writes its own report into this
+      // same userContext, and an unkeyed value would let the later route win.
+      verification: { groceries: homeMealPlan.verification ?? null },
       totalEstimatedCost: homeMealPlan.totalEstimatedCost || 0,
       weeklyBudgetUsed: homeMealPlan.weeklyBudgetUsed || "0%",
       metadata: {
@@ -1564,6 +1635,13 @@ async function handleGenerate_home(req: NextRequest) {
               restaurantMeals: existingContext.restaurantMeals || [],
               // Use merged days that include both home and restaurant meals
               days: mergedDays,
+              // This object is written by both generators. Spreading
+              // initialMealPlan alone would drop a restaurants report that
+              // landed first.
+              verification: {
+                ...(existingContext.verification ?? {}),
+                groceries: homeMealPlan.verification ?? null,
+              },
               restrictionViolations: [
                 ...(existingContext.restrictionViolations || []),
                 ...(homeMealPlan.restrictionViolations || [])
@@ -1601,8 +1679,9 @@ async function handleGenerate_home(req: NextRequest) {
         console.log(`[HOME-GENERATION] ✅ Created new meal plan ${mealPlan.id} (legacy mode)`);
       }
 
-      // Trigger grocery price lookup in background
-      triggerGroceryPriceLookup(surveyData.id);
+      // Runs after the response is flushed, but the platform keeps the instance
+      // alive for it.
+      after(triggerGroceryPriceLookup(surveyData.id));
 
     } catch (dbError) {
       console.error(`[HOME-GENERATION] ❌ Failed to save home meal plan:`, dbError);
@@ -1624,12 +1703,30 @@ async function handleGenerate_home(req: NextRequest) {
     const totalTime = Date.now() - startTime;
     console.log(`[HOME-GENERATION] 🏁 Home meal generation completed in ${totalTime}ms (${(totalTime/1000).toFixed(2)}s)`);
 
+    // A10. A run that produced nothing used to return 200 with success:true.
+    // The client renders an empty week and has no way to tell it apart from a
+    // week the user genuinely has no home meals in. 502 rather than 500: the
+    // generation upstream failed, this handler did not.
+    if (homeMealPlan.completeness?.status === 'empty') {
+      console.error('[HOME-GENERATION] ❌ Zero meals generated — returning 502 rather than an empty success');
+      return NextResponse.json({
+        error: 'Home meal generation produced no meals',
+        completeness: homeMealPlan.completeness,
+        validation: homeMealPlan.validation ?? null,
+      }, { status: 502 });
+    }
+
     return NextResponse.json({
       success: true,
       homeMealPlan: initialMealPlan,
       groceryList: homeMealPlan.groceryList || null,
       totalEstimatedCost: homeMealPlan.totalEstimatedCost || 0,
       weeklyBudgetUsed: homeMealPlan.weeklyBudgetUsed || "0%",
+      // `?? null` rather than a default object: the legacy path does not produce
+      // these, and a fabricated status:'complete' for a path we did not measure
+      // would be exactly the lie this change exists to remove.
+      completeness: homeMealPlan.completeness ?? null,
+      validation: homeMealPlan.validation ?? null,
       timings: {
         totalTime: `${totalTime}ms`,
         imageEnhancementTime: `${imageTime}ms`,

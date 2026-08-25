@@ -7,6 +7,8 @@ import { RecipeSchema, toStrictJsonSchema } from '@/lib/ai/schemas';
 import { parseChoice } from '@/lib/ai/validate';
 import { logUsage } from '@/lib/ai/usage';
 import { withGPTRetry, HttpError } from '@/lib/utils/retry';
+import { resolveSurveyResponse } from '@/lib/survey/resolve';
+import { recipeCacheKey, restrictionsFromSurvey } from '@/lib/survey/recipe-key';
 
 // 60s is the Hobby ceiling and is valid on every Vercel plan. Without this
 // line the route silently inherits the platform default of 10-15s, well
@@ -70,8 +72,7 @@ export async function POST(req: NextRequest) {
       mealType,
       // NEW parameters
       nutritionTargets: rawNutritionTargets,
-      existingGroceryItems,
-      dietaryRestrictions
+      existingGroceryItems
     } = await req.json();
 
     const nutritionTargets = sanitizeNutritionTargets(rawNutritionTargets);
@@ -80,10 +81,22 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'Dish name is required' }, { status: 400 });
     }
 
+    // E2. The client used to send `dietaryRestrictions: []` with a TODO next to
+    // it, because MealPlanPage has no survey data and cannot get any. So the
+    // prompt's dietary section was empty for every recipe ever generated. The
+    // survey is on the server; read it here.
+    const survey = await resolveSurveyResponse();
+    const dietaryRestrictions = restrictionsFromSurvey(survey);
+    const cacheKey = recipeCacheKey(dishName, dietaryRestrictions);
+
+    if (dietaryRestrictions.length > 0) {
+      console.log(`[RECIPE] Restrictions for "${dishName}": ${dietaryRestrictions.join(', ')} (key ${cacheKey})`);
+    }
+
     // Check cache - but only use if nutrition targets match OR no specific targets requested
     const existingRecipe = await prisma.recipe.findFirst({
       where: {
-        dishName: dishName.toLowerCase().trim()
+        dishName: cacheKey
       }
     });
 
@@ -210,7 +223,8 @@ export async function POST(req: NextRequest) {
     const recipeData = parsed.data;
 
     // Value-level checks strict mode cannot express: the per-ingredient numbers
-    // have to add up to the totals. Warn-only — the recipe is still usable.
+    // are whole-recipe and have to add up to servings × the stated per-serving
+    // totals. Warn-only — the recipe is still usable.
     const validation = validateIngredientSums(
       recipeData.name,
       {
@@ -218,6 +232,7 @@ export async function POST(req: NextRequest) {
         protein: recipeData.nutrition.protein,
         carbs: recipeData.nutrition.carbs,
         fat: recipeData.nutrition.fat,
+        servings: recipeData.servings,
         ingredientsWithNutrition: recipeData.ingredientsWithNutrition
       }
     );
@@ -228,17 +243,34 @@ export async function POST(req: NextRequest) {
       console.log(`[RECIPE-INGREDIENT-VALIDATOR] ✅ ${recipeData.name}: ${validation.details.ingredientCount} ingredients, sums match`);
     }
 
-    // Always save recipe to cache using upsert
+    // Cache only what we would be willing to serve again unexamined. parseChoice
+    // above already refuses to cache a malformed recipe on the grounds that a
+    // cached one is served back forever; arithmetic that is more than 20% out is
+    // wrong for the same duration and for the same reason. The recipe is still
+    // returned to the caller — the user asked for it and it is displayable — but
+    // it does not become the permanent answer for this dish.
+    if (validation.errors.length > 0) {
+      console.warn(
+        `[RECIPE] Not caching "${dishName}" — ${validation.errors.length} ingredient sum error(s). ` +
+        `Returning it to the caller uncached so the next request regenerates.`
+      );
+      return NextResponse.json({
+        success: true,
+        recipe: recipeData,
+        cached: false
+      });
+    }
+
     try {
       await prisma.recipe.upsert({
-        where: { dishName: dishName.toLowerCase().trim() },
+        where: { dishName: cacheKey },
         update: {
           recipeData: recipeData,
           hitCount: { increment: 1 },
           lastUsed: new Date()
         },
         create: {
-          dishName: dishName.toLowerCase().trim(),
+          dishName: cacheKey,
           originalDishName: dishName,
           mealType: mealType,
           description: description || null,

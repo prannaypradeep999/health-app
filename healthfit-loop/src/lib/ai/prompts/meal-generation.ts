@@ -9,6 +9,8 @@
  * - Enhanced restaurant meal prompt to preserve ordering links
  */
 
+import { radiusMilesFor } from '@/lib/utils/distance';
+
 export interface MealGenerationContext {
   homeMeals: Array<{day: string, mealType: string}>;
   surveyData: any;
@@ -986,7 +988,10 @@ ${(restaurant.menuData || []).slice(0, 8).map((item: any) =>
     // became something it reported after choosing rather than something it
     // chose by. "?" rather than a guessed default: an unknown protein should
     // read as unknown, so the model can prefer a dish whose protein it knows.
-    `    - ${item.name}: $${item.price} (${item.category || 'meal'}) - ${item.estimatedCalories ?? '?'} cal, ${item.estimatedProtein ?? '?'}g protein`
+    // Carbs and fat joined the listing for the same reason (B8): rule 5 below
+    // tells the model they are the SUM of the listed values, which was false
+    // while they were not listed.
+    `    - ${item.name}: $${item.price} (${item.category || 'meal'}) - ${item.estimatedCalories ?? '?'} cal, ${item.estimatedProtein ?? '?'}g protein, ${item.estimatedCarbs ?? '?'}g carbs, ${item.estimatedFat ?? '?'}g fat`
   ).join('\n') || '    No menu items available'}
 `;
   }).join('\n---\n');
@@ -1195,7 +1200,7 @@ USER PREFERENCES & GOALS:
 - Health Focus: ${surveyData.healthFocus || 'General wellness'}
 - Maintain Focus: ${surveyData.maintainFocus || 'Not specified'}
 - ⚠️ PREFERRED CUISINES (CRITICAL): ${(surveyData.preferredCuisines || []).join(', ')}
-- Distance Preference: ${surveyData.distancePreference || 'moderate'} (${surveyData.distancePreference === 'close' ? 'within 2 miles' : surveyData.distancePreference === 'far' ? 'within 10 miles' : 'within 5 miles'})
+- Distance Preference: ${surveyData.distancePreference || 'medium'} (within ${radiusMilesFor(surveyData.distancePreference)} miles)
 - Budget: $${surveyData.monthlyFoodBudget || 200}/month
 
 ⚠️ CRITICAL SELECTION CRITERIA (ABSOLUTE REQUIREMENTS):
@@ -1232,6 +1237,7 @@ export function createPlanningPrompt(
   feedbackContext?: MealFeedbackContext
 ): string {
   const { homeMeals, nutritionTargets, scheduleText, surveyData } = context;
+  const strictExclusionsWarning = formatStrictExclusions(surveyData);
 
   return `Plan a high-level 7-day home meal structure for ${homeMeals.length} meals.
 
@@ -1251,6 +1257,8 @@ USER PROFILE:
 - Allergies: ${(surveyData.foodAllergies || []).join(', ') || 'none'}
 - Budget: $${Math.round((surveyData.monthlyFoodBudget || 200) / 4)}/week
 
+${strictExclusionsWarning}
+
 REQUIREMENTS:
 1. Create a diverse meal plan with NO repeated main proteins across consecutive days
 2. Use at least 4-5 different primary proteins across the week
@@ -1259,6 +1267,9 @@ REQUIREMENTS:
 5. Variety in meal formats: bowls, plates, salads, wraps, soups, stir-fries
 6. Each meal should hit calorie targets ±50 calories
 7. Consider batch cooking opportunities
+8. Never plan a dish whose defining ingredient appears in the avoid list above.
+   The detail stage is forbidden from renaming your dishes, so an avoided
+   ingredient chosen here cannot be corrected later.
 
 Return JSON with this EXACT structure:
 {
