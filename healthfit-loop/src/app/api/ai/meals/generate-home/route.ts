@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { withRouteBudget } from '@/lib/utils/route-budget';
+import { withRouteBudget, routeRemainingMs } from '@/lib/utils/route-budget';
 import { cookies } from 'next/headers';
 import { prisma } from '@/lib/db';
 import { calculateMacroTargets, UserProfile } from '@/lib/utils/nutrition';
@@ -9,6 +9,7 @@ import { validateIngredientSums } from '@/lib/utils/ingredient-validator';
 import { validateRestrictions } from '@/lib/utils/restriction-validator';
 import { buildFallbackGroceryList, enhanceGroceryListWithUsage } from '@/lib/utils/grocery-list';
 import { isUsableMeal, isUsableOption } from '@/lib/utils/meal-usability';
+import { summarizeCompleteness } from '@/lib/utils/completeness';
 import { createHomeMealGenerationPrompt, createPlanningPrompt, createDetailPrompt, createGroceryPrompt, HOME_MEAL_NUTRITION_METHOD, type MealFeedbackContext } from '@/lib/ai/prompts';
 import { pexelsClient } from '@/lib/external/pexels-client';
 import { withGPTRetry, HttpError } from '@/lib/utils/retry';
@@ -1151,6 +1152,17 @@ async function generateHomeMealsParallel(
   const startTime = Date.now();
   console.log(`[HOME-MEALS-7DAY] 🚀 Starting plan+parallel generation for ${homeMeals.length} home meals...`);
 
+  // A4. Every degradation below used to be a console line and nothing else, so
+  // "we ran out of time" and "there was nothing to generate" produced identical
+  // responses. Each site records what it gave up and how much budget was left
+  // when it did — a generic "budget exhausted" is not actionable; the phase and
+  // the slot count are.
+  const degradationReasons: string[] = [];
+  const budgetNote = () => {
+    const left = routeRemainingMs();
+    return left === null ? 'no route budget in scope' : `${Math.max(0, Math.round(left / 1000))}s of route budget left`;
+  };
+
   try {
     // Phase 1: Plan all meals
     const planningResult = await planWeekMeals(homeMeals, surveyData, nutritionTargets, weeklyNutritionTargets, feedbackContext);
@@ -1195,6 +1207,15 @@ async function generateHomeMealsParallel(
         console.log(`[HOME-MEALS-7DAY] 🔁 Planning top-up recovered ${plannedMeals.length}/${homeMeals.length} slots`);
       } catch (e) {
         console.error(`[HOME-MEALS-7DAY] ❌ Planning top-up failed: ${(e as Error).message} — continuing with ${plannedMeals.length} slots`);
+        degradationReasons.push(
+          `planning top-up failed with ${unplanned.length} slot(s) unplanned (${(e as Error).message}); ${budgetNote()}`
+        );
+      }
+      const stillUnplanned = homeMeals.filter(m => !plannedKeys.has(slotKey(m)));
+      if (stillUnplanned.length > 0) {
+        degradationReasons.push(
+          `planning left ${stillUnplanned.length} slot(s) unplanned after top-up: ${stillUnplanned.map(slotKey).join(', ')}`
+        );
       }
     }
 
@@ -1240,6 +1261,9 @@ async function generateHomeMealsParallel(
     const hollow = allMeals.filter(m => !isUsableMeal(m));
     if (hollow.length > 0) {
       console.warn(`[HOME-MEALS-7DAY] ⚠️ ${hollow.length} meals came back hollow (no recipe or zero macros): ${hollow.map(slotKey).join(', ')}`);
+      degradationReasons.push(
+        `${hollow.length} meal(s) arrived hollow and were dropped before the detail top-up: ${hollow.map(slotKey).join(', ')}`
+      );
       // Drop them so the top-up's results replace rather than collide with them.
       for (let i = allMeals.length - 1; i >= 0; i--) {
         if (!isUsableMeal(allMeals[i])) allMeals.splice(i, 1);
@@ -1251,6 +1275,9 @@ async function generateHomeMealsParallel(
     const hollowAlternatives = (allMeals as any[]).filter((m) => !isUsableOption(m.alternative));
     if (hollowAlternatives.length > 0) {
       console.warn(`[HOME-MEALS-7DAY] ⚠️ ${hollowAlternatives.length}/${allMeals.length} meals have no usable alternative`);
+      degradationReasons.push(
+        `${hollowAlternatives.length}/${allMeals.length} meal(s) have no usable second choice`
+      );
     }
 
     if (undetailed.length > 0) {
@@ -1269,6 +1296,11 @@ async function generateHomeMealsParallel(
       const stillMissing = plannedMeals.filter(m => !detailedKeys.has(slotKey(m)));
       console.log(`[HOME-MEALS-7DAY] 🔁 Detail top-up: now ${allMeals.length}/${homeMeals.length} meals` +
         (stillMissing.length > 0 ? `, unrecovered: ${stillMissing.map(slotKey).join(', ')}` : ''));
+      if (stillMissing.length > 0) {
+        degradationReasons.push(
+          `detail top-up left ${stillMissing.length} slot(s) without a usable recipe: ${stillMissing.map(slotKey).join(', ')}; ${budgetNote()}`
+        );
+      }
     }
 
     if (allMeals.length < homeMeals.length) {
@@ -1366,10 +1398,20 @@ async function generateHomeMealsParallel(
       groceryList = buildFallbackGroceryList(allMeals);
     }
 
+    const completeness = summarizeCompleteness({
+      requested: homeMeals,
+      delivered: allMeals,
+      reasons: degradationReasons,
+    });
+    if (completeness.status !== 'complete') {
+      console.error(`[HOME-MEALS-7DAY] 📉 ${completeness.status}: ${completeness.deliveredSlots}/${completeness.requestedSlots} slots. Missing: ${completeness.missingSlots.join(', ')}. Reasons: ${completeness.reasons.join('; ') || 'none recorded'}`);
+    }
+
     const totalTime = Date.now() - startTime;
     console.log(`[HOME-MEALS-7DAY] 🏁 Total plan+parallel generation: ${totalTime}ms`);
 
     return {
+      completeness,
       homeMeals: allMeals,
       groceryList,
       metadata: {
@@ -1682,12 +1724,30 @@ async function handleGenerate_home(req: NextRequest) {
     const totalTime = Date.now() - startTime;
     console.log(`[HOME-GENERATION] 🏁 Home meal generation completed in ${totalTime}ms (${(totalTime/1000).toFixed(2)}s)`);
 
+    // A10. A run that produced nothing used to return 200 with success:true.
+    // The client renders an empty week and has no way to tell it apart from a
+    // week the user genuinely has no home meals in. 502 rather than 500: the
+    // generation upstream failed, this handler did not.
+    if (homeMealPlan.completeness?.status === 'empty') {
+      console.error('[HOME-GENERATION] ❌ Zero meals generated — returning 502 rather than an empty success');
+      return NextResponse.json({
+        error: 'Home meal generation produced no meals',
+        completeness: homeMealPlan.completeness,
+        validation: homeMealPlan.validation ?? null,
+      }, { status: 502 });
+    }
+
     return NextResponse.json({
       success: true,
       homeMealPlan: initialMealPlan,
       groceryList: homeMealPlan.groceryList || null,
       totalEstimatedCost: homeMealPlan.totalEstimatedCost || 0,
       weeklyBudgetUsed: homeMealPlan.weeklyBudgetUsed || "0%",
+      // `?? null` rather than a default object: the legacy path does not produce
+      // these, and a fabricated status:'complete' for a path we did not measure
+      // would be exactly the lie this change exists to remove.
+      completeness: homeMealPlan.completeness ?? null,
+      validation: homeMealPlan.validation ?? null,
       timings: {
         totalTime: `${totalTime}ms`,
         imageEnhancementTime: `${imageTime}ms`,
