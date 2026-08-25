@@ -62,6 +62,13 @@ export const MenuExtractionSchema = z.object({
     // 85g target — not the target being ignored, but protein never having been
     // a selectable attribute.
     estimatedProtein: z.number(),
+    // B8: RestaurantMealObject requires carbs and fat, so the selection model
+    // was obliged to emit two numbers no upstream source supplied — not Sonar,
+    // not Places, not this schema. They were invention rendered beside measured
+    // values. Extracted here for the same reason estimatedProtein is: a number
+    // the model must report has to be a number it was shown.
+    estimatedCarbs: z.number(),
+    estimatedFat: z.number(),
     healthRating: z.enum(HEALTH_RATINGS),
   }).strict()),
   orderingLinks: OrderingLinks,

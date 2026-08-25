@@ -87,6 +87,8 @@ export interface PerplexityMenuResponse {
     category: 'breakfast' | 'lunch' | 'dinner' | 'snack';
     estimatedCalories?: number;
     estimatedProtein?: number;
+    estimatedCarbs: number;
+    estimatedFat: number;
     healthRating?: 'excellent' | 'good' | 'fair' | 'poor';
     orderingUrl?: string;
     source?: string;

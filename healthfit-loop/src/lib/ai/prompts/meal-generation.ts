@@ -986,7 +986,10 @@ ${(restaurant.menuData || []).slice(0, 8).map((item: any) =>
     // became something it reported after choosing rather than something it
     // chose by. "?" rather than a guessed default: an unknown protein should
     // read as unknown, so the model can prefer a dish whose protein it knows.
-    `    - ${item.name}: $${item.price} (${item.category || 'meal'}) - ${item.estimatedCalories ?? '?'} cal, ${item.estimatedProtein ?? '?'}g protein`
+    // Carbs and fat joined the listing for the same reason (B8): rule 5 below
+    // tells the model they are the SUM of the listed values, which was false
+    // while they were not listed.
+    `    - ${item.name}: $${item.price} (${item.category || 'meal'}) - ${item.estimatedCalories ?? '?'} cal, ${item.estimatedProtein ?? '?'}g protein, ${item.estimatedCarbs ?? '?'}g carbs, ${item.estimatedFat ?? '?'}g fat`
   ).join('\n') || '    No menu items available'}
 `;
   }).join('\n---\n');

@@ -184,6 +184,8 @@ REQUIRED JSON FORMAT:
       "category": "lunch",
       "estimatedCalories": 520,
       "estimatedProtein": 38,
+      "estimatedCarbs": 44,
+      "estimatedFat": 19,
       "healthRating": "good"
     }
   ],
@@ -201,11 +203,14 @@ ubereats and grubhub were not found. Never write the word "null" as a string,
 never use an empty string, and never invent or guess a URL: a link that does not
 resolve is worse than no link at all.
 
-estimatedCalories and estimatedProtein are per portion as served, for the whole
-dish. Estimate them from the ingredients and portion size in the description —
+estimatedCalories, estimatedProtein, estimatedCarbs and estimatedFat are per
+portion as served, for the whole dish. Estimate them from the ingredients and portion size in the description —
 a grilled chicken plate is not the same as a chicken wrap. These two numbers are
 what the meal selection step chooses against, so a dish whose protein you set to
 a filler value will be picked for the wrong reason. Give your honest estimate,
 including a low one: 6g for a side salad is a useful answer.
+Carbs and fat are estimated the same way as the other two, from the ingredients
+and portion size — a katsu curry is mostly rice and fried batter, a sashimi
+plate is neither. These four numbers are what the meal-selection step sums.
 Extract 6-12 menu items maximum. Return ONLY valid JSON.`;
 }
