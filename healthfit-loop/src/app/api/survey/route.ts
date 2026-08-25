@@ -205,9 +205,10 @@ export async function POST(req: Request) {
       weeklyMealSchedule: parsed.data.weeklyMealSchedule ?? {},
       workoutPreferences: {
         preferredDuration: parsed.data.workoutPreferences?.preferredDuration ?? 45,
-        availableDays: parsed.data.workoutPreferences?.availableDays?.length
-          ? parsed.data.workoutPreferences.availableDays
-          : ['monday', 'wednesday', 'friday'],
+        // No default. An invented monday/wednesday/friday is stored as the same
+        // three strings a real choice would be, and the prompt then declared it a
+        // hard constraint the user had stated.
+        availableDays: parsed.data.workoutPreferences?.availableDays ?? [],
         workoutTypes: parsed.data.workoutPreferences?.workoutTypes ?? [],
         gymAccess: parsed.data.workoutPreferences?.gymAccess ?? 'no_gym',
         fitnessExperience: parsed.data.workoutPreferences?.fitnessExperience ?? 'intermediate',

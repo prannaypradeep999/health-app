@@ -240,7 +240,13 @@ The user told us which days they can train. Scheduling a workout on any other
 day produces a plan they cannot follow. Do not add training days to "make the
 split work" — fit the split to the days given, and use the "day" values spelled
 exactly as above.
-` : ''}
+` : `
+DAY SCHEDULE:
+The user did not tell us which days they can train. Choose training and rest
+days that suit the split you picked, spread across the week with rest between
+sessions that work the same muscles. Do not present this as their schedule —
+it is your recommendation.
+`}
 
 Return ONLY this JSON:
 {

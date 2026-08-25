@@ -70,6 +70,31 @@ test('a training day with no exercises array is an error, not a warning', () => 
   assert.equal(result.valid, false, `expected invalid, got ${JSON.stringify(result.errors)}`);
 });
 
+test('an unstated schedule produces no day warnings', () => {
+  const result = validateWorkoutPlan([trainingDay('monday'), trainingDay('thursday')], {
+    preferredDuration: 45,
+    availableDays: [],
+    fitnessExperience: 'intermediate',
+  });
+  assert.equal(
+    result.warnings.some(w => /not in availableDays/.test(w)),
+    false,
+    `expected no availableDays warnings, got ${JSON.stringify(result.warnings)}`
+  );
+});
+
+test('a stated schedule still warns when training falls outside it', () => {
+  const result = validateWorkoutPlan([trainingDay('thursday')], {
+    preferredDuration: 45,
+    availableDays: ['monday', 'wednesday', 'friday'],
+    fitnessExperience: 'intermediate',
+  });
+  assert.ok(
+    result.warnings.some(w => /not in availableDays/.test(w)),
+    `expected an availableDays warning, got ${JSON.stringify(result.warnings)}`
+  );
+});
+
 test('a full week of rest days with activeRecovery is valid', () => {
   const week = ['monday','tuesday','wednesday','thursday','friday','saturday','sunday'].map(restDay);
   const result = validateWorkoutPlan(week, { preferredDuration: 45 });

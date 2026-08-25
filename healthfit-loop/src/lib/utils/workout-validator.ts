@@ -132,7 +132,10 @@ export function validateWorkoutPlan(
     // Only a *training* day on an unavailable date is a problem. Rest days are
     // supposed to fall outside availableDays, so checking them made the plan
     // look broken precisely when it was correct.
-    if (availableDays && dayPlan?.day && !dayPlan?.restDay
+    // The length guard matters now that an unstated schedule stays empty rather
+    // than being filled in: an empty list fails includes() for every day, so it
+    // would warn on all seven.
+    if (availableDays && availableDays.length > 0 && dayPlan?.day && !dayPlan?.restDay
         && !availableDays.includes(normalizeDay(dayPlan.day))) {
       warnings.push(`[WORKOUT-VALIDATOR] ${dayLabel}: training scheduled but not in availableDays`);
       issues.push('Scheduled on unavailable day');
