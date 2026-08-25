@@ -207,3 +207,74 @@ a Tamago Sando ($7.25) and Miso Soup with rice ($6.00). They also do a Pork Bell
 https://www.doordash.com/store/sakura-ramen-house-berkeley-12345/ and their own site is
 https://sakuraramenhouse.com. No Uber Eats or Grubhub listing was found.
 `;
+
+/** Flatten a weeklyMealSchedule into the eating-out slots the restaurant prompts take. */
+export function restaurantSlotsFrom(schedule: Record<string, Record<string, string>>) {
+  return DAYS.flatMap(day =>
+    ['breakfast', 'lunch', 'dinner']
+      .filter(slot => schedule[day]?.[slot] === 'restaurant')
+      .map(mealType => ({ day, mealType }))
+  );
+}
+
+/**
+ * Stands in for a Google Places nearbysearch result.
+ *
+ * Deliberately includes one restaurant whose cuisine matches no fixture
+ * preference: the selection prompt is supposed to work from this list only, and
+ * a model that invents a restaurant or alters a placeId is exactly the failure
+ * worth catching.
+ */
+export const nearbyRestaurantsFixture = [
+  { name: 'Sakura Ramen House', placeId: 'place_sakura_1', cuisine: 'japanese', rating: 4.5, priceLevel: 2, address: '2100 Shattuck Ave', city: 'Berkeley' },
+  { name: 'Zaytoon Mediterranean', placeId: 'place_zaytoon_2', cuisine: 'middle_eastern', rating: 4.4, priceLevel: 2, address: '1133 Solano Ave', city: 'Berkeley' },
+  { name: 'Comal Next Door', placeId: 'place_comal_3', cuisine: 'mexican', rating: 4.3, priceLevel: 2, address: '2020 Shattuck Ave', city: 'Berkeley' },
+  { name: 'Great China', placeId: 'place_greatchina_4', cuisine: 'chinese', rating: 4.2, priceLevel: 2, address: '2190 Bancroft Way', city: 'Berkeley' },
+  { name: 'Cheese Board Pizza', placeId: 'place_cheeseboard_5', cuisine: 'pizza', rating: 4.7, priceLevel: 1, address: '1512 Shattuck Ave', city: 'Berkeley' },
+  { name: 'Angeline\'s Louisiana Kitchen', placeId: 'place_angelines_6', cuisine: 'cajun', rating: 4.1, priceLevel: 2, address: '2261 Shattuck Ave', city: 'Berkeley' },
+  { name: 'Kiraku Izakaya', placeId: 'place_kiraku_7', cuisine: 'japanese', rating: 4.4, priceLevel: 2, address: '2566 Telegraph Ave', city: 'Berkeley' },
+  { name: 'Tacos Sinaloa', placeId: 'place_tacos_8', cuisine: 'mexican', rating: 4.3, priceLevel: 1, address: '2384 Telegraph Ave', city: 'Berkeley' },
+  { name: 'La Note Provencale', placeId: 'place_lanote_9', cuisine: 'french', rating: 4.2, priceLevel: 2, address: '2377 Shattuck Ave', city: 'Berkeley' },
+  { name: 'Ippuku', placeId: 'place_ippuku_10', cuisine: 'japanese', rating: 4.5, priceLevel: 3, address: '2130 Center St', city: 'Berkeley' },
+  { name: 'Berkeley Social Club', placeId: 'place_bsc_11', cuisine: 'american', rating: 3.9, priceLevel: 2, address: '2050 University Ave', city: 'Berkeley' },
+];
+
+/**
+ * Stands in for the menu data the restaurant-meal prompt receives.
+ *
+ * The ordering links here are the ground truth: Sakura has DoorDash and a
+ * direct site, Zaytoon has only a direct site, Comal has nothing. A generated
+ * meal that produces a Grubhub URL for any of them invented it — the prompt
+ * explicitly tells the model to use null for platforms marked "not available".
+ */
+export const restaurantMenuDataFixture = [
+  {
+    name: 'Sakura Ramen House', cuisine: 'japanese', address: '2100 Shattuck Ave, Berkeley',
+    orderingLinks: {
+      doordash: 'https://www.doordash.com/store/sakura-ramen-house-berkeley-12345/',
+      ubereats: null, grubhub: null, direct: 'https://sakuraramenhouse.com',
+    },
+    menuItems: [
+      { name: 'Tonkotsu Ramen', price: 16.5, category: 'dinner', estimatedCalories: 780, description: 'Pork bone broth with chashu' },
+      { name: 'Vegetable Gyoza', price: 8.5, category: 'lunch', estimatedCalories: 320, description: 'Six pieces, pan fried' },
+      { name: 'Salmon Poke Bowl', price: 18.25, category: 'lunch', estimatedCalories: 620, description: 'Over brown rice' },
+    ],
+  },
+  {
+    name: 'Zaytoon Mediterranean', cuisine: 'middle_eastern', address: '1133 Solano Ave, Berkeley',
+    orderingLinks: { doordash: null, ubereats: null, grubhub: null, direct: 'https://zaytoonberkeley.com' },
+    menuItems: [
+      { name: 'Chicken Shawarma Plate', price: 17.0, category: 'dinner', estimatedCalories: 720, description: 'With rice and salad' },
+      { name: 'Falafel Wrap', price: 12.5, category: 'lunch', estimatedCalories: 540, description: 'Tahini and pickles' },
+      { name: 'Lamb Kofta', price: 21.0, category: 'dinner', estimatedCalories: 810, description: 'Grilled, with hummus' },
+    ],
+  },
+  {
+    name: 'Comal Next Door', cuisine: 'mexican', address: '2020 Shattuck Ave, Berkeley',
+    orderingLinks: { doordash: null, ubereats: null, grubhub: null, direct: null },
+    menuItems: [
+      { name: 'Carnitas Tacos', price: 14.0, category: 'lunch', estimatedCalories: 610, description: 'Three tacos, salsa verde' },
+      { name: 'Grilled Fish Bowl', price: 18.0, category: 'dinner', estimatedCalories: 650, description: 'Rice, beans, cabbage' },
+    ],
+  },
+];

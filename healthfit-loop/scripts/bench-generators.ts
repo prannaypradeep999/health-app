@@ -24,6 +24,8 @@ import {
   createDetailPrompt,
   createGroceryPrompt,
   createHomeMealGenerationPrompt,
+  createRestaurantSelectionPrompt,
+  createRestaurantMealGenerationPrompt,
 } from '../src/lib/ai/prompts/meal-generation';
 import { createWorkoutPlanningPrompt, createWorkoutDetailPrompt } from '../src/lib/ai/prompts/workout-generation';
 import { createRecipeGenerationPrompt } from '../src/lib/ai/prompts/recipe-creation';
@@ -31,13 +33,14 @@ import { createRecipeGenerationPrompt } from '../src/lib/ai/prompts/recipe-creat
 import { GroceryListSchema } from '../src/lib/ai/schemas/meals';
 import { WorkoutPlanSchema } from '../src/lib/ai/schemas/workout';
 import { RecipeSchema } from '../src/lib/ai/schemas/recipe';
-import { MenuExtractionSchema } from '../src/lib/ai/schemas/restaurants';
+import { MenuExtractionSchema, RestaurantSelectionSchema } from '../src/lib/ai/schemas/restaurants';
 import {
   toStrictJsonSchema,
   pinnedMealPlan,
   pinnedMealDetail,
   pinnedHomeMealsLegacy,
   pinnedWorkoutDetail,
+  pinnedRestaurantMeals,
 } from '../src/lib/ai/schemas/index';
 import { MODELS } from '../src/lib/ai/models';
 import { tally, type Finding, type CheckResult, type Family } from './eval/types';
@@ -46,7 +49,11 @@ import { checkCount, checkSlots, checkNonEmpty } from './eval/completeness';
 import { rulesFor, checkText } from './eval/adherence';
 import { checkOrderingLinks } from './eval/links';
 
-import { fixtures, homeMealsFrom, scheduleTextFrom, menuProseFixture, type Fixture } from './fixtures/surveys';
+import {
+  fixtures, homeMealsFrom, scheduleTextFrom, menuProseFixture,
+  restaurantSlotsFrom, nearbyRestaurantsFixture, restaurantMenuDataFixture,
+  type Fixture,
+} from './fixtures/surveys';
 
 // ---------------------------------------------------------------- config
 
@@ -593,6 +600,149 @@ did not find a real URL for. Extract 6-12 menu items maximum.`,
       const usable = Object.values(links ?? {}).filter(
         u => typeof u === 'string' && u.startsWith('http')).length;
       return { summary: `${items.length} items, ${usable} usable links`, findings };
+    },
+  },
+  {
+    name: 'restaurant-selection',
+    model: M.PLANNING, maxTokens: 4000, temperature: 0.3,
+    build: async (f) => ({
+      prompt: createRestaurantSelectionPrompt(nearbyRestaurantsFixture, f.surveyData),
+      schema: RestaurantSelectionSchema,
+    }),
+    check: (d, f) => {
+      const picked = d.selectedRestaurants as Array<{ name: string; placeId: string; cuisine: string; rating: number }>;
+      const findings: Finding[] = [];
+
+      // The prompt asks for 8-10 and the schema pins nothing, so both ends drift.
+      if (picked.length < 8 || picked.length > 10) {
+        findings.push({
+          family: 'COMPLETENESS', severity: 'error', code: 'selection-count',
+          where: 'selectedRestaurants',
+          message: `${picked.length} selected, prompt asks for 8-10`,
+        });
+      }
+
+      // A restaurant not in the supplied list was invented. This is the check
+      // that catches a GPT-authored restaurant entering the pool.
+      const known = new Map(nearbyRestaurantsFixture.map(r => [r.placeId, r]));
+      const knownNames = new Set(nearbyRestaurantsFixture.map(r => r.name.toLowerCase()));
+      for (const r of picked) {
+        const where = `selectedRestaurants.${r.name}`;
+        if (!known.has(r.placeId)) {
+          findings.push({
+            family: 'ADHERENCE', severity: 'error', code: 'invented-restaurant',
+            where, message: `placeId "${r.placeId}" was not in the supplied list`,
+          });
+        }
+        if (!knownNames.has(r.name.toLowerCase())) {
+          findings.push({
+            family: 'ADHERENCE', severity: 'error', code: 'invented-restaurant-name',
+            where, message: `"${r.name}" was not in the supplied list`,
+          });
+        }
+        const source = known.get(r.placeId);
+        if (source && Math.abs(source.rating - r.rating) > 0.01) {
+          findings.push({
+            family: 'ARITHMETIC', severity: 'error', code: 'altered-rating',
+            where, message: `rating ${r.rating} does not match the supplied ${source.rating}`,
+          });
+        }
+      }
+
+      const dupes = picked.length - new Set(picked.map(r => r.placeId)).size;
+      if (dupes > 0) {
+        findings.push({
+          family: 'COMPLETENESS', severity: 'error', code: 'duplicate-restaurant',
+          where: 'selectedRestaurants', message: `${dupes} duplicate placeId(s)`,
+        });
+      }
+
+      return { summary: `${picked.length} selected, ${dupes} duplicates`, findings };
+    },
+  },
+  {
+    name: 'restaurant-meals',
+    model: M.DETAIL, maxTokens: 12000, temperature: 0.5,
+    build: async (f) => {
+      const slots = restaurantSlotsFrom(f.surveyData.weeklyMealSchedule);
+      // allHomeSchedule fixtures have no eating-out slots; skip rather than fake one.
+      if (slots.length === 0) return null;
+      return {
+        prompt: createRestaurantMealGenerationPrompt({
+          restaurantMealsSchedule: slots,
+          restaurantMenuData: restaurantMenuDataFixture,
+          surveyData: f.surveyData,
+          nutritionTargets: f.nutritionTargets,
+        }),
+        schema: pinnedRestaurantMeals(slots.length),
+      };
+    },
+    check: async (d, f) => {
+      const want = restaurantSlotsFrom(f.surveyData.weeklyMealSchedule);
+      const got = d.restaurantMeals as any[];
+      const rules = rulesFor(f.surveyData);
+      const findings: Finding[] = [
+        ...checkCount('restaurantMeals', 'restaurant-count', got.length, want.length),
+        ...checkSlots('restaurantMeals', got, want),
+      ];
+
+      // Ground truth: which links each restaurant actually has.
+      const truth = new Map(restaurantMenuDataFixture.map(r => [r.name.toLowerCase(), r]));
+
+      for (const slot of got) {
+        for (const which of ['primary', 'alternative'] as const) {
+          const meal = slot?.[which];
+          if (!meal) continue;
+          const where = `${slot.day}.${slot.mealType}.${which}`;
+          const target = f.nutritionTargets.mealTargets[String(slot.mealType).toLowerCase()];
+
+          findings.push(...checkAtwater(where, {
+            calories: meal.estimatedCalories, protein: meal.protein,
+            carbs: meal.carbs, fat: meal.fat,
+          }));
+          if (target) findings.push(...checkTarget(where, meal.estimatedCalories, target.calories));
+          findings.push(...checkText(where, `${meal.dish} ${meal.description}`, rules));
+
+          const source = truth.get(String(meal.restaurant).toLowerCase());
+          if (!source) {
+            findings.push({
+              family: 'ADHERENCE', severity: 'error', code: 'invented-restaurant',
+              where, message: `"${meal.restaurant}" is not in the supplied menu data`,
+            });
+            continue;
+          }
+
+          if (!source.menuItems.some(mi => mi.name.toLowerCase() === String(meal.dish).toLowerCase())) {
+            findings.push({
+              family: 'ADHERENCE', severity: 'error', code: 'invented-dish',
+              where, message: `"${meal.dish}" is not on ${source.name}'s supplied menu`,
+            });
+          }
+
+          // Every link must be one the fixture actually supplied. Anything else
+          // was authored by the model.
+          const supplied = source.orderingLinks as Record<string, string | null>;
+          for (const [platform, url] of Object.entries(meal.orderingLinks ?? {})) {
+            const usable = typeof url === 'string' && /^https?:\/\//i.test(url.trim());
+            if (!usable) continue;
+            if (supplied[platform] !== url) {
+              findings.push({
+                family: 'LINKS', severity: 'error', code: 'fabricated-link',
+                where: `${where}.orderingLinks.${platform}`,
+                message: supplied[platform]
+                  ? `expected ${supplied[platform]}, got ${url}`
+                  : `${platform} was marked "not available" for ${source.name}, but a URL was produced: ${url}`,
+              });
+            }
+          }
+
+          findings.push(...await checkOrderingLinks(
+            `${where}.orderingLinks`, meal.orderingLinks ?? {}, { probeNetwork: PROBE_LINKS }));
+        }
+      }
+
+      const fabricated = findings.filter(x => x.code === 'fabricated-link').length;
+      return { summary: `${got.length}/${want.length} slots, ${fabricated} fabricated links`, findings };
     },
   },
 ];
