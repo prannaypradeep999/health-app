@@ -12,6 +12,7 @@ import { createMenuSearchPrompt, createMenuStructuringPrompt } from '@/lib/ai/pr
 import { parseChoice } from '@/lib/ai/validate';
 import { logUsage } from '@/lib/ai/usage';
 import { createLimiter } from '@/lib/utils/concurrency';
+import { corroborate } from '@/lib/external/link-check';
 
 /**
  * Process-wide gate on every Perplexity request.
@@ -104,6 +105,7 @@ export interface PerplexityMenuResponse {
   restaurant: string;
   extractionSuccess: boolean;
   linksFound: number;
+  linkCorroboration?: Record<string, 'cited' | 'uncited'>;
   error?: string;
 }
 
@@ -317,13 +319,28 @@ export class PerplexityClient {
         }
       });
 
+      // `c.url || c` used to push a whole citation object into sources when it
+      // had no url key, which rendered downstream as [object Object].
+      const citationUrls: string[] = citations
+        .map((c: any) => (typeof c === 'string' ? c : c?.url))
+        .filter((u: any): u is string => typeof u === 'string' && u.length > 0);
+
+      const corroboration = corroborate(orderingLinks, citationUrls);
+      const uncited = Object.entries(corroboration)
+        .filter(([, v]) => v === 'uncited')
+        .map(([k]) => k);
+      if (uncited.length > 0) {
+        console.log(`[PERPLEXITY] 📎 Uncited links (host not in search results): ${uncited.join(', ')}`);
+      }
+
       return {
         menuItems: structuredData.menuItems || [],
         orderingLinks: orderingLinks,
         restaurant: restaurantName,
-        sources: citations.map((c: any) => c.url || c).slice(0, 5),
+        sources: citationUrls.slice(0, 5),
         extractionSuccess: (structuredData.menuItems?.length || 0) > 0,
-        linksFound: linksFound
+        linksFound: linksFound,
+        linkCorroboration: corroboration
       };
 
     } catch (error) {

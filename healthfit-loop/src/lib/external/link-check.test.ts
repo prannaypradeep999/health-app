@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
   parseHttpUrl, isUsableLink, hostMatchesPlatform, isHomepageRedirect, verifyLinks,
+  corroborate,
   type LinkVerdict,
 } from './link-check';
 
@@ -101,4 +102,46 @@ test('verifyLinks ignores unusable values rather than throwing on them', async (
 
 test('verifyLinks returns an empty object rather than throwing on an empty input', async () => {
   assert.deepEqual(await verifyLinks({}, { prober: async (u) => verdict(u) }), {});
+});
+
+test('a link whose host appears in the citations is cited', () => {
+  const result = corroborate(
+    { doordash: 'https://www.doordash.com/store/fanoos-berkeley-123' },
+    ['https://www.doordash.com/store/fanoos-berkeley-123', 'https://yelp.com/biz/fanoos']
+  );
+  assert.equal(result.doordash, 'cited');
+});
+
+test('a link on a host that appears nowhere in the citations is uncited', () => {
+  const result = corroborate(
+    { ubereats: 'https://www.ubereats.com/store/fanoos' },
+    ['https://www.doordash.com/store/fanoos-berkeley-123']
+  );
+  assert.equal(result.ubereats, 'uncited');
+});
+
+test('matching is on host, not exact URL', () => {
+  const result = corroborate(
+    { doordash: 'https://www.doordash.com/store/fanoos-berkeley-999' },
+    ['https://www.doordash.com/store/some-other-place']
+  );
+  // Same host, different path — the search did visit doordash.com, so this is
+  // weak corroboration rather than none.
+  assert.equal(result.doordash, 'cited');
+});
+
+test('a null link is omitted from the result', () => {
+  const result = corroborate({ grubhub: null }, ['https://doordash.com/x']);
+  assert.equal(result.grubhub, undefined);
+});
+
+test('an unparseable citation does not throw', () => {
+  assert.doesNotThrow(() =>
+    corroborate({ direct: 'https://fanoos.com' }, ['not a url', '', 'https://fanoos.com'])
+  );
+});
+
+test('an empty citation list marks everything uncited', () => {
+  const result = corroborate({ direct: 'https://fanoos.com' }, []);
+  assert.equal(result.direct, 'uncited');
 });

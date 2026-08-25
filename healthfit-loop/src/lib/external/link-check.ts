@@ -119,6 +119,32 @@ export function isHomepageRedirect(verdict: LinkVerdict): boolean {
 }
 
 /**
+ * Host-level match against the URLs the search actually retrieved. Weak by
+ * design: same host counts. An uncited link is one the model produced without
+ * the search ever having visited that host.
+ */
+export function corroborate(
+  links: Record<string, string | null | undefined>,
+  citations: string[]
+): Record<string, 'cited' | 'uncited'> {
+  const citedHosts = new Set<string>();
+  citations.forEach(c => {
+    const parsed = parseHttpUrl(c);
+    if (parsed) citedHosts.add(parsed.hostname.replace(/^www\./, ''));
+  });
+
+  const out: Record<string, 'cited' | 'uncited'> = {};
+  Object.entries(links).forEach(([platform, url]) => {
+    if (!url) return;
+    const parsed = parseHttpUrl(url);
+    if (!parsed) return;
+    const host = parsed.hostname.replace(/^www\./, '');
+    out[platform] = citedHosts.has(host) ? 'cited' : 'uncited';
+  });
+  return out;
+}
+
+/**
  * The production entry point: given an orderingLinks object, return only the
  * entries a user can actually be sent to.
  *
