@@ -6,6 +6,7 @@ import { googlePlacesClient, Restaurant } from '@/lib/external/places-client';
 import { perplexityClient } from '@/lib/external/perplexity-client';
 import { verifyLinks, isUsableLink } from '@/lib/external/link-check';
 import { radiusMilesFor, milesBetween } from '@/lib/utils/distance';
+import { buildRestaurantFacts } from '@/lib/utils/restaurant-facts';
 import { getAuthUserId } from '@/lib/auth';
 import {
   createRestaurantMealGenerationPrompt,
@@ -923,10 +924,15 @@ async function handleGenerate_restaurants(req: NextRequest) {
           return updatedDay;
         });
         
+        // Places facts travel beside the model-authored meal objects, not on
+        // them: a rating on a model output is a rating the model would invent.
+        const restaurantFacts = buildRestaurantFacts(selectedRestaurants);
+
         const updatedContext = {
           ...existingContext,
           days: updatedDays,
           restaurantMeals: selectedRestaurantMeals,
+          restaurantFacts,
           restrictionViolations: [
             ...(existingContext.restrictionViolations || []),
             ...(restrictionViolations || [])
@@ -963,6 +969,7 @@ async function handleGenerate_restaurants(req: NextRequest) {
         
         const completePlan = {
           restaurantMeals: selectedRestaurantMeals,
+          restaurantFacts: buildRestaurantFacts(selectedRestaurants),
           weeklySchedule: surveyData.weeklyMealSchedule,
           restrictionViolations: restrictionViolations || [],
           metadata: {

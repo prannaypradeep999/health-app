@@ -7,7 +7,6 @@ import {
   Star,
   ArrowSquareOut,
   Phone,
-  Clock,
   Truck,
   House,
   ForkKnife,
@@ -18,7 +17,8 @@ import {
 interface Restaurant {
   name: string;
   cuisine: string;
-  rating?: number;
+  rating?: number | null;
+  userRatingsTotal?: number | null;
   address: string;
   city?: string;
   phone?: string;
@@ -29,8 +29,7 @@ interface Restaurant {
     grubhub?: string;
     direct?: string;
   };
-  distance?: number;
-  estimatedOrderTime: string;
+  distance?: number | null;
   sampleMenuItems: string[];
   linksFound: number;
   error?: string;
@@ -156,25 +155,24 @@ export function RestaurantListSection({ restaurants, metadata }: RestaurantListS
                         <Badge variant="outline" className="bg-[#c1272d]/10 text-[#c1272d] border-[#c1272d]/20 font-medium">
                           {restaurant.cuisine}
                         </Badge>
-                        {restaurant.rating && restaurant.rating > 0 && (
+                        {restaurant.rating != null && (
                           <div className="flex items-center gap-1 text-amber-600">
                             <Star className="w-4 h-4 fill-current" />
                             <span className="font-semibold">{restaurant.rating.toFixed(1)}</span>
+                            {restaurant.userRatingsTotal != null && (
+                              <span className="text-gray-500">({restaurant.userRatingsTotal})</span>
+                            )}
                           </div>
                         )}
                       </div>
-                      <div className="flex items-center gap-3 text-xs text-gray-500">
-                        {restaurant.distance && (
+                      {restaurant.distance != null && (
+                        <div className="flex items-center gap-3 text-xs text-gray-500">
                           <div className="flex items-center gap-1">
                             <MapPin className="w-3 h-3" />
-                            <span>{restaurant.distance}mi away</span>
+                            <span>{restaurant.distance.toFixed(1)}mi away</span>
                           </div>
-                        )}
-                        <div className="flex items-center gap-1">
-                          <Clock className="w-3 h-3" />
-                          <span>{restaurant.estimatedOrderTime}</span>
                         </div>
-                      </div>
+                      )}
                     </div>
                   </div>
                 </div>

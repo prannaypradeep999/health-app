@@ -2287,11 +2287,27 @@ export function MealPlanPage({ onNavigate, generationStatus, nutritionTargets: n
 
         {/* Restaurants Tab Content */}
         {activeTab === 'restaurants' && (
+          <>
+          {(mealData?.mealPlan?.planData?.restrictionViolations?.length ?? 0) > 0 && (
+            <div className="mb-4 rounded-md border border-amber-300 bg-amber-50 p-3 text-sm text-amber-900">
+              <p className="font-medium">Some picks may not match your restrictions</p>
+              <ul className="mt-1 list-disc pl-5">
+                {mealData.mealPlan.planData.restrictionViolations.slice(0, 5).map((v: any, i: number) => (
+                  <li key={i}>{v.mealName}: {v.violation} ({v.restriction})</li>
+                ))}
+              </ul>
+            </div>
+          )}
           <RestaurantListSection
             restaurants={(() => {
               const restaurantMeals = mealData?.mealPlan?.planData?.restaurantMeals || [];
               console.log('[RestaurantSection] Raw restaurant meals:', restaurantMeals.length);
               const restaurantMap = new Map();
+
+              // Google Places facts, keyed by lowercased name. Absent means we
+              // do not know — the renderer omits the field rather than guessing.
+              const facts = (mealData?.mealPlan?.planData?.restaurantFacts || {}) as Record<string, any>;
+              const factsFor = (name: string) => facts[(name || '').toLowerCase().trim()] || {};
 
               // Aggregate all restaurant data and ordering links
               restaurantMeals.forEach((meal: any) => {
@@ -2305,13 +2321,13 @@ export function MealPlanPage({ onNavigate, generationStatus, nutritionTargets: n
                     restaurantMap.set(primaryRestaurant, {
                       name: primaryRestaurant,
                       cuisine: meal.primary.cuisine || 'Mixed',
-                      rating: 4.2,
+                      rating: factsFor(primaryRestaurant).rating ?? null,
+                      userRatingsTotal: factsFor(primaryRestaurant).userRatingsTotal ?? null,
                       address: meal.primary.address || 'Address not available',
                       city: meal.primary.city || '',
                       orderingLinks: { ...meal.primary.orderingLinks },
-                      estimatedOrderTime: '25-40 min',
                       sampleMenuItems: new Set([meal.primary.dish]),
-                      distance: 2.5
+                      distance: factsFor(primaryRestaurant).distanceMiles ?? null
                     });
                   } else {
                     // Merge ordering links and add menu items
@@ -2327,13 +2343,13 @@ export function MealPlanPage({ onNavigate, generationStatus, nutritionTargets: n
                     restaurantMap.set(altRestaurant, {
                       name: altRestaurant,
                       cuisine: meal.alternative.cuisine || 'Mixed',
-                      rating: 4.2,
+                      rating: factsFor(altRestaurant).rating ?? null,
+                      userRatingsTotal: factsFor(altRestaurant).userRatingsTotal ?? null,
                       address: meal.alternative.address || 'Address not available',
                       city: meal.alternative.city || '',
                       orderingLinks: { ...meal.alternative.orderingLinks },
-                      estimatedOrderTime: '25-40 min',
                       sampleMenuItems: new Set([meal.alternative.dish]),
-                      distance: 2.5
+                      distance: factsFor(altRestaurant).distanceMiles ?? null
                     });
                   } else {
                     // Merge ordering links and add menu items
@@ -2385,6 +2401,7 @@ export function MealPlanPage({ onNavigate, generationStatus, nutritionTargets: n
               cuisines: mealData?.mealPlan?.planData?.metadata?.cuisines || []
             }}
           />
+          </>
         )}
       </div>
 
