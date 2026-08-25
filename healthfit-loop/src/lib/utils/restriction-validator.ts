@@ -13,20 +13,74 @@ export interface RestrictionValidationResult {
   violations: RestrictionViolation[];
 }
 
-// Foods that belong to each restriction category
+/**
+ * Survey values arrive in whatever casing and phrasing the UI offered, and the
+ * same restriction has several names. `gluten-free`, `gluten free` and
+ * `coeliac` are one rule; `peanut` and `tree nuts` both mean the nut list.
+ * Folding them here is what lets the table below have one entry per rule.
+ *
+ * An unrecognised value is lowercased and returned unchanged rather than
+ * dropped. It will find no entry in the table and register no terms — which is
+ * the old behaviour, now confined to values we genuinely have no list for.
+ */
+const ALIASES: Record<string, string> = {
+  'gluten-free': 'gluten',
+  'gluten free': 'gluten',
+  glutenfree: 'gluten',
+  celiac: 'gluten',
+  coeliac: 'gluten',
+  wheat: 'gluten',
+  'dairy-free': 'dairy',
+  'dairy free': 'dairy',
+  'lactose intolerant': 'dairy',
+  'lactose-free': 'dairy',
+  lactose: 'dairy',
+  milk: 'dairy',
+  'nut-free': 'nuts',
+  'nut free': 'nuts',
+  'tree nuts': 'nuts',
+  'tree nut': 'nuts',
+  nut: 'nuts',
+  peanut: 'nuts',
+  peanuts: 'nuts',
+  egg: 'eggs',
+  'egg-free': 'eggs',
+  crustacean: 'shellfish',
+  seafood: 'shellfish',
+  'soy-free': 'soy',
+  soya: 'soy',
+};
+
+export function normalizeRestriction(raw: string): string {
+  const key = String(raw ?? '').toLowerCase().trim();
+  return ALIASES[key] ?? key;
+}
+
+// Foods that belong to each restriction category, keyed on the canonical name
+// normalizeRestriction produces.
+//
+// `mediterranean` is deliberately absent: it is a preference expressed as what
+// to favour, not a list of what to exclude, so there is nothing here it could
+// honestly contain. It normalizes to itself, matches no entry, and registers no
+// terms — the correct outcome rather than an accidental one.
 const RESTRICTION_MAPPINGS: Record<string, string[]> = {
   // Diet types
-  vegetarian: ['chicken', 'beef', 'pork', 'lamb', 'turkey', 'bacon', 'ham', 'steak', 'ground beef', 'ground turkey', 'sausage', 'fish', 'salmon', 'tuna', 'shrimp', 'cod', 'tilapia'],
-  vegan: ['chicken', 'beef', 'pork', 'lamb', 'turkey', 'bacon', 'ham', 'fish', 'salmon', 'egg', 'eggs', 'milk', 'cheese', 'yogurt', 'butter', 'cream', 'honey', 'whey'],
+  vegetarian: ['chicken', 'beef', 'pork', 'lamb', 'turkey', 'bacon', 'ham', 'steak', 'ground beef', 'ground turkey', 'sausage', 'fish', 'salmon', 'tuna', 'shrimp', 'cod', 'tilapia', 'anchovy', 'gelatin'],
+  vegan: ['chicken', 'beef', 'pork', 'lamb', 'turkey', 'bacon', 'ham', 'fish', 'salmon', 'eggs', 'milk', 'cheese', 'yogurt', 'butter', 'cream', 'honey', 'whey', 'gelatin'],
+  pescatarian: ['chicken', 'beef', 'pork', 'lamb', 'turkey', 'bacon', 'ham', 'steak', 'ground beef', 'ground turkey', 'sausage', 'duck', 'venison', 'prosciutto'],
+  halal: ['pork', 'bacon', 'ham', 'sausage', 'prosciutto', 'pepperoni', 'lard', 'gelatin', 'wine', 'beer', 'rum', 'vodka', 'alcohol'],
+  kosher: ['pork', 'bacon', 'ham', 'prosciutto', 'pepperoni', 'lard', 'shrimp', 'crab', 'lobster', 'scallop', 'clam', 'mussel', 'oyster', 'catfish', 'cheeseburger'],
+  keto: ['rice', 'pasta', 'bread', 'potato', 'tortilla', 'bagel', 'oats', 'cereal', 'sugar', 'banana', 'couscous', 'quinoa'],
+  paleo: ['bread', 'pasta', 'rice', 'oats', 'cereal', 'beans', 'lentils', 'chickpeas', 'peanut', 'milk', 'cheese', 'yogurt', 'sugar', 'couscous'],
 
   // Category exclusions
   dairy: ['milk', 'cheese', 'yogurt', 'butter', 'cream', 'ice cream', 'sour cream', 'cream cheese', 'cottage cheese', 'ricotta', 'mozzarella', 'cheddar', 'parmesan', 'feta', 'whey'],
-  gluten: ['wheat', 'bread', 'pasta', 'flour', 'tortilla', 'bagel', 'croissant', 'muffin', 'cake', 'cookie', 'cracker', 'cereal', 'barley', 'rye', 'couscous', 'seitan', 'soy sauce'],
+  gluten: ['wheat', 'bread', 'pasta', 'flour', 'tortilla', 'bagel', 'croissant', 'muffin', 'cake', 'cookie', 'cracker', 'cereal', 'barley', 'rye', 'couscous', 'seitan', 'soy sauce', 'orzo', 'farro', 'panko'],
   nuts: ['almond', 'walnut', 'cashew', 'pecan', 'pistachio', 'hazelnut', 'macadamia', 'peanut', 'pine nut'],
-  shellfish: ['shrimp', 'crab', 'lobster', 'scallop', 'clam', 'mussel', 'oyster', 'crawfish'],
+  shellfish: ['shrimp', 'crab', 'lobster', 'scallop', 'clam', 'mussel', 'oyster', 'crawfish', 'prawn'],
   fish: ['salmon', 'tuna', 'cod', 'tilapia', 'halibut', 'trout', 'sardine', 'anchovy', 'mackerel', 'bass'],
   eggs: ['egg', 'eggs', 'omelet', 'omelette', 'frittata', 'quiche', 'meringue', 'mayonnaise'],
-  soy: ['soy', 'tofu', 'tempeh', 'edamame', 'miso', 'soy sauce', 'soy milk'],
+  soy: ['soy', 'tofu', 'tempeh', 'edamame', 'miso', 'soy sauce'],
 
   // Protein exclusions
   chicken: ['chicken'],
@@ -35,6 +89,29 @@ const RESTRICTION_MAPPINGS: Record<string, string[]> = {
   lamb: ['lamb'],
   turkey: ['turkey', 'ground turkey'],
 };
+
+/**
+ * Diets a miss on which is a preference rather than a safety or religious
+ * failure. They still produce a violation so it is visible; they do not make
+ * the plan invalid. Without this split, adding keto and paleo to the table
+ * above would start failing plans over a bowl of rice.
+ */
+const PREFERENCE_ONLY = new Set(['keto', 'paleo']);
+
+const escapeRegExp = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+
+/**
+ * The old test was `searchText.includes(term)`. That is why `egg` matched
+ * eggplant and `ham` matched hamburger — and with the expanded table above,
+ * `fish` would have matched shellfish and flagged every kosher plan containing
+ * one. Anchoring both ends on a word boundary is the whole fix; the optional
+ * plural suffix is what keeps "almonds" matching the term "almond".
+ */
+export function containsTerm(text: string, term: string): boolean {
+  const t = term.trim();
+  if (!t) return false;
+  return new RegExp(`\\b${escapeRegExp(t)}(s|es)?\\b`, 'i').test(text);
+}
 
 export function validateRestrictions(
   meals: any[],
@@ -49,47 +126,41 @@ export function validateRestrictions(
   const forbiddenTerms: { term: string; restriction: string; severity: 'error' | 'warning' }[] = [];
 
   (userRestrictions.dietPrefs || []).forEach(pref => {
-    const prefLower = pref.toLowerCase();
-    const mappedFoods = RESTRICTION_MAPPINGS[prefLower];
-    if (mappedFoods) {
-      mappedFoods.forEach(food => {
-        forbiddenTerms.push({ term: food, restriction: pref, severity: 'error' });
-      });
-    }
+    const key = normalizeRestriction(pref);
+    const severity: 'error' | 'warning' = PREFERENCE_ONLY.has(key) ? 'warning' : 'error';
+    (RESTRICTION_MAPPINGS[key] || []).forEach(food => {
+      forbiddenTerms.push({ term: food, restriction: pref, severity });
+    });
   });
 
   Object.entries(userRestrictions.strictExclusions || {}).forEach(([category, items]) => {
-    const categoryFoods = RESTRICTION_MAPPINGS[category.toLowerCase()];
-    if (categoryFoods) {
-      categoryFoods.forEach(food => {
-        forbiddenTerms.push({ term: food, restriction: `${category} dislike`, severity: 'warning' });
-      });
-    }
+    (RESTRICTION_MAPPINGS[normalizeRestriction(category)] || []).forEach(food => {
+      forbiddenTerms.push({ term: food, restriction: `${category} dislike`, severity: 'warning' });
+    });
     (items || []).forEach(item => {
-      forbiddenTerms.push({ term: item.toLowerCase(), restriction: `dislike: ${item}`, severity: 'warning' });
+      forbiddenTerms.push({ term: String(item).toLowerCase(), restriction: `dislike: ${item}`, severity: 'warning' });
     });
   });
 
   (userRestrictions.foodAllergies || []).forEach(allergy => {
-    const allergyLower = allergy.toLowerCase();
-    forbiddenTerms.push({ term: allergyLower, restriction: `allergy: ${allergy}`, severity: 'error' });
-    const mappedFoods = RESTRICTION_MAPPINGS[allergyLower];
-    if (mappedFoods) {
-      mappedFoods.forEach(food => {
-        forbiddenTerms.push({ term: food, restriction: `allergy: ${allergy}`, severity: 'error' });
-      });
-    }
+    const key = normalizeRestriction(allergy);
+    // The literal allergen the user typed, plus everything in its category.
+    // An allergy is never downgraded to a warning.
+    forbiddenTerms.push({ term: key, restriction: `allergy: ${allergy}`, severity: 'error' });
+    (RESTRICTION_MAPPINGS[key] || []).forEach(food => {
+      forbiddenTerms.push({ term: food, restriction: `allergy: ${allergy}`, severity: 'error' });
+    });
   });
 
   meals.forEach(meal => {
     const mealName = (meal.name || meal.dish || meal.description || '').toLowerCase();
     const ingredients = Array.isArray(meal.ingredients)
-      ? meal.ingredients.map((item: string) => item.toLowerCase()).join(' ')
+      ? meal.ingredients.map((item: any) => String(item).toLowerCase()).join(' ')
       : '';
     const searchText = `${mealName} ${ingredients}`;
 
     forbiddenTerms.forEach(({ term, restriction, severity }) => {
-      if (searchText.includes(term)) {
+      if (containsTerm(searchText, term)) {
         violations.push({
           mealName: meal.name || meal.dish || meal.description || 'Unknown meal',
           day: meal.day || 'unknown',
