@@ -4,6 +4,7 @@ import { cookies } from 'next/headers';
 import { prisma } from '@/lib/db';
 import { googlePlacesClient, Restaurant } from '@/lib/external/places-client';
 import { perplexityClient } from '@/lib/external/perplexity-client';
+import { verifyLinks, isUsableLink } from '@/lib/external/link-check';
 import { getAuthUserId } from '@/lib/auth';
 import {
   createRestaurantMealGenerationPrompt,
@@ -357,10 +358,9 @@ async function extractMenuInformation(restaurants: Restaurant[], surveyData: any
       // Count valid ordering links. `!== ''` used to be the test, which counted
       // the literal string "null" as a link — the same value that reaches the UI
       // as an order button leading nowhere. Same URL test as
-      // normalizeOrderingLinks so the count and the rendered buttons agree.
+      // normalizeOrderingLinks so the count and the rendered buttons agree;
+      // verifyLinks then removes the ones that do not answer.
       const orderingLinks = menuResponse.orderingLinks || {};
-      const isUsableLink = (link: unknown): link is string =>
-        typeof link === 'string' && /^https?:\/\/\S+$/i.test(link.trim());
       const menuItems = menuResponse.menuItems || [];
 
       // B4. Places already told us this restaurant's website; asking the model
@@ -369,10 +369,23 @@ async function extractMenuInformation(restaurants: Restaurant[], surveyData: any
       // the only source here that looked the business up rather than recalled
       // it. The model's value survives only as the fallback.
       const placesWebsite = (restaurant as { website?: string }).website;
-      const resolvedLinks = {
+      const candidateLinks = {
         ...orderingLinks,
         direct: isUsableLink(placesWebsite) ? placesWebsite : orderingLinks.direct ?? null,
       };
+
+      // B1. Nothing had ever requested one of these URLs. A 404 doordash link
+      // renders as an order button that leads nowhere, which is worse than no
+      // button — the user drives somewhere on the strength of it. 6s rather
+      // than the 8s default: this phase owns ~22s of the route budget and a
+      // link check must not be what spends it.
+      const resolvedLinks = await verifyLinks(candidateLinks, { timeoutMs: 6000 });
+      const rejected = Object.keys(candidateLinks).filter(
+        (k) => isUsableLink((candidateLinks as Record<string, unknown>)[k]) && !(k in resolvedLinks)
+      );
+      if (rejected.length > 0) {
+        console.log(`[MENU-EXTRACTION] ${restaurant.name}: dropped unreachable links: ${rejected.join(', ')}`);
+      }
 
       const linksFound = Object.values(resolvedLinks).filter(isUsableLink).length;
 
