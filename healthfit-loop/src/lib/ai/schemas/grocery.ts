@@ -60,7 +60,10 @@ export const GroceryStoreSearchSchema = z.object({
 export const GroceryStoreOption = z.object({
   store: z.string(),
   displayName: z.string(),
-  price: z.number(),
+  // A grocery item priced outside this range is a parse error, not a bargain.
+  // Unbounded, a negative price shrank a store's total and helped it win the
+  // cheapest-store comparison.
+  price: z.number().min(0.01).max(500),
   priceConfidence: z.enum(PRICE_CONFIDENCE),
   isRecommended: z.boolean(),
   reason: z.string().nullable(),
