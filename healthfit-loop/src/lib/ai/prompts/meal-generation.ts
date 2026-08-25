@@ -9,6 +9,8 @@
  * - Enhanced restaurant meal prompt to preserve ordering links
  */
 
+import { radiusMilesFor } from '@/lib/utils/distance';
+
 export interface MealGenerationContext {
   homeMeals: Array<{day: string, mealType: string}>;
   surveyData: any;
@@ -1198,7 +1200,7 @@ USER PREFERENCES & GOALS:
 - Health Focus: ${surveyData.healthFocus || 'General wellness'}
 - Maintain Focus: ${surveyData.maintainFocus || 'Not specified'}
 - ⚠️ PREFERRED CUISINES (CRITICAL): ${(surveyData.preferredCuisines || []).join(', ')}
-- Distance Preference: ${surveyData.distancePreference || 'moderate'} (${surveyData.distancePreference === 'close' ? 'within 2 miles' : surveyData.distancePreference === 'far' ? 'within 10 miles' : 'within 5 miles'})
+- Distance Preference: ${surveyData.distancePreference || 'medium'} (within ${radiusMilesFor(surveyData.distancePreference)} miles)
 - Budget: $${surveyData.monthlyFoodBudget || 200}/month
 
 ⚠️ CRITICAL SELECTION CRITERIA (ABSOLUTE REQUIREMENTS):

@@ -298,29 +298,6 @@ export class PerplexityClient {
       console.log(`[PERPLEXITY] 📄 Content length: ${content.length} characters`);
       console.log(`[PERPLEXITY] 🔗 Citations found: ${citations.length}`);
 
-      // Check for distance validation issues
-      const distanceIssueKeywords = [
-        'too far', 'farther than', 'outside the', 'exceeds the distance',
-        'beyond the', 'distance limit', 'not within', 'more than'
-      ];
-
-      const hasDistanceIssue = distanceIssueKeywords.some(keyword =>
-        content.toLowerCase().includes(keyword.toLowerCase())
-      );
-
-      if (hasDistanceIssue) {
-        console.warn(`[PERPLEXITY] ⚠️ Distance validation failed for ${restaurantName}`);
-        return {
-          menuItems: [],
-          orderingLinks: {},
-          sources: citations.map((c: any) => c.url || '').filter(Boolean),
-          restaurant: restaurantName,
-          extractionSuccess: false,
-          linksFound: 0,
-          error: 'Restaurant outside distance range'
-        };
-      }
-
       // Process the Perplexity response with GPT-4 for structured extraction
       const structuredData = await this.processWithGPT4(content, citations, restaurant, surveyData);
 

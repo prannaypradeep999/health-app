@@ -12,6 +12,9 @@ export interface Restaurant {
   phoneNumber?: string;
   isOpen?: boolean;
   placeId: string;
+  lat?: number;
+  lng?: number;
+  distanceMiles?: number;   // filled in by the caller, which knows the origin
   chainCategory?: 'healthier' | 'moderate' | 'unhealthy';
   businessStatus?: 'OPERATIONAL' | 'CLOSED_TEMPORARILY' | 'CLOSED_PERMANENTLY' | 'UNKNOWN';
   isPermClosed?: boolean;
@@ -277,6 +280,8 @@ export class GooglePlacesClient {
         cuisine: cuisine.toLowerCase() || this.extractCuisineFromTypes(place.types || []),
         types: place.types || details?.types || [],
         placeId: place.place_id,
+        lat: place.geometry?.location?.lat,
+        lng: place.geometry?.location?.lng,
         phoneNumber: details?.formatted_phone_number,
         isOpen: place.opening_hours?.open_now ?? details?.opening_hours?.open_now,
         businessStatus: details?.business_status || 'UNKNOWN',
@@ -302,6 +307,8 @@ export class GooglePlacesClient {
         priceLevel: place.price_level || 2,
         cuisine: cuisine.toLowerCase(),
         placeId: place.place_id,
+        lat: place.geometry?.location?.lat,
+        lng: place.geometry?.location?.lng,
         needsMenuAnalysis: true
       };
     }

@@ -16,6 +16,7 @@ import Logo from '@/components/logo';
 import ProfileConfirmation from '@/components/dashboard/ProfileConfirmation';
 import LoadingJourney from '@/components/dashboard/LoadingJourney';
 import { checkPreferenceConflicts, type PreferenceConflict } from '@/lib/utils/preference-conflict-checker';
+import { DISTANCE_RADIUS_MILES } from '@/lib/utils/distance';
 
 interface QuickProfileSummaryProps {
   surveyData: any;
@@ -2059,9 +2060,9 @@ function OnboardingSteps({ onComplete, onBack }: OnboardingStepsProps) {
               <Label className="text-neutral-700 mb-4 block">How far are you willing to travel for restaurants?</Label>
               <div className="grid grid-cols-1 gap-3">
                 {[
-                  { value: 'close', label: 'Close to me', description: 'Under 2 miles' },
-                  { value: 'medium', label: 'Moderate distance', description: '2-5 miles' },
-                  { value: 'far', label: 'Willing to travel', description: '5-10+ miles' }
+                  { value: 'close', label: 'Close to me', description: `Under ${DISTANCE_RADIUS_MILES.close} mile` },
+                  { value: 'medium', label: 'Moderate distance', description: `Under ${DISTANCE_RADIUS_MILES.medium} miles` },
+                  { value: 'far', label: 'Willing to travel', description: `Under ${DISTANCE_RADIUS_MILES.far} miles` }
                 ].map((option) => (
                   <Button
                     key={option.value}

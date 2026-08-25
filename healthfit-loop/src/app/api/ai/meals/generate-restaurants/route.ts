@@ -5,6 +5,7 @@ import { prisma } from '@/lib/db';
 import { googlePlacesClient, Restaurant } from '@/lib/external/places-client';
 import { perplexityClient } from '@/lib/external/perplexity-client';
 import { verifyLinks, isUsableLink } from '@/lib/external/link-check';
+import { radiusMilesFor, milesBetween } from '@/lib/utils/distance';
 import { getAuthUserId } from '@/lib/auth';
 import {
   createRestaurantMealGenerationPrompt,
@@ -126,8 +127,7 @@ async function findAndSelectBestRestaurants(surveyData: any): Promise<Restaurant
     console.log(`[RESTAURANT-SEARCH] 🍽️ Cuisines: ${cuisines.join(', ')}`);
     
     // Convert distance preference to miles (strict enforcement)
-    const radiusMiles = surveyData.distancePreference === 'close' ? 1.0 :
-                        surveyData.distancePreference === 'far' ? 8.0 : 3.0;
+    const radiusMiles = radiusMilesFor(surveyData.distancePreference);
 
     console.log(`[RESTAURANT-SEARCH] 📏 Distance preference: ${surveyData.distancePreference} → ${radiusMiles} miles radius (STRICT)`);
 
@@ -167,22 +167,45 @@ async function findAndSelectBestRestaurants(surveyData: any): Promise<Restaurant
     );
     
     console.log(`[RESTAURANT-SEARCH] 📊 Found ${uniqueRestaurants.length} unique restaurants total`);
-    
+
+    // A search radius biases results; it does not bound them. Places returns by
+    // prominence within the radius, and the fallback search uses its own. This
+    // is the only place a restaurant's actual distance is ever checked.
+    const origin = await googlePlacesClient.geocodeAddress(location);
+    const withDistance = uniqueRestaurants.map(r => ({
+      ...r,
+      distanceMiles:
+        origin && typeof r.lat === 'number' && typeof r.lng === 'number'
+          ? milesBetween(origin, { lat: r.lat, lng: r.lng })
+          : undefined,
+    }));
+
+    const inRange = withDistance.filter(
+      // Unknown distance is kept: a missing coordinate is our gap, not the
+      // restaurant's fault, and dropping it would silently shrink the pool.
+      r => r.distanceMiles === undefined || r.distanceMiles <= radiusMiles
+    );
+
+    const droppedFar = withDistance.length - inRange.length;
+    if (droppedFar > 0) {
+      console.log(`[RESTAURANT-SEARCH] 📏 Dropped ${droppedFar} restaurant(s) beyond ${radiusMiles} miles`);
+    }
+
     // If we have 8 or fewer restaurants, just return them all
-    if (uniqueRestaurants.length <= 8) {
-      console.log(`[RESTAURANT-SEARCH] ✅ Returning all ${uniqueRestaurants.length} restaurants (no AI selection needed)`);
-      return uniqueRestaurants;
+    if (inRange.length <= 8) {
+      console.log(`[RESTAURANT-SEARCH] ✅ Returning all ${inRange.length} restaurants (no AI selection needed)`);
+      return inRange;
     }
 
     // Use AI to select the best 8-10 restaurants (more to account for filtering)
-    const selectionPrompt = createRestaurantSelectionPrompt(uniqueRestaurants, surveyData);
+    const selectionPrompt = createRestaurantSelectionPrompt(inRange, surveyData);
 
     // Calculate estimated tokens (rough estimate: 1 token ≈ 4 characters)
     const estimatedTokens = Math.ceil(selectionPrompt.length / 4);
     console.log(`[RESTAURANT-SEARCH] 📤 Sending GPT restaurant selection request:`);
     console.log(`[RESTAURANT-SEARCH]   - Prompt length: ${selectionPrompt.length} chars`);
     console.log(`[RESTAURANT-SEARCH]   - Estimated tokens: ${estimatedTokens}`);
-    console.log(`[RESTAURANT-SEARCH]   - Restaurants to choose from: ${uniqueRestaurants.length}`);
+    console.log(`[RESTAURANT-SEARCH]   - Restaurants to choose from: ${inRange.length}`);
     console.log(`[RESTAURANT-SEARCH]   - Model: ${MODELS.PLANNING}`);
 
     const gptResult = await withGPTRetry(async (signal) => {
@@ -213,7 +236,7 @@ async function findAndSelectBestRestaurants(surveyData: any): Promise<Restaurant
 
     if (!gptResult.success) {
       console.warn('[RESTAURANT-SEARCH] ⚠️ Using fallback after retry failures');
-      return uniqueRestaurants.slice(0, 8);
+      return inRange.slice(0, 8);
     }
     const data = gptResult.data;
 
@@ -225,7 +248,7 @@ async function findAndSelectBestRestaurants(surveyData: any): Promise<Restaurant
     const parsed = parseChoice(RestaurantSelectionSchema, data.choices?.[0], 'restaurant-selection');
     if (!parsed.ok) {
       console.warn(`[RESTAURANT-SEARCH] ⚠️ ${parsed.reason}: ${parsed.detail} — using first 8 restaurants`);
-      return uniqueRestaurants.slice(0, 8);
+      return inRange.slice(0, 8);
     }
 
     // Map selected restaurants back to original data to preserve all fields
@@ -235,7 +258,7 @@ async function findAndSelectBestRestaurants(surveyData: any): Promise<Restaurant
 
     // Create a lookup map for original restaurants
     const restaurantLookup = new Map<string, Restaurant>();
-    uniqueRestaurants.forEach(r => {
+    inRange.forEach(r => {
       if (r.placeId) restaurantLookup.set(r.placeId, r);
       if (r.name) restaurantLookup.set(r.name.toLowerCase(), r);
     });
@@ -261,21 +284,18 @@ async function findAndSelectBestRestaurants(surveyData: any): Promise<Restaurant
           rating: fullRestaurant.rating, // Explicitly preserve rating from original Google Places data
           selectionReason: selected.reason,
         } as Restaurant & { selectionReason?: string });
-      } else if (selected.name && selected.address) {
-        console.log(`[RESTAURANT-SEARCH] ⚠️ Using GPT-provided data for: ${selected.name}`);
-        selectedRestaurants.push({
-          ...selected,
-          rating: selected.rating || 0 // Set rating from GPT or default to 0
-        } as unknown as Restaurant);
       } else {
-        console.warn(`[RESTAURANT-SEARCH] ⚠️ Could not match restaurant: ${JSON.stringify(selected).substring(0, 100)}`);
+        // A selection we cannot match is a name the model produced, not a place
+        // Google returned. Passing it through shipped invented restaurants —
+        // with invented addresses — straight to the user.
+        console.warn(`[RESTAURANT-SEARCH] ⚠️ Dropping unmatched selection (not in the Places result set): ${selected.name}`);
       }
     }
 
     // If mapping resulted in empty array, fall back to original restaurants
     if (selectedRestaurants.length === 0) {
       console.warn('[RESTAURANT-SEARCH] ⚠️ GPT selection mapping failed, using original restaurants');
-      selectedRestaurants = uniqueRestaurants.slice(0, 8);
+      selectedRestaurants = inRange.slice(0, 8);
     }
 
     const totalSearchTime = Date.now() - startTime;

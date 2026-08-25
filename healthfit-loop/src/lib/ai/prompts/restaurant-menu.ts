@@ -1,4 +1,5 @@
 import { normalizeRestriction } from '@/lib/utils/restriction-validator';
+import { radiusMilesFor } from '@/lib/utils/distance';
 
 /** The survey fields the two restaurant-menu prompts read. */
 export interface MenuPromptSurvey {
@@ -80,7 +81,7 @@ export function createMenuSearchPrompt(restaurant: any, surveyData: MenuPromptSu
   // Calculate distance context for validation
   const userLocation = `${surveyData?.streetAddress || ''} ${surveyData?.city || ''}, ${surveyData?.state || ''} ${surveyData?.zipCode || ''}`.trim();
   const distancePreference = surveyData?.distancePreference || 'moderate';
-  const maxDistance = distancePreference === 'close' ? '1 mile' : distancePreference === 'far' ? '8 miles' : '3 miles';
+  const maxDistance = `${radiusMilesFor(distancePreference)} miles`;
 
   return `Find the current menu with prices AND online ordering links for "${restaurantName}" restaurant located at ${restaurantAddress}, ${restaurantCity}.
 
