@@ -41,6 +41,10 @@ import {
 } from '../src/lib/ai/schemas/index';
 import { MODELS } from '../src/lib/ai/models';
 import { tally, type Finding, type CheckResult, type Family } from './eval/types';
+import { checkAtwater, checkTarget, checkSum } from './eval/arithmetic';
+import { checkCount, checkSlots, checkNonEmpty } from './eval/completeness';
+import { rulesFor, checkText } from './eval/adherence';
+import { checkOrderingLinks } from './eval/links';
 
 import { fixtures, homeMealsFrom, scheduleTextFrom, menuProseFixture, type Fixture } from './fixtures/surveys';
 
@@ -164,6 +168,51 @@ async function planFor(f: Fixture): Promise<any> {
  */
 export let PROBE_LINKS = true;
 
+/**
+ * Check one MealSlot envelope: both options, every family except LINKS.
+ *
+ * `alternative` is checked as strictly as `primary`. Production's isUsableMeal
+ * looks only at primary, which is one of the reasons a broken alternative
+ * reaches the UI unnoticed.
+ */
+function checkMealSlot(slot: any, f: Fixture): Finding[] {
+  const out: Finding[] = [];
+  const rules = rulesFor(f.surveyData);
+  const target = f.nutritionTargets.mealTargets[String(slot.mealType).toLowerCase()];
+
+  for (const which of ['primary', 'alternative'] as const) {
+    const meal = slot?.[which];
+    if (!meal) {
+      out.push({ family: 'COMPLETENESS', severity: 'error', code: 'missing-option',
+        where: `${slot.day}.${slot.mealType}`, message: `no ${which} option` });
+      continue;
+    }
+    const where = `${slot.day}.${slot.mealType}.${which}`;
+
+    out.push(...checkAtwater(where, {
+      calories: meal.estimatedCalories, protein: meal.protein,
+      carbs: meal.carbs, fat: meal.fat,
+    }));
+
+    if (target) out.push(...checkTarget(where, meal.estimatedCalories, target.calories));
+
+    // The grocery prompt reads ingredientsWithNutrition, so an empty one means
+    // this meal contributes nothing downstream even though it renders fine.
+    out.push(...checkNonEmpty(where, 'no-ingredients', meal.ingredientsWithNutrition, 2));
+    out.push(...checkNonEmpty(where, 'no-instructions', meal.instructions, 2));
+
+    const ing = (meal.ingredientsWithNutrition ?? []) as Array<{ item: string; calories: number }>;
+    if (ing.length > 0) {
+      out.push(...checkSum(where, 'ingredient-sum', ing.map(i => i.calories), meal.estimatedCalories));
+    }
+
+    const text = [meal.name, meal.description, ...(meal.ingredients ?? []), ...ing.map(i => i.item)].join(' ');
+    out.push(...checkText(where, text, rules));
+  }
+
+  return out;
+}
+
 const SITES: Site[] = [
   {
     name: 'meal-planning',
@@ -179,11 +228,23 @@ const SITES: Site[] = [
       };
     },
     check: (d, f) => {
-      const want = homeMealsFrom(f.surveyData.weeklyMealSchedule).length;
-      const slots = new Set(d.mealPlan.map((m: any) => `${m.day}|${m.mealType}`));
+      const want = homeMealsFrom(f.surveyData.weeklyMealSchedule);
+      const got = d.mealPlan as Array<{ day: string; mealType: string; name?: string; description?: string }>;
+      const rules = rulesFor(f.surveyData);
+      const findings: Finding[] = [
+        ...checkCount('mealPlan', 'plan-count', got.length, want.length),
+        ...checkSlots('mealPlan', got, want),
+      ];
+      // Planning is where a dish is named, and the detail phase is forbidden to
+      // rename it — so an excluded ingredient chosen here can never be corrected.
+      for (const m of got) {
+        findings.push(...checkText(`${m.day}.${m.mealType}`,
+          `${m.name ?? ''} ${m.description ?? ''}`, rules));
+      }
+      const slots = new Set(got.map(m => `${m.day}|${m.mealType}`));
       return {
-        summary: `${d.mealPlan.length}/${want} entries, ${slots.size} distinct slots`,
-        findings: [],
+        summary: `${got.length}/${want.length} entries, ${slots.size} distinct slots`,
+        findings,
       };
     },
   },
@@ -205,12 +266,20 @@ const SITES: Site[] = [
         schema: pinnedMealDetail(chunk.length),
       };
     },
-    check: (d) => {
-      const slots = new Set(d.meals.map((m: any) => `${m.day}|${m.mealType}`));
-      return {
-        summary: `${d.meals.length} entries, ${slots.size} distinct slots`,
-        findings: [],
-      };
+    check: async (d, f) => {
+      const plan = await planFor(f);
+      const days = [...new Set(plan.mealPlan.map((m: any) => m.day))].slice(0, 2);
+      const want = plan.mealPlan
+        .filter((m: any) => days.includes(m.day))
+        .map((m: any) => ({ day: m.day, mealType: m.mealType }));
+      const got = d.meals as any[];
+      const findings: Finding[] = [
+        ...checkCount('meals', 'detail-count', got.length, want.length),
+        ...checkSlots('meals', got, want),
+      ];
+      for (const slot of got) findings.push(...checkMealSlot(slot, f));
+      const slots = new Set(got.map((m: any) => `${m.day}|${m.mealType}`));
+      return { summary: `${got.length} entries, ${slots.size} distinct slots`, findings };
     },
   },
   {
@@ -223,11 +292,39 @@ const SITES: Site[] = [
         schema: GroceryListSchema,
       };
     },
-    check: (d) => ({
-      summary: Object.entries(d.groceryList as Record<string, any[]>)
-        .map(([k, v]) => `${k}=${v.length}`).join(' '),
-      findings: [],
-    }),
+    check: async (d, f) => {
+      const plan = await planFor(f);
+      const list = d.groceryList as Record<string, Array<{ name: string; quantity: string; uses: string }>>;
+      const all = Object.values(list).flat();
+      const rules = rulesFor(f.surveyData);
+      const findings: Finding[] = [
+        ...checkNonEmpty('groceryList', 'empty-grocery-list', all, 8),
+      ];
+      // A plan with N meals that yields a handful of items has silently dropped
+      // most of the shopping.
+      if (all.length > 0 && all.length < plan.mealPlan.length) {
+        findings.push({
+          family: 'COMPLETENESS', severity: 'warn', code: 'thin-grocery-list',
+          where: 'groceryList',
+          message: `${all.length} items for ${plan.mealPlan.length} planned meals`,
+        });
+      }
+      for (const item of all) {
+        findings.push(...checkText(`groceryList.${item.name}`, item.name, rules));
+        // 'varies' is what buildFallbackGroceryList emits; a real list never has it.
+        if (!item.quantity || /^(varies|as needed|some)$/i.test(item.quantity.trim())) {
+          findings.push({
+            family: 'COMPLETENESS', severity: 'error', code: 'unpriceable-quantity',
+            where: `groceryList.${item.name}`,
+            message: `quantity "${item.quantity}" cannot be shopped or priced`,
+          });
+        }
+      }
+      return {
+        summary: Object.entries(list).map(([k, v]) => `${k}=${v.length}`).join(' '),
+        findings,
+      };
+    },
   },
   {
     name: 'meal-legacy',
@@ -244,7 +341,17 @@ const SITES: Site[] = [
         schema: pinnedHomeMealsLegacy(homeMeals.length),
       };
     },
-    check: (d) => ({ summary: `${d.homeMeals.length} meals, grocery present`, findings: [] }),
+    check: (d, f) => {
+      const all = homeMealsFrom(f.surveyData.weeklyMealSchedule);
+      const want = all.slice(0, Math.ceil(all.length / 2));
+      const got = d.homeMeals as any[];
+      const findings: Finding[] = [
+        ...checkCount('homeMeals', 'legacy-count', got.length, want.length),
+        ...checkSlots('homeMeals', got, want),
+      ];
+      for (const slot of got) findings.push(...checkMealSlot(slot, f));
+      return { summary: `${got.length} meals, grocery present`, findings };
+    },
   },
   {
     name: 'workout-planning',
@@ -253,10 +360,45 @@ const SITES: Site[] = [
       prompt: createWorkoutPlanningPrompt(f.surveyData, f.workoutPrefs),
       schema: WorkoutPlanSchema,
     }),
-    check: (d) => ({
-      summary: `${d.weeklyPlan.length} days, ${d.weeklyPlan.filter((x: any) => x.restDay).length} rest`,
-      findings: [],
-    }),
+    check: (d, f) => {
+      const want = f.workoutPrefs.availableDays ?? [];
+      const got = d.weeklyPlan as Array<{ day: string; restDay: boolean; estimatedTime: string; estimatedCalories: number }>;
+      const findings: Finding[] = [];
+
+      // weeklyPlan is not count-pinned, so a short week ships with a 200.
+      const training = got.filter(x => !x.restDay).map(x => String(x.day).toLowerCase());
+      const missing = want.map(d => d.toLowerCase()).filter(d => !training.includes(d));
+      if (missing.length > 0) {
+        findings.push({
+          family: 'COMPLETENESS', severity: 'error', code: 'missing-training-day',
+          where: 'weeklyPlan',
+          message: `available day(s) with no training session: ${missing.join(', ')}`,
+        });
+      }
+
+      for (const day of got) {
+        // parseInt('about an hour') is NaN, which the UI renders as "NaNmin".
+        if (!/\d/.test(String(day.estimatedTime))) {
+          findings.push({
+            family: 'ARITHMETIC', severity: 'error', code: 'unparseable-duration',
+            where: `weeklyPlan.${day.day}`,
+            message: `estimatedTime "${day.estimatedTime}" contains no digits`,
+          });
+        }
+        if (!day.restDay && !(day.estimatedCalories > 0)) {
+          findings.push({
+            family: 'ARITHMETIC', severity: 'error', code: 'zero-calories',
+            where: `weeklyPlan.${day.day}`,
+            message: `training day with estimatedCalories ${day.estimatedCalories}`,
+          });
+        }
+      }
+
+      return {
+        summary: `${got.length} days, ${got.filter(x => x.restDay).length} rest`,
+        findings,
+      };
+    },
   },
   {
     name: 'workout-detail',
@@ -277,14 +419,51 @@ const SITES: Site[] = [
     // The branch invariant strict mode cannot express: training days need
     // exercises, rest days need activeRecovery. This is the failure the
     // superRefine catches locally, so the bench has to report it too.
-    check: (d) => {
-      const bad = d.days.filter((x: any) =>
-        (!x.restDay && (!x.exercises || x.exercises.length === 0)) ||
-        (x.restDay && !x.activeRecovery));
-      return {
-        summary: `${d.days.length} days, ${bad.length} violating the rest/train branch`,
-        findings: [],
-      };
+    check: (d, f) => {
+      const days = d.days as any[];
+      const findings: Finding[] = [];
+      for (const day of days) {
+        const where = `days.${day.day}`;
+        if (!day.restDay) {
+          findings.push(...checkNonEmpty(where, 'no-exercises', day.exercises, 3));
+          for (const ex of day.exercises ?? []) {
+            if (!/\d/.test(String(ex.reps))) {
+              findings.push({
+                family: 'ARITHMETIC', severity: 'error', code: 'unparseable-reps',
+                where: `${where}.${ex.name}`, message: `reps "${ex.reps}" contains no digits`,
+              });
+            }
+            if (!/\d/.test(String(ex.restTime))) {
+              findings.push({
+                family: 'ARITHMETIC', severity: 'error', code: 'unparseable-rest',
+                where: `${where}.${ex.name}`, message: `restTime "${ex.restTime}" contains no digits`,
+              });
+            }
+            const rpe = ex.weightGuidance?.rpeTarget;
+            if (typeof rpe === 'number' && (rpe < 1 || rpe > 10)) {
+              findings.push({
+                family: 'ARITHMETIC', severity: 'error', code: 'rpe-out-of-range',
+                where: `${where}.${ex.name}`, message: `rpeTarget ${rpe} is outside 1-10`,
+              });
+            }
+          }
+          // The injury constraint the prompt carries — when it carries one.
+          const injuries = f.workoutPrefs.injuryConsiderations ?? [];
+          if (injuries.length > 0) {
+            findings.push({
+              family: 'ADHERENCE', severity: 'warn', code: 'injury-unreviewed',
+              where, message: `fixture declares ${injuries.join(', ')}; verify the movements avoid it`,
+            });
+          }
+        } else if (!day.activeRecovery) {
+          findings.push({
+            family: 'COMPLETENESS', severity: 'error', code: 'rest-without-recovery',
+            where, message: 'rest day carries no activeRecovery object',
+          });
+        }
+      }
+      const bad = findings.filter(x => x.severity === 'error').length;
+      return { summary: `${days.length} days, ${bad} error-level findings`, findings };
     },
   },
   {
@@ -309,11 +488,43 @@ const SITES: Site[] = [
       schema: RecipeSchema,
     }),
     check: (d, f) => {
-      const want = f.nutritionTargets.mealTargets.dinner.calories;
-      const off = Math.round(Math.abs(d.nutrition.calories - want) / want * 100);
+      const want = f.nutritionTargets.mealTargets.dinner;
+      const findings: Finding[] = [
+        ...checkAtwater('recipe', {
+          calories: d.nutrition.calories, protein: d.nutrition.protein,
+          carbs: d.nutrition.carbs, fat: d.nutrition.fat,
+        }),
+        ...checkTarget('recipe', d.nutrition.calories, want.calories),
+        ...checkNonEmpty('recipe.ingredients', 'no-ingredients', d.ingredientsWithNutrition, 3),
+        ...checkText('recipe',
+          [d.dishName ?? '', ...(d.ingredientsWithNutrition ?? []).map((i: any) => i.item)].join(' '),
+          rulesFor(f.surveyData)),
+      ];
+
+      const ing = (d.ingredientsWithNutrition ?? []) as Array<{ calories: number }>;
+      const sum = ing.reduce((a, i) => a + i.calories, 0);
+      const servings = Number(d.servings) || 1;
+      findings.push(...checkSum('recipe', 'ingredient-sum', ing.map(i => i.calories), d.nutrition.calories));
+
+      // Per-serving vs whole-recipe: if dividing the ingredient sum by servings
+      // lands on the stated nutrition, the two numbers are in different units.
+      if (servings > 1 && sum > 0) {
+        const asWhole = Math.abs(sum - d.nutrition.calories) / d.nutrition.calories;
+        const asPerServing = Math.abs(sum / servings - d.nutrition.calories) / d.nutrition.calories;
+        if (asWhole > 0.2 && asPerServing < 0.1) {
+          findings.push({
+            family: 'ARITHMETIC', severity: 'error', code: 'serving-unit-mismatch',
+            where: 'recipe',
+            message: `ingredients total ${Math.round(sum)} cal for ${servings} servings; ` +
+                     `nutrition states ${d.nutrition.calories}, which is the per-serving figure`,
+          });
+        }
+      }
+
+      const off = Math.round(Math.abs(d.nutrition.calories - want.calories) / want.calories * 100);
       return {
-        summary: `${d.ingredientsWithNutrition.length} ingredients, ${d.nutrition.calories} cal (${off}% off target)`,
-        findings: [],
+        summary: `${ing.length} ingredients, ${d.nutrition.calories} cal (${off}% off target)`,
+        findings,
       };
     },
   },
@@ -343,13 +554,45 @@ IMPORTANT: orderingLinks must carry all four keys. Use null for any platform you
 did not find a real URL for. Extract 6-12 menu items maximum.`,
       schema: MenuExtractionSchema,
     }),
-    check: (d) => {
-      const links = Object.values(d.orderingLinks).filter(
-        (u: any) => typeof u === 'string' && u.startsWith('http')).length;
-      return {
-        summary: `${d.menuItems.length} items, ${links} usable links`,
-        findings: [],
-      };
+    check: async (d, f) => {
+      const items = d.menuItems as Array<{ name: string; price: number; description: string; estimatedCalories: number; category: string }>;
+      const rules = rulesFor(f.surveyData);
+      const findings: Finding[] = [
+        ...checkNonEmpty('menuItems', 'no-menu-items', items, 6),
+      ];
+
+      for (const item of items) {
+        const where = `menuItems.${item.name}`;
+        if (!(item.price > 0)) {
+          findings.push({ family: 'ARITHMETIC', severity: 'error', code: 'nonpositive-price',
+            where, message: `price ${item.price}` });
+        }
+        if (!(item.estimatedCalories > 0)) {
+          findings.push({ family: 'ARITHMETIC', severity: 'error', code: 'zero-calories',
+            where, message: `estimatedCalories ${item.estimatedCalories}` });
+        }
+        findings.push(...checkText(where, `${item.name} ${item.description}`, rules));
+      }
+
+      // Ground truth from menuProseFixture: DoorDash and direct exist, Uber Eats
+      // and Grubhub explicitly do not. Anything under those two keys is invented.
+      const links = d.orderingLinks as Record<string, string | null>;
+      for (const platform of ['ubereats', 'grubhub']) {
+        const v = links?.[platform];
+        if (typeof v === 'string' && /^https?:\/\//i.test(v.trim())) {
+          findings.push({
+            family: 'LINKS', severity: 'error', code: 'fabricated-link',
+            where: `orderingLinks.${platform}`,
+            message: `source prose says no ${platform} listing was found, but a URL was produced: ${v}`,
+          });
+        }
+      }
+
+      findings.push(...await checkOrderingLinks('orderingLinks', links ?? {}, { probeNetwork: PROBE_LINKS }));
+
+      const usable = Object.values(links ?? {}).filter(
+        u => typeof u === 'string' && u.startsWith('http')).length;
+      return { summary: `${items.length} items, ${usable} usable links`, findings };
     },
   },
 ];
