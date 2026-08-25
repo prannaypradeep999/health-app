@@ -1133,9 +1133,7 @@ export function MealPlanPage({ onNavigate, generationStatus, nutritionTargets: n
               fat: selectedMeal.fat || 0
             },
             // NEW: Pass existing grocery items
-            existingGroceryItems: groceryItems,
-            // NEW: Pass dietary restrictions if available
-            dietaryRestrictions: [] // TODO: Get from user survey if available
+            existingGroceryItems: groceryItems
           })
         });
 
