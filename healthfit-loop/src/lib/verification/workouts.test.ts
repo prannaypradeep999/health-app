@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert';
-import { verifyWorkoutPlan } from './workouts';
+import { verifyWorkoutPlan, equipmentFromGymAccess } from './workouts';
 
 const survey = { equipmentAccess: ['dumbbells'], injuryConsiderations: ['knee'], availableDays: ['Monday', 'Wednesday', 'Friday'] };
 const day = (over: any = {}) => ({ day: 'Monday', restDay: false, exercises: [{ name: 'Dumbbell Press' }], ...over });
@@ -54,4 +54,47 @@ test('a rest day with null exercises produces no exercise verdicts', () => {
 
 test('an empty plan produces no verdicts rather than throwing', () => {
   assert.deepEqual(verifyWorkoutPlan([], survey), []);
+});
+
+test('full_gym expands to every equipment kind the patterns know about', () => {
+  const eq = equipmentFromGymAccess('full_gym')!;
+  assert.ok(eq.includes('barbell') && eq.includes('cable') && eq.includes('machine'));
+});
+
+test('no_gym allows bands but not barbells', () => {
+  const eq = equipmentFromGymAccess('no_gym')!;
+  assert.deepEqual(eq, ['bands']);
+});
+
+test('recommend_gym is treated as no_gym, matching the prompt', () => {
+  assert.deepEqual(equipmentFromGymAccess('recommend_gym'), equipmentFromGymAccess('no_gym'));
+});
+
+test('free_weights allows barbells but not cables', () => {
+  const eq = equipmentFromGymAccess('free_weights')!;
+  assert.ok(eq.includes('barbell'));
+  assert.ok(!eq.includes('cable'));
+});
+
+test('a missing gymAccess falls back to no_gym exactly as the prompt does', () => {
+  assert.deepEqual(equipmentFromGymAccess(undefined), ['bands']);
+});
+
+test('an unrecognized gymAccess yields null, not a permissive list', () => {
+  assert.equal(equipmentFromGymAccess('space_station'), null);
+});
+
+test('a null equipment list makes W1 unchecked rather than contradicted', () => {
+  const vs = verifyWorkoutPlan([day({ exercises: [{ name: 'Barbell Back Squat' }] })], { ...survey, equipmentAccess: null });
+  assert.equal(vs.find(v => v.check === 'W1-equipment-available')?.status, 'unchecked');
+});
+
+test('a null equipment list never reports W1 as verified', () => {
+  const vs = verifyWorkoutPlan([day({ exercises: [{ name: 'Barbell Back Squat' }] })], { ...survey, equipmentAccess: null });
+  assert.equal(vs.filter(v => v.check === 'W1-equipment-available' && v.status === 'verified').length, 0);
+});
+
+test('the free_weights expansion clears a dumbbell press', () => {
+  const vs = verifyWorkoutPlan([day()], { ...survey, equipmentAccess: equipmentFromGymAccess('free_weights') });
+  assert.equal(vs.find(v => v.check === 'W1-equipment-available')?.status, 'verified');
 });

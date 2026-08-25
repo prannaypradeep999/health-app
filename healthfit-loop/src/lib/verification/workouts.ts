@@ -7,7 +7,8 @@ export interface WorkoutDayClaim {
 }
 
 export interface WorkoutSurvey {
-  equipmentAccess: string[];
+  /** `null` means the survey did not say — W1 reports unchecked rather than guessing. */
+  equipmentAccess: string[] | null;
   injuryConsiderations: string[];
   availableDays: string[];
 }
@@ -43,6 +44,42 @@ const has = (haystack: string[], needle: string) =>
   haystack.some(h => h.toLowerCase().includes(needle) || needle.includes(h.toLowerCase()));
 
 /**
+ * The survey stores equipment as a single `gymAccess` enum, not a list, so the
+ * check has to expand it the same way the prompt does.
+ *
+ * These lists mirror the equipmentConstraint strings in
+ * ai/prompts/workout-generation.ts verbatim — "bodyweight/resistance bands
+ * ONLY. No barbells, cables, machines", "dumbbells, barbells, kettlebells. No
+ * cable machines", and so on. If that wording changes and this does not, the
+ * check will contradict plans the prompt legitimately asked for.
+ *
+ * Two defaults, both copied from the prompt rather than chosen here. A missing
+ * value becomes `no_gym`, exactly as `gymAccess || 'no_gym'` does there. An
+ * unrecognized value leaves the prompt's equipmentConstraint empty, so the
+ * generator was told nothing and this returns `null` — W1 then reports
+ * unchecked. Returning the full-gym list instead would let an unreadable survey
+ * read as "all equipment available", which is the one answer we must never give.
+ */
+export function equipmentFromGymAccess(gymAccess: string | undefined | null): string[] | null {
+  switch (gymAccess || 'no_gym') {
+    case 'full_gym':
+      return ['barbell', 'dumbbell', 'kettlebell', 'cable', 'machine', 'pull-up bar', 'bench', 'bands'];
+    case 'free_weights':
+      // "dumbbells, barbells, kettlebells. No cable machines."
+      return ['barbell', 'dumbbell', 'kettlebell', 'bench', 'bands'];
+    case 'calisthenics':
+      // "bodyweight progressions, pull-ups, dips."
+      return ['pull-up bar', 'bands'];
+    case 'no_gym':
+    case 'recommend_gym':
+      // "bodyweight/resistance bands ONLY."
+      return ['bands'];
+    default:
+      return null;
+  }
+}
+
+/**
  * W1-W3: does the plan respect what the user actually told us?
  *
  * All Tier A — the evidence is the survey, which the route is already holding.
@@ -50,7 +87,7 @@ const has = (haystack: string[], needle: string) =>
  */
 export function verifyWorkoutPlan(days: WorkoutDayClaim[], survey: WorkoutSurvey): Verdict[] {
   const out: Verdict[] = [];
-  const owned = (survey.equipmentAccess ?? []).map(e => e.toLowerCase());
+  const owned = survey.equipmentAccess?.map(e => e.toLowerCase()) ?? null;
   const injuries = (survey.injuryConsiderations ?? []).map(i => i.toLowerCase()).filter(Boolean);
   const available = (survey.availableDays ?? []).map(d => d.toLowerCase());
 
@@ -79,6 +116,8 @@ export function verifyWorkoutPlan(days: WorkoutDayClaim[], survey: WorkoutSurvey
         .map(([kind]) => kind);
       if (needed.length === 0) {
         out.push(verdict('W1-equipment-available', target, 'verified', name, 'no equipment implied by the name'));
+      } else if (owned === null) {
+        out.push(verdict('W1-equipment-available', target, 'unchecked', name, `requires ${needed.join(', ')}, but the survey recorded no usable equipment answer`));
       } else {
         const missing = needed.filter(n => !has(owned, n));
         out.push(missing.length === 0

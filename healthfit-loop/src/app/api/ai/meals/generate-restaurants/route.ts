@@ -7,6 +7,7 @@ import { perplexityClient } from '@/lib/external/perplexity-client';
 import { verifyLinks, isUsableLink } from '@/lib/external/link-check';
 import { radiusMilesFor, milesBetween } from '@/lib/utils/distance';
 import { buildRestaurantFacts } from '@/lib/utils/restaurant-facts';
+import { runVerification, verifyRestaurantPayload } from '@/lib/verification';
 import { getAuthUserId } from '@/lib/auth';
 import {
   createRestaurantMealGenerationPrompt,
@@ -858,6 +859,28 @@ async function handleGenerate_restaurants(req: NextRequest) {
       console.log(`[RESTRICTION-VALIDATOR] ✅ All meals pass restriction checks`);
     }
     
+    // Grounding: compare the meals the user will see against hop 1's own answer.
+    //
+    // Three model calls produced these meals and only the first looked at the
+    // internet. `searchItems` and `sourceHosts` are that first call's payload,
+    // which extractMenuData used to hand to hop 2 as a string and drop. Every
+    // comparison below runs on data already in memory, so this costs nothing
+    // against ROUTE_TOTAL_BUDGET_MS — there is no headroom left to spend.
+    //
+    // Computed once here rather than inside each persistence branch, because
+    // both branches store the same report.
+    const restaurantFactsForPlan = buildRestaurantFacts(selectedRestaurants);
+    const menuEvidence: Record<string, { searchItems?: any[]; sourceHosts?: string[] }> = {};
+    for (const m of restaurantMenuData) {
+      const key = String(m?.restaurant ?? '').toLowerCase().trim();
+      if (key) menuEvidence[key] = { searchItems: m?.searchItems, sourceHosts: m?.sourceHosts };
+    }
+    const verification = runVerification(
+      () => verifyRestaurantPayload(selectedRestaurantMeals, menuEvidence, restaurantFactsForPlan),
+      'restaurants'
+    );
+    console.log(`[VERIFY] restaurants: ${JSON.stringify(verification.counts)}`);
+
     // Update existing meal plan with restaurant data
     const weekOfDate = getStartOfWeek();
     
@@ -926,13 +949,18 @@ async function handleGenerate_restaurants(req: NextRequest) {
         
         // Places facts travel beside the model-authored meal objects, not on
         // them: a rating on a model output is a rating the model would invent.
-        const restaurantFacts = buildRestaurantFacts(selectedRestaurants);
+        const restaurantFacts = restaurantFactsForPlan;
 
         const updatedContext = {
           ...existingContext,
           days: updatedDays,
           restaurantMeals: selectedRestaurantMeals,
           restaurantFacts,
+          // Sidecar, like restaurantFacts above: verdicts about the model's
+          // output, never fields on it. Keyed by generator because home meals
+          // write their own report into this same object — a bare `verification`
+          // key would have whichever route finished last erase the other.
+          verification: { ...(existingContext.verification ?? {}), restaurants: verification },
           restrictionViolations: [
             ...(existingContext.restrictionViolations || []),
             ...(restrictionViolations || [])
@@ -969,7 +997,8 @@ async function handleGenerate_restaurants(req: NextRequest) {
         
         const completePlan = {
           restaurantMeals: selectedRestaurantMeals,
-          restaurantFacts: buildRestaurantFacts(selectedRestaurants),
+          restaurantFacts: restaurantFactsForPlan,
+          verification: { restaurants: verification },
           weeklySchedule: surveyData.weeklyMealSchedule,
           restrictionViolations: restrictionViolations || [],
           metadata: {

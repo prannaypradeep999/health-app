@@ -26,6 +26,7 @@ import {
   toStrictJsonSchema,
 } from '@/lib/ai/schemas';
 import { parseChoice } from '@/lib/ai/validate';
+import { runVerification, verifyGroceryCoverage } from '@/lib/verification';
 
 export const runtime = 'nodejs';
 // 60s is the Hobby ceiling and is valid on every Vercel plan. Without this
@@ -1340,6 +1341,20 @@ async function generateHomeMealsParallel(
       groceryList = buildFallbackGroceryList(allMeals);
     }
 
+    // Does the list cover the recipes it was built from? Both sides are already
+    // in memory, so this costs no network time and cannot extend the deadline.
+    // Shadow mode: it logs and rides along in the payload, nothing branches on it.
+    const verification = runVerification(
+      () => verifyGroceryCoverage(
+        (allMeals as any[]).flatMap(m =>
+          [m?.primary, m?.alternative].filter(Boolean).flatMap((o: any) => (o.ingredients ?? []) as string[])
+        ),
+        Object.values(groceryList ?? {}).flat().map((i: any) => String(i?.name ?? i ?? ''))
+      ),
+      'groceries'
+    );
+    console.log(`[VERIFY] groceries: ${JSON.stringify(verification.counts)}`);
+
     const completeness = summarizeCompleteness({
       requested: homeMeals,
       delivered: allMeals,
@@ -1356,6 +1371,7 @@ async function generateHomeMealsParallel(
       completeness,
       homeMeals: allMeals,
       groceryList,
+      verification,
       metadata: {
         generationTime: totalTime,
         totalHomeMeals: allMeals.length,
@@ -1547,6 +1563,9 @@ async function handleGenerate_home(req: NextRequest) {
       homeMeals: homeMealPlan.homeMeals || [],
       restrictionViolations: homeMealPlan.restrictionViolations || [],
       groceryList: homeMealPlan.groceryList || null,
+      // Keyed by generator: the restaurant route writes its own report into this
+      // same userContext, and an unkeyed value would let the later route win.
+      verification: { groceries: homeMealPlan.verification ?? null },
       totalEstimatedCost: homeMealPlan.totalEstimatedCost || 0,
       weeklyBudgetUsed: homeMealPlan.weeklyBudgetUsed || "0%",
       metadata: {
@@ -1616,6 +1635,13 @@ async function handleGenerate_home(req: NextRequest) {
               restaurantMeals: existingContext.restaurantMeals || [],
               // Use merged days that include both home and restaurant meals
               days: mergedDays,
+              // This object is written by both generators. Spreading
+              // initialMealPlan alone would drop a restaurants report that
+              // landed first.
+              verification: {
+                ...(existingContext.verification ?? {}),
+                groceries: homeMealPlan.verification ?? null,
+              },
               restrictionViolations: [
                 ...(existingContext.restrictionViolations || []),
                 ...(homeMealPlan.restrictionViolations || [])
