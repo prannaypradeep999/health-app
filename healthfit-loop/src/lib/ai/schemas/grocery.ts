@@ -28,15 +28,28 @@ export const GroceryStoreObject = z.object({
   type: z.enum(GROCERY_STORE_TYPES),
 }).strict();
 
-/** getLocalGroceryStores */
+/**
+ * getLocalGroceryStores.
+ *
+ * Bounded, not pinned. The cap is real — the prompt asks for three and the UI
+ * lays out three. The floor is 1 because generate-groceries/route.ts cannot
+ * proceed with an empty list. What is deliberately absent is a *pin*: under
+ * grammar-constrained decoding an `exactly(_, 3)` array cannot close before its
+ * third element, so an address with two nearby stores got a third one invented,
+ * address and all, rendered beside the two real ones with nothing to tell them
+ * apart. A short honest list beats a padded one.
+ */
 export const GroceryStoreSearchSchema = z.object({
-  stores: z.array(GroceryStoreObject),
+  stores: z.array(GroceryStoreObject).min(1).max(3),
 }).strict();
 
 /**
  * `storeAddress` is deliberately absent. It used to be here, and the model was
- * asked to supply it for every option — while the caller already held verified
- * Google Places addresses for exactly these stores. Measured 2026-08-19: two
+ * asked to supply it for every option — while the caller already held the
+ * address for exactly these stores, returned by the store-search call a few
+ * lines earlier in this same file. (An earlier version of this comment said
+ * those addresses came from Google Places. They do not: GooglePlacesClient has
+ * restaurant methods only and no grocery search exists.) Measured 2026-08-19: two
  * of three came back "No San Francisco address verified in gathered data", and
  * the third came back "399 4th St" for a Whole Foods whose real address, sitting
  * in a variable a few lines away, is "1765 California St". Asking a model for a

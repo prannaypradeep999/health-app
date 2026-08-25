@@ -4,7 +4,7 @@ import { MODELS, tuning } from '@/lib/ai/models';
 import {
   MenuExtractionSchema,
   GroceryPricesSchema,
-  pinnedGroceryStores,
+  GroceryStoreSearchSchema,
   toStrictJsonSchema
 } from '@/lib/ai/schemas';
 import { createGroceryPricePrompt } from '@/lib/ai/prompts/grocery-prices';
@@ -379,13 +379,14 @@ export class PerplexityClient {
 
     try {
       const fullAddress = `${streetAddress}, ${city}, ${state} ${zipcode}`;
-      const query = `Find the 3 closest grocery stores to this exact address: ${fullAddress}
+      const query = `Find up to 3 of the closest grocery stores to this exact address: ${fullAddress}
 
 CRITICAL REQUIREMENTS:
 1. PRIORITIZE BY DISTANCE - list stores from CLOSEST to FARTHEST
 2. Include actual distance from the address (e.g., "0.3 mi", "1.2 mi")
 3. Prefer stores within 3 miles when possible
 4. Include a mix of store types if available nearby: budget-friendly, mid-range, premium
+5. Return only stores you can actually place near this address. Fewer real stores is the correct answer; do not pad the list.
 
 For each store provide:
 - Store name (actual chain name, e.g., "Trader Joe's", "Safeway", "Whole Foods")
@@ -402,7 +403,7 @@ Return as JSON only, no other text:
   ]
 }`;
 
-      const StoreSchema = pinnedGroceryStores(3);
+      const StoreSchema = GroceryStoreSearchSchema;
 
       const storeResult = await perplexityLimit(() => withPerplexityRetry(async (signal) => {
         const fetchSignal = outerSignal ? AbortSignal.any([signal, outerSignal]) : signal;
@@ -417,7 +418,7 @@ Return as JSON only, no other text:
             messages: [
               {
                 role: 'system',
-                content: 'You are a helpful assistant that finds local grocery stores. Return accurate, real store information in JSON format only. No markdown, no explanation, just the JSON object. Always provide 3 stores - use common regional chains if exact location data is unavailable.'
+                content: 'You are a helpful assistant that finds local grocery stores. Return accurate, real store information in JSON format only. No markdown, no explanation, just the JSON object. Return up to 3 stores. Return only stores that actually exist near the address — if you can find just one or two, return one or two. Never invent a store or an address to reach three.'
               },
               { role: 'user', content: query }
             ],
