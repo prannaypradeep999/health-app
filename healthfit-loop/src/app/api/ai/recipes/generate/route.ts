@@ -241,7 +241,24 @@ export async function POST(req: NextRequest) {
       console.log(`[RECIPE-INGREDIENT-VALIDATOR] ✅ ${recipeData.name}: ${validation.details.ingredientCount} ingredients, sums match`);
     }
 
-    // Always save recipe to cache using upsert
+    // Cache only what we would be willing to serve again unexamined. parseChoice
+    // above already refuses to cache a malformed recipe on the grounds that a
+    // cached one is served back forever; arithmetic that is more than 20% out is
+    // wrong for the same duration and for the same reason. The recipe is still
+    // returned to the caller — the user asked for it and it is displayable — but
+    // it does not become the permanent answer for this dish.
+    if (validation.errors.length > 0) {
+      console.warn(
+        `[RECIPE] Not caching "${dishName}" — ${validation.errors.length} ingredient sum error(s). ` +
+        `Returning it to the caller uncached so the next request regenerates.`
+      );
+      return NextResponse.json({
+        success: true,
+        recipe: recipeData,
+        cached: false
+      });
+    }
+
     try {
       await prisma.recipe.upsert({
         where: { dishName: cacheKey },
