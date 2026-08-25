@@ -1291,6 +1291,58 @@ async function generateHomeMealsParallel(
       throw new Error('No detailed meals generated - detail phase failed');
     }
 
+    // A1. These three validators were written, and every call site sat in
+    // generateHomeMealsLegacy — the path that only runs when this one throws.
+    // In practice nothing has ever validated a home meal plan. They report
+    // rather than block: a flawed week is still a week, and the user asked for
+    // one. What changes is that the response can now say so.
+    const planValidation = validateMealPlan(allMeals, weeklyNutritionTargets?.days ?? {});
+
+    const ingredientErrors: string[] = [];
+    for (const meal of allMeals as any[]) {
+      for (const option of [meal.primary, meal.alternative]) {
+        if (!option) continue;
+        const result = validateIngredientSums(option.name, {
+          estimatedCalories: option.estimatedCalories,
+          protein: option.protein,
+          carbs: option.carbs,
+          fat: option.fat,
+          ingredientsWithNutrition: option.ingredientsWithNutrition,
+        });
+        result.errors.forEach((e) => ingredientErrors.push(`${meal.day} ${meal.mealType}: ${e}`));
+      }
+    }
+
+    // validateRestrictions takes the survey's three restriction fields as an
+    // OBJECT — `{ dietPrefs, strictExclusions, foodAllergies }` — not a flat
+    // list. Check the signature in restriction-validator.ts before changing
+    // this; a flat array type-errors.
+    const userRestrictions = {
+      dietPrefs: surveyData.dietPrefs ?? [],
+      foodAllergies: surveyData.foodAllergies ?? [],
+      strictExclusions: (surveyData.strictExclusions as Record<string, string[]> | null) ?? undefined,
+    };
+    const hasRestrictions =
+      userRestrictions.dietPrefs.length > 0 ||
+      userRestrictions.foodAllergies.length > 0 ||
+      Object.values(userRestrictions.strictExclusions ?? {}).some((v) => v.length > 0);
+
+    // Skipped when the user has no restrictions: it would iterate every meal to
+    // prove nothing, inside a route sharing a 52-second deadline.
+    const restrictionResult = hasRestrictions
+      ? validateRestrictions(
+          (allMeals as any[]).flatMap((m) => [m.primary, m.alternative].filter(Boolean)),
+          userRestrictions
+        )
+      : { valid: true, violations: [] as any[] };
+
+    console.log(
+      `[HOME-MEALS-7DAY] 🔎 Validation: ${planValidation.errors.length} plan error(s), ` +
+      `${planValidation.warnings.length} warning(s), ${ingredientErrors.length} ingredient sum error(s), ` +
+      `${restrictionResult.violations.length} restriction violation(s)`
+    );
+    ingredientErrors.forEach((e) => console.error(`[HOME-MEALS-7DAY] ❌ ${e}`));
+
     // Phase 3: Generate grocery list
     console.log(`[HOME-MEALS-7DAY] 📋 Phase 4: Grocery consolidation...`);
     const groceryResult = await generateGroceryList(allMeals, surveyData);
@@ -1327,7 +1379,14 @@ async function generateHomeMealsParallel(
         totalHomeMeals: allMeals.length,
         nutritionTargets,
         architecture: 'plan+parallel'
-      }
+      },
+      validation: {
+        planErrors: planValidation.errors,
+        planWarnings: planValidation.warnings,
+        ingredientErrors,
+        restrictionViolations: restrictionResult.violations,
+        dailySummaries: planValidation.dailySummaries,
+      },
     };
 
   } catch (error) {
