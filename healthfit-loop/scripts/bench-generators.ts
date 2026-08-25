@@ -34,6 +34,8 @@ import { GroceryListSchema } from '../src/lib/ai/schemas/meals';
 import { WorkoutPlanSchema } from '../src/lib/ai/schemas/workout';
 import { RecipeSchema } from '../src/lib/ai/schemas/recipe';
 import { MenuExtractionSchema, RestaurantSelectionSchema } from '../src/lib/ai/schemas/restaurants';
+import { GroceryPricesSchema } from '../src/lib/ai/schemas/grocery';
+import { createGroceryPricePrompt } from '../src/lib/ai/prompts/grocery-prices';
 import {
   toStrictJsonSchema,
   pinnedMealPlan,
@@ -76,6 +78,10 @@ const RATES: Record<string, { in: number; out: number }> = {
   'gpt-5.6-luna': { in: 0.2, out: 1.2 },
   'gpt-5.6-terra': { in: 1.25, out: 10 },
   'gpt-5.6-sol': { in: 5, out: 30 },
+  // Perplexity Sonar. Search requests also carry a per-request fee that this
+  // table does not model, so the $/1k figure for grocery-prices is a floor.
+  'sonar': { in: 1, out: 1 },
+  'sonar-pro': { in: 3, out: 15 },
 };
 
 /**
@@ -147,6 +153,8 @@ interface Site {
    * Async because the LINKS family makes HTTP requests.
    */
   check?: (data: any, f: Fixture) => CheckResult | Promise<CheckResult>;
+  /** Which API to call. Defaults to 'openai'. Perplexity is OpenAI-compatible on the wire. */
+  provider?: 'openai' | 'perplexity';
 }
 
 /** Cache upstream plans so N iterations of the detail site don't re-plan N times. */
@@ -745,6 +753,90 @@ did not find a real URL for. Extract 6-12 menu items maximum.`,
       return { summary: `${got.length}/${want.length} slots, ${fabricated} fabricated links`, findings };
     },
   },
+  {
+    name: 'grocery-prices',
+    provider: 'perplexity',
+    model: MODELS.SEARCH, maxTokens: 8000, temperature: 0.2,
+    build: async (f) => {
+      const plan = await planFor(f);
+      // Mirror what generate-groceries sends: one chunk of the real list.
+      const items = [...new Set(plan.mealPlan.flatMap((m: any) => m.keyIngredients ?? []))]
+        .slice(0, 20)
+        .map((name: any) => ({ name: String(name), quantity: '1 unit', uses: 'meal plan', category: 'proteins' }));
+      if (items.length === 0) return null;
+      return {
+        prompt: createGroceryPricePrompt({
+          items,
+          storeNames: 'Whole Foods, Trader Joe\'s, Safeway',
+          city: f.surveyData.city,
+          userGoal: f.surveyData.primaryGoal,
+        }),
+        schema: GroceryPricesSchema,
+      };
+    },
+    check: (d) => {
+      const items = d.items as Array<{ item: string; storeOptions: Array<{ store: string; price: number; priceConfidence: string; isRecommended: boolean }> }>;
+      const findings: Finding[] = [...checkNonEmpty('items', 'no-priced-items', items, 1)];
+
+      // Every item must be priced at the same set of stores, or the cheapest-store
+      // comparison downstream is comparing different baskets.
+      const storeSets = items.map(i => [...new Set(i.storeOptions.map(o => o.store.trim().toLowerCase()))].sort().join('|'));
+      const distinct = new Set(storeSets);
+      if (distinct.size > 1) {
+        findings.push({
+          family: 'ARITHMETIC', severity: 'error', code: 'ragged-basket',
+          where: 'items',
+          message: `${distinct.size} different store sets across items — store totals would compare different baskets`,
+        });
+      }
+
+      // Near-identical store names split one store into two half-baskets.
+      const names = [...new Set(items.flatMap(i => i.storeOptions.map(o => o.store.trim())))];
+      const normalized = new Map<string, string[]>();
+      for (const n of names) {
+        const k = n.toLowerCase().replace(/[^a-z]/g, '');
+        normalized.set(k, [...(normalized.get(k) ?? []), n]);
+      }
+      for (const [, variants] of normalized) {
+        if (variants.length > 1) {
+          findings.push({
+            family: 'ARITHMETIC', severity: 'error', code: 'store-name-variants',
+            where: 'items', message: `same store under ${variants.length} spellings: ${variants.join(' / ')}`,
+          });
+        }
+      }
+
+      for (const item of items) {
+        const where = `items.${item.item}`;
+        const recommended = item.storeOptions.filter(o => o.isRecommended).length;
+        if (recommended !== 1) {
+          findings.push({
+            family: 'ADHERENCE', severity: 'error', code: 'recommendation-count',
+            where, message: `${recommended} options marked recommended, prompt requires exactly one`,
+          });
+        }
+        for (const o of item.storeOptions) {
+          if (!(o.price > 0) || o.price > 500) {
+            findings.push({
+              family: 'ARITHMETIC', severity: 'error', code: 'implausible-price',
+              where: `${where}.${o.store}`, message: `price ${o.price}`,
+            });
+          }
+        }
+        const prices = item.storeOptions.map(o => o.price);
+        if (prices.length > 1 && new Set(prices).size === 1) {
+          findings.push({
+            family: 'ARITHMETIC', severity: 'warn', code: 'identical-prices',
+            where, message: `all ${prices.length} stores quote ${prices[0]} — the prompt names this as a sign of estimating`,
+          });
+        }
+      }
+
+      const exact = items.flatMap(i => i.storeOptions).filter(o => o.priceConfidence === 'exact').length;
+      const total = items.flatMap(i => i.storeOptions).length;
+      return { summary: `${items.length} items, ${exact}/${total} options marked exact`, findings };
+    },
+  },
 ];
 
 // ---------------------------------------------------------------- runner
@@ -763,13 +855,22 @@ interface CallOutcome {
 
 async function callOnce(
   model: string, prompt: string, schema: z.ZodType,
-  schemaName: string, maxTokens: number, temperature: number
+  schemaName: string, maxTokens: number, temperature: number,
+  provider: 'openai' | 'perplexity' = 'openai'
 ): Promise<CallOutcome> {
   const t0 = Date.now();
   const blank: Omit<CallOutcome, 'parsed' | 'error'> = {
     finishReason: 'error', promptTokens: 0, completionTokens: 0, reasoningTokens: 0,
     latencyMs: 0, model,
   };
+
+  const endpoint = provider === 'perplexity'
+    ? 'https://api.perplexity.ai/chat/completions'
+    : 'https://api.openai.com/v1/chat/completions';
+  const apiKey = provider === 'perplexity' ? process.env.PERPLEXITY_API_KEY : KEY;
+  if (!apiKey) {
+    return { ...blank, parsed: null, error: `${provider} API key is not set`, latencyMs: 0 };
+  }
 
   // The 5.6 family renamed max_tokens and accepts only the default temperature.
   // Sending the legacy pair is a hard 400, not a silently-ignored field, so the
@@ -781,9 +882,9 @@ async function callOnce(
 
   let res: Response;
   try {
-    res = await fetch('https://api.openai.com/v1/chat/completions', {
+    res = await fetch(endpoint, {
       method: 'POST',
-      headers: { Authorization: `Bearer ${KEY}`, 'Content-Type': 'application/json' },
+      headers: { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
       body: JSON.stringify({
         model, messages: [{ role: 'system', content: prompt }],
         ...params,
@@ -881,7 +982,7 @@ async function runSite(site: Site, f: Fixture, n: number, probeLinks: boolean): 
 
   for (let i = 0; i < n; i++) {
     const o = await callOnce(site.model, built.prompt, built.schema,
-      site.name.replace(/-/g, '_'), site.maxTokens, site.temperature);
+      site.name.replace(/-/g, '_'), site.maxTokens, site.temperature, site.provider ?? 'openai');
     outcomes.push(o);
     if (o.parsed && site.check) {
       try {
