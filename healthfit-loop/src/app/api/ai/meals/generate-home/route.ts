@@ -8,6 +8,7 @@ import { validateMealPlan } from '@/lib/utils/meal-plan-validator';
 import { validateIngredientSums } from '@/lib/utils/ingredient-validator';
 import { validateRestrictions } from '@/lib/utils/restriction-validator';
 import { buildFallbackGroceryList, enhanceGroceryListWithUsage } from '@/lib/utils/grocery-list';
+import { isUsableMeal, isUsableOption } from '@/lib/utils/meal-usability';
 import { createHomeMealGenerationPrompt, createPlanningPrompt, createDetailPrompt, createGroceryPrompt, HOME_MEAL_NUTRITION_METHOD, type MealFeedbackContext } from '@/lib/ai/prompts';
 import { pexelsClient } from '@/lib/external/pexels-client';
 import { withGPTRetry, HttpError } from '@/lib/utils/retry';
@@ -1229,17 +1230,7 @@ async function generateHomeMealsParallel(
     // was never retried. Presence was standing in for content. The schema could
     // not catch it either — `z.array(z.string())` is satisfied by `[]` and
     // `z.number()` by `0`, so strict mode passed all of it.
-    const isUsableMeal = (m: any): boolean => {
-      const opts = [m?.primary, m?.alternative].filter(Boolean);
-      if (opts.length === 0) return false;
-      // The primary is what fills the slot; an empty alternative is a lesser
-      // problem, so only the primary gates a retry.
-      const o = opts[0];
-      return Number(o.estimatedCalories) > 0
-        && Number(o.protein) > 0
-        && Array.isArray(o.ingredients) && o.ingredients.length > 0
-        && Array.isArray(o.instructions) && o.instructions.length > 0;
-    };
+    // Moved to meal-usability.ts so it can be tested; see that file for the rest.
 
     // Detail top-up, same reasoning as planning: one extra call over just the
     // slots a chunk dropped or failed on, instead of shipping a short week.
@@ -1253,6 +1244,13 @@ async function generateHomeMealsParallel(
       for (let i = allMeals.length - 1; i >= 0; i--) {
         if (!isUsableMeal(allMeals[i])) allMeals.splice(i, 1);
       }
+    }
+
+    // Not a retry trigger — see isUsableMeal. But a week where every second
+    // choice is empty is a half-delivered week, and until now nothing said so.
+    const hollowAlternatives = (allMeals as any[]).filter((m) => !isUsableOption(m.alternative));
+    if (hollowAlternatives.length > 0) {
+      console.warn(`[HOME-MEALS-7DAY] ⚠️ ${hollowAlternatives.length}/${allMeals.length} meals have no usable alternative`);
     }
 
     if (undetailed.length > 0) {
@@ -1386,6 +1384,7 @@ async function generateHomeMealsParallel(
         ingredientErrors,
         restrictionViolations: restrictionResult.violations,
         dailySummaries: planValidation.dailySummaries,
+        hollowAlternatives: hollowAlternatives.length,
       },
     };
 
