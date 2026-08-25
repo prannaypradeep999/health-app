@@ -5,7 +5,13 @@
  * two bench results can be diffed by code rather than by prose.
  */
 
-export type Family = 'COMPLETENESS' | 'ARITHMETIC' | 'ADHERENCE' | 'LINKS';
+/**
+ * GROUNDING is the odd one out and deliberately so. The other four ask whether
+ * an answer is internally coherent; GROUNDING asks whether it is traceable to
+ * something outside the model. A plan can score clean on all four and still be
+ * confidently invented.
+ */
+export type Family = 'COMPLETENESS' | 'ARITHMETIC' | 'ADHERENCE' | 'LINKS' | 'GROUNDING';
 
 export type Severity = 'error' | 'warn';
 
@@ -38,6 +44,7 @@ export function tally(findings: Finding[]): Record<Family, { error: number; warn
     ARITHMETIC: { error: 0, warn: 0 },
     ADHERENCE: { error: 0, warn: 0 },
     LINKS: { error: 0, warn: 0 },
+    GROUNDING: { error: 0, warn: 0 },
   } as Record<Family, { error: number; warn: number }>;
   for (const f of findings) out[f.family][f.severity]++;
   return out;

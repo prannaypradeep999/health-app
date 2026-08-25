@@ -52,6 +52,8 @@ import { checkAtwater, checkTarget, checkSum } from './eval/arithmetic';
 import { checkCount, checkSlots, checkNonEmpty } from './eval/completeness';
 import { rulesFor, checkText } from './eval/adherence';
 import { checkOrderingLinks } from './eval/links';
+import { verdictsToFindings, checkMenuAgainstProse } from './eval/grounding';
+import { verifyWorkoutPlan, equipmentFromGymAccess } from '../src/lib/verification';
 
 import {
   fixtures, homeMealsFrom, scheduleTextFrom, menuProseFixture,
@@ -467,14 +469,6 @@ const SITES: Site[] = [
               });
             }
           }
-          // The injury constraint the prompt carries — when it carries one.
-          const injuries = f.workoutPrefs.injuryConsiderations ?? [];
-          if (injuries.length > 0) {
-            findings.push({
-              family: 'ADHERENCE', severity: 'warn', code: 'injury-unreviewed',
-              where, message: `fixture declares ${injuries.join(', ')}; verify the movements avoid it`,
-            });
-          }
         } else if (!day.activeRecovery) {
           findings.push({
             family: 'COMPLETENESS', severity: 'error', code: 'rest-without-recovery',
@@ -482,6 +476,15 @@ const SITES: Site[] = [
           });
         }
       }
+      // This replaces an 'injury-unreviewed' warn that told a human to go look.
+      // The same code the request path runs now names the movement and the
+      // injury it contradicts, so the finding is actionable instead of a chore.
+      findings.push(...verdictsToFindings(verifyWorkoutPlan(days as any[], {
+        equipmentAccess: equipmentFromGymAccess((f.workoutPrefs as any).gymAccess),
+        injuryConsiderations: f.workoutPrefs.injuryConsiderations ?? [],
+        availableDays: (f.workoutPrefs as any).availableDays ?? [],
+      })));
+
       const bad = findings.filter(x => x.severity === 'error').length;
       return { summary: `${days.length} days, ${bad} error-level findings`, findings };
     },
@@ -593,6 +596,12 @@ did not find a real URL for. Extract 6-12 menu items maximum.`,
         }
         findings.push(...checkText(where, `${item.name} ${item.description}`, rules));
       }
+
+      // The prose above is the only thing this hop was shown. Anything in the
+      // output that is not in it was invented — which is the whole failure mode
+      // the other four families cannot see, because an invented dish at an
+      // invented price is perfectly self-consistent.
+      findings.push(...checkMenuAgainstProse('menuItems', items ?? []));
 
       // Ground truth from menuProseFixture: DoorDash and direct exist, Uber Eats
       // and Grubhub explicitly do not. Anything under those two keys is invented.
@@ -1115,14 +1124,22 @@ async function main() {
   }
 
   console.log('\n## Results\n');
-  console.log('| Site | Fixture | Model | n | Pass | CMPL | ARITH | ADHR | LINKS | p50 ms | Out | $/1k |');
-  console.log('|---|---|---|---|---|---|---|---|---|---|---|---|');
+  // Driven off the Family union rather than a hand-written column list: the
+  // previous version hardcoded four names, so adding a fifth family would have
+  // scored it, stored it, and then quietly left it out of the table.
+  const FAMILY_COLUMNS: Array<[Family, string]> = [
+    ['COMPLETENESS', 'CMPL'], ['ARITHMETIC', 'ARITH'], ['ADHERENCE', 'ADHR'],
+    ['LINKS', 'LINKS'], ['GROUNDING', 'GRND'],
+  ];
+  const headers = ['Site', 'Fixture', 'Model', 'n', 'Pass', ...FAMILY_COLUMNS.map(([, label]) => label), 'p50 ms', 'Out', '$/1k'];
+  console.log(`| ${headers.join(' | ')} |`);
+  console.log(`|${headers.map(() => '---').join('|')}|`);
   for (const r of results) {
     const c = r.familyCounts;
     const cell = (x: { error: number; warn: number }) =>
       x.error === 0 && x.warn === 0 ? '·' : `${x.error}e/${x.warn}w`;
     console.log(`| ${r.site} | ${r.fixture} | ${r.model} | ${r.n} | ${Math.round(r.schemaPassRate * 100)}% | ` +
-      `${cell(c.COMPLETENESS)} | ${cell(c.ARITHMETIC)} | ${cell(c.ADHERENCE)} | ${cell(c.LINKS)} | ` +
+      `${FAMILY_COLUMNS.map(([f]) => cell(c[f])).join(' | ')} | ` +
       `${r.latencyP50Ms} | ${r.avgCompletionTokens} | ${r.estCostPer1000Runs} |`);
   }
 
