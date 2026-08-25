@@ -361,13 +361,25 @@ async function extractMenuInformation(restaurants: Restaurant[], surveyData: any
       const orderingLinks = menuResponse.orderingLinks || {};
       const isUsableLink = (link: unknown): link is string =>
         typeof link === 'string' && /^https?:\/\/\S+$/i.test(link.trim());
-      const linksFound = Object.values(orderingLinks).filter(isUsableLink).length;
       const menuItems = menuResponse.menuItems || [];
+
+      // B4. Places already told us this restaurant's website; asking the model
+      // to guess `direct` and then believing the guess is strictly worse than
+      // using the answer we were handed. Places wins when it has one — it is
+      // the only source here that looked the business up rather than recalled
+      // it. The model's value survives only as the fallback.
+      const placesWebsite = (restaurant as { website?: string }).website;
+      const resolvedLinks = {
+        ...orderingLinks,
+        direct: isUsableLink(placesWebsite) ? placesWebsite : orderingLinks.direct ?? null,
+      };
+
+      const linksFound = Object.values(resolvedLinks).filter(isUsableLink).length;
 
       console.log(`[MENU-EXTRACTION] ${restaurant.name}: ${menuItems.length} menu items, ${linksFound} ordering links`);
 
       // Log each found link
-      Object.entries(orderingLinks).forEach(([platform, url]) => {
+      Object.entries(resolvedLinks).forEach(([platform, url]) => {
         if (isUsableLink(url)) {
           console.log(`[MENU-EXTRACTION]   ✅ ${platform}: ${url.substring(0, 60)}...`);
         }
@@ -376,8 +388,8 @@ async function extractMenuInformation(restaurants: Restaurant[], surveyData: any
       return {
         ...restaurant,
         menuData: menuItems,
-        menuUrl: orderingLinks.doordash || orderingLinks.ubereats || orderingLinks.grubhub || orderingLinks.direct,
-        orderingLinks: orderingLinks,
+        menuUrl: resolvedLinks.doordash || resolvedLinks.ubereats || resolvedLinks.grubhub || resolvedLinks.direct,
+        orderingLinks: resolvedLinks,
         menuSource: 'Perplexity',
         sources: menuResponse.sources,
         extractionSuccess: menuResponse.extractionSuccess,
