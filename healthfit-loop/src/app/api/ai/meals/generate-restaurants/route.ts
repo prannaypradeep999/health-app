@@ -871,7 +871,11 @@ async function handleGenerate_restaurants(req: NextRequest) {
     // both branches store the same report.
     const restaurantFactsForPlan = buildRestaurantFacts(selectedRestaurants);
     const menuEvidence: Record<string, { searchItems?: any[]; sourceHosts?: string[] }> = {};
-    for (const m of restaurantMenuData) {
+    // `?? []` guards the one statement in this block that sits outside
+    // runVerification's catch. Verification must not be able to fail a
+    // generation the user is waiting on, and a bare for-of over a nullish value
+    // would do exactly that.
+    for (const m of restaurantMenuData ?? []) {
       const key = String(m?.restaurant ?? '').toLowerCase().trim();
       if (key) menuEvidence[key] = { searchItems: m?.searchItems, sourceHosts: m?.sourceHosts };
     }
