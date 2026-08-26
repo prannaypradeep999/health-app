@@ -28,6 +28,7 @@ import {
 import { parseChoice } from '@/lib/ai/validate';
 import { runVerification, verifyGroceryCoverage } from '@/lib/verification';
 import { trace } from '@/lib/utils/run-trace';
+import { internalFetch } from '@/lib/utils/internal-fetch';
 
 export const runtime = 'nodejs';
 // 60s is the Hobby ceiling and is valid on every Vercel plan. Without this
@@ -809,9 +810,6 @@ async function triggerGroceryPriceLookup(surveyId: string, mealPlanId?: string) 
   console.log('[HOME-MEALS] 🛒 Triggering background grocery price lookup...');
 
   try {
-    const baseUrl = process.env.NEXT_PUBLIC_BASE_URL || process.env.VERCEL_URL || 'http://localhost:3000';
-    const url = baseUrl.startsWith('http') ? baseUrl : `https://${baseUrl}`;
-
     // Awaited by the caller inside after(), which keeps the serverless instance
     // alive past the response. Orphaning this promise dropped prices whenever
     // the platform reclaimed the instance first — invisibly, since it always
@@ -821,7 +819,11 @@ async function triggerGroceryPriceLookup(surveyId: string, mealPlanId?: string) 
     // work, so this await measures the handoff and not the lookup. Awaiting the
     // lookup itself is what killed this hop in production: we arrive here with
     // only seconds of maxDuration left.
-    const res = await fetch(`${url}/api/ai/meals/generate-groceries`, {
+    //
+    // `internalFetch` resolves the base URL and attaches the Deployment
+    // Protection bypass header; a plain fetch to a *.vercel.app URL is answered
+    // 401 at the edge and never reaches this route. See internal-fetch.ts.
+    const res = await internalFetch('/api/ai/meals/generate-groceries', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',

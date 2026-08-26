@@ -29,6 +29,7 @@ import {
 import { parseChoice } from '@/lib/ai/validate';
 import { logUsage } from '@/lib/ai/usage';
 import { trace } from '@/lib/utils/run-trace';
+import { internalFetch } from '@/lib/utils/internal-fetch';
 
 export const runtime = 'nodejs';
 // 60s is the Hobby ceiling and is valid on every Vercel plan. Without this
@@ -706,16 +707,17 @@ async function triggerHomeMeals(
   mealPlanId: string | undefined,
   restaurantCalories: Array<{ day: string; mealType: string; calories: number }>
 ): Promise<void> {
-  const base = process.env.NEXT_PUBLIC_BASE_URL || process.env.VERCEL_URL || 'http://localhost:3000';
-  const url = base.startsWith('http') ? base : `https://${base}`;
-
   console.log('[RESTAURANT-GENERATION] 🏠 Handing off to home meal generation...', {
     mealPlanId: mealPlanId ?? 'none',
     restaurantMealsCounted: restaurantCalories.length,
   });
 
   try {
-    const res = await fetch(`${url}/api/ai/meals/generate-home`, {
+    // `internalFetch` resolves the base URL and attaches the Deployment
+    // Protection bypass header. Without the header this hop is answered 401 at
+    // the edge and generate-home never runs — the observed failure on
+    // 2026-08-26. See internal-fetch.ts.
+    const res = await internalFetch('/api/ai/meals/generate-home', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
