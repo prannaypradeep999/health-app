@@ -1,4 +1,4 @@
-import { NextResponse } from 'next/server';
+import { NextResponse, after } from 'next/server';
 import { prisma } from '@/lib/db';
 import { SurveySchema } from '@/lib/schemas';
 import { parseHeight } from '@/lib/utils/nutrition';
@@ -10,6 +10,13 @@ import { sendEmail, generateDashboardReadyEmail } from '@/lib/email';
 import { getAuthUserId } from '@/lib/auth';
 
 export const runtime = 'nodejs';
+
+/**
+ * The kickoff below runs inside `after()`, which keeps the instance alive past
+ * the response — but that work still counts against maxDuration, and without
+ * this declaration the route inherited the ~10s platform default.
+ */
+export const maxDuration = 60;
 
 /**
  * Survey API Route
@@ -292,23 +299,33 @@ export async function POST(req: Request) {
       // Workouts are independent - start in background
       const workoutPromise = triggerBackgroundWorkoutGeneration(survey.id, sessionId, baseUrl);
 
-      // Sequential meal generation for budget coordination
-      (async () => {
+      // Dispatch, don't own.
+      //
+      // This used to be a floating `(async () => { ... })()` that awaited
+      // restaurant generation, then home meals, then workouts, then sent the
+      // email. Nothing after the first await ever ran in production: the
+      // handler returns below, Vercel reclaims the instance, and the orphaned
+      // promise is discarded. Home meals and groceries were never generated.
+      //
+      // `after()` fixes the orphaning. It does not fix the arithmetic: this
+      // route may run for 60s, and restaurant generation alone budgets 53s of
+      // its own. So the chain is now a relay — generate-restaurants triggers
+      // home meals when it finishes, and home meals already triggers
+      // groceries. Each hop gets a fresh 60s instead of sharing one.
+      //
+      // The relay does not depend on this block surviving. Each hop is a
+      // separate function invocation, so if we are killed at 60s while still
+      // awaiting the restaurant response, restaurant generation carries on and
+      // still hands off. What we lose is the logging and the email below,
+      // which is why both are best-effort.
+      after((async () => {
         try {
-          // Step 1: Generate restaurant meals FIRST (they're constrained by real menus)
           console.log('[FINAL] 🏪 Starting restaurant generation first (sequential)...');
           const restaurantResult = await triggerRestaurantGeneration(survey.id, sessionId, baseUrl, mealPlan.id);
-
-          // Step 2: Extract actual calories from restaurant meals
-          let restaurantCalories: Array<{ day: string; mealType: string; calories: number }> = [];
-          if (restaurantResult.success && restaurantResult.mealCalories) {
-            restaurantCalories = restaurantResult.mealCalories;
-            console.log('[FINAL] 📊 Restaurant calories extracted:', restaurantCalories);
-          }
-
-          // Step 3: Pass remaining budget to home meal generator
-          console.log('[FINAL] 🏠 Starting home meal generation with restaurant budget context...');
-          await triggerHomeMealGeneration(survey.id, sessionId, baseUrl, mealPlan.id, restaurantCalories);
+          console.log('[FINAL] 🏪 Restaurant kickoff settled:', {
+            success: restaurantResult.success,
+            error: restaurantResult.error ?? null,
+          });
 
           // Wait for workouts too
           await workoutPromise;
@@ -345,10 +362,10 @@ export async function POST(req: Request) {
         } catch (error) {
           console.error('[FINAL] ❌ Sequential generation error:', error);
         }
-      })();
+      })());
 
       // Also trigger profile generation (fast)
-      Promise.all([
+      after(Promise.all([
         fetch(`${baseUrl}/api/ai/profiles/food`, {
           method: 'POST',
           headers: {
@@ -365,7 +382,7 @@ export async function POST(req: Request) {
         })
       ]).catch(error => {
         console.error('[FINAL] ❌ Profile generation error:', error);
-      });
+      }));
 
     } else {
       console.log(`[PROGRESSIVE] ℹ️ Step ${payload.currentStep} completed - data saved, no generation triggered`);
@@ -514,69 +531,13 @@ async function createCoordinatedMealPlan(surveyId: string) {
 // GENERATION TRIGGER FUNCTIONS
 // ============================================================================
 
-/**
- * Triggers home meal generation and WAITS for completion
- * Returns the result including grocery list
+/*
+ * `triggerHomeMealGeneration` used to live here. It was called from the
+ * orphaned IIFE above, behind an awaited restaurant generation that already
+ * budgets ~53s — two ~53s phases inside one 60s function, which never fit even
+ * once the orphaning was fixed. The hop now belongs to generate-restaurants,
+ * which is also the only place that knows the restaurant calories it needs.
  */
-async function triggerHomeMealGeneration(
-  surveyId: string,
-  sessionId: string,
-  baseUrl: string,
-  mealPlanId?: string,
-  restaurantCalories?: Array<{ day: string; mealType: string; calories: number }>
-): Promise<{ success: boolean; groceryList?: any; error?: string }> {
-  const startTime = Date.now();
-  try {
-    console.log('[HOME-MEAL-TRIGGER] 🏠 Starting home meal generation (AWAITED)...');
-
-    const response = await fetch(`${baseUrl}/api/ai/meals/generate-home`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Cookie': `survey_id=${surveyId}; guest_session=${sessionId}`
-      },
-      body: JSON.stringify({
-        backgroundGeneration: true,
-        mealPlanId: mealPlanId, // Pass coordinated meal plan ID
-        restaurantCalories: restaurantCalories || [] // NEW: Pass restaurant budget context
-      })
-    });
-
-    const totalTime = Date.now() - startTime;
-
-    if (response.ok) {
-      const result = await response.json();
-      console.log('[HOME-MEAL-TRIGGER] ✅ Home meals generated:', {
-        success: result.success,
-        mealsCount: result.timings?.homeMealsGenerated || 0,
-        hasGroceryList: !!result.homeMealPlan?.groceryList,
-        totalTime: `${totalTime}ms`
-      });
-
-      return {
-        success: true,
-        groceryList: result.homeMealPlan?.groceryList || null
-      };
-    } else {
-      console.error('[HOME-MEAL-TRIGGER] ❌ Home meal generation failed:', {
-        status: response.status,
-        totalTime: `${totalTime}ms`
-      });
-      return { success: false, error: `HTTP ${response.status}` };
-    }
-
-  } catch (error) {
-    const totalTime = Date.now() - startTime;
-    console.error('[HOME-MEAL-TRIGGER] ❌ Error:', {
-      error: error instanceof Error ? error.message : 'Unknown error',
-      totalTime: `${totalTime}ms`
-    });
-    return { 
-      success: false, 
-      error: error instanceof Error ? error.message : 'Unknown error' 
-    };
-  }
-}
 
 /**
  * Triggers restaurant meal generation and returns actual meal calorie data
