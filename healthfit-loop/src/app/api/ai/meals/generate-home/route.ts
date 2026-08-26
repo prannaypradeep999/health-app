@@ -816,15 +816,25 @@ async function triggerGroceryPriceLookup(surveyId: string, mealPlanId?: string) 
     // alive past the response. Orphaning this promise dropped prices whenever
     // the platform reclaimed the instance first — invisibly, since it always
     // completes locally.
+    //
+    // `backgroundGeneration` makes the far side answer 202 before it starts
+    // work, so this await measures the handoff and not the lookup. Awaiting the
+    // lookup itself is what killed this hop in production: we arrive here with
+    // only seconds of maxDuration left.
     const res = await fetch(`${url}/api/ai/meals/generate-groceries`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
         'Cookie': `survey_id=${surveyId}`
-      }
+      },
+      body: JSON.stringify({ backgroundGeneration: true, mealPlanId }),
     });
 
-    if (res.ok) {
+    // 202 means accepted, not finished — there is no item count to report yet.
+    if (res.status === 202) {
+      trace(mealPlanId, 'groceries', 'ok', { step: 'handoff-accepted' });
+      console.log('[HOME-MEALS] ✅ Grocery price lookup accepted (202), running in its own invocation');
+    } else if (res.ok) {
       const data = await res.json();
       // The relay's last hop. Its absence is what "no grocery stores" looks
       // like in the logs.
@@ -1406,27 +1416,51 @@ async function generateHomeMealsParallel(
   }
 }
 
+/**
+ * The relay's second hop.
+ *
+ * `backgroundGeneration` callers get a 202 before any work starts. The caller
+ * is `generate-restaurants`, which reaches this point having already spent most
+ * of its own 60s `maxDuration`; awaiting the full ~50s of generation there means
+ * the calling instance is frozen mid-await and the connection dies, so home
+ * meals and groceries never complete. Responding immediately and doing the work
+ * in this route's own `after()` gives the generation a fresh function
+ * invocation with a full budget of its own.
+ *
+ * Foreground callers (none today, but the route is still directly POSTable)
+ * keep the old await-the-result behaviour.
+ */
 export async function POST(req: NextRequest) {
-  return withRouteBudget(() => handleGenerate_home(req));
+  let body: HomeGenerationRequest = {};
+  try {
+    body = await req.json();
+  } catch {
+    // An empty or malformed body is legal here — the handler derives
+    // everything it needs from the survey cookie when fields are absent.
+  }
+
+  if (body.backgroundGeneration) {
+    after(withRouteBudget(() => handleGenerate_home(body)));
+    return NextResponse.json({ accepted: true }, { status: 202 });
+  }
+
+  return withRouteBudget(() => handleGenerate_home(body));
 }
 
-async function handleGenerate_home(req: NextRequest) {
+type HomeGenerationRequest = {
+  backgroundGeneration?: boolean;
+  mealPlanId?: string;
+  restaurantCalories?: Array<{ day: string; mealType: string; calories: number }>;
+};
+
+// Takes the already-parsed body rather than the request: POST has to read the
+// body to decide whether to respond early, and a Request body can only be
+// consumed once.
+async function handleGenerate_home(requestData: HomeGenerationRequest) {
   const startTime = Date.now();
   console.log(`[HOME-GENERATION] 🚀 Starting home meal generation at ${new Date().toISOString()}`);
 
   try {
-    // Parse request data (may be empty)
-    let requestData: {
-      backgroundGeneration?: boolean;
-      mealPlanId?: string;
-      restaurantCalories?: Array<{ day: string; mealType: string; calories: number }>;
-    } = {};
-    try {
-      requestData = await req.json();
-    } catch {
-      console.log(`[HOME-GENERATION] 📄 Empty request body, using defaults`);
-    }
-
     // Receipt for the relay's second hop. If this line exists, the restaurant
     // route's handoff actually landed in a new function invocation.
     trace(requestData.mealPlanId, 'home-meals', 'start', {

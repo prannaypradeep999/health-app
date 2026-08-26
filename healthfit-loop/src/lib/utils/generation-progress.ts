@@ -29,9 +29,10 @@
  */
 export const GENERATION_STALE_AFTER_MS = 10 * 60 * 1000;
 
-export interface RestaurantProgressInput {
-  /** True once at least one restaurant meal has been persisted. */
-  restaurantMealsGenerated: boolean;
+/** The parts of "have we given up" that do not depend on which phase it is. */
+export interface PhaseProgressInput {
+  /** True once the phase has persisted something. */
+  phaseComplete: boolean;
   /** `updatedAt` of the meal plan, in ms. Null when not yet known. */
   planUpdatedAtMs: number | null;
   /** Poll ticks spent on this plan. */
@@ -43,14 +44,14 @@ export interface RestaurantProgressInput {
 }
 
 /**
- * True when the restaurant phase should stop claiming to be in progress.
+ * True when a generation phase should stop claiming to be in progress.
  *
- * Deliberately returns false while `restaurantMealsGenerated` is true: a
- * finished phase is never "given up on", regardless of age or attempts. That
- * keeps the caller from having to order its checks correctly.
+ * Deliberately returns false while `phaseComplete` is true: a finished phase is
+ * never "given up on", regardless of age or attempts. That keeps the caller
+ * from having to order its checks correctly.
  */
-export function hasGivenUpOnRestaurants(input: RestaurantProgressInput): boolean {
-  if (input.restaurantMealsGenerated) return false;
+export function hasGivenUpOnPhase(input: PhaseProgressInput): boolean {
+  if (input.phaseComplete) return false;
 
   if (input.pollAttempts >= input.maxPollAttempts) return true;
 
@@ -59,6 +60,39 @@ export function hasGivenUpOnRestaurants(input: RestaurantProgressInput): boolean
   if (input.planUpdatedAtMs === null) return false;
 
   return input.nowMs - input.planUpdatedAtMs >= GENERATION_STALE_AFTER_MS;
+}
+
+export interface RestaurantProgressInput extends Omit<PhaseProgressInput, 'phaseComplete'> {
+  /** True once at least one restaurant meal has been persisted. */
+  restaurantMealsGenerated: boolean;
+}
+
+/** True when the restaurant phase should stop claiming to be in progress. */
+export function hasGivenUpOnRestaurants(input: RestaurantProgressInput): boolean {
+  return hasGivenUpOnPhase({ ...input, phaseComplete: input.restaurantMealsGenerated });
+}
+
+export interface HomeMealProgressInput extends Omit<PhaseProgressInput, 'phaseComplete'> {
+  /** True once at least one home meal has been persisted. */
+  homeMealsGenerated: boolean;
+}
+
+/**
+ * True when the home-meal phase should stop claiming to be in progress.
+ *
+ * Restaurants got this treatment first because that was the phase observed
+ * spinning. The 2026-08-26 run showed home meals can strand the same way and
+ * worse: the relay handed off to `generate-home` from inside a `after()` that
+ * had seconds of `maxDuration` left, the instance was frozen mid-await, and the
+ * phase never started. Nothing wrote to the plan again, so `homeMealsGenerated`
+ * stayed false forever and the dashboard showed "Creating home meal..." and an
+ * unfinished grocery list against a plan that had already stopped.
+ *
+ * The handoff is fixed separately; this is the backstop for every other way a
+ * phase can fail to arrive.
+ */
+export function hasGivenUpOnHomeMeals(input: HomeMealProgressInput): boolean {
+  return hasGivenUpOnPhase({ ...input, phaseComplete: input.homeMealsGenerated });
 }
 
 /**

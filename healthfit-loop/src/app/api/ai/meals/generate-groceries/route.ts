@@ -1,4 +1,4 @@
-import { NextRequest, NextResponse } from 'next/server';
+import { NextRequest, NextResponse, after } from 'next/server';
 import { withRouteBudget, reservingBudget } from '@/lib/utils/route-budget';
 import { cookies } from 'next/headers';
 import { prisma } from '@/lib/db';
@@ -16,11 +16,38 @@ export const maxDuration = 60; // Allow up to 60 seconds for price lookups
  * Called as background task after home meal generation completes.
  */
 
+type GroceryGenerationRequest = {
+  backgroundGeneration?: boolean;
+  mealPlanId?: string;
+};
+
+/**
+ * The relay's last hop.
+ *
+ * Same shape as generate-home's POST and for the same reason: the caller
+ * reaches this route inside its own `after()`, having already spent most of its
+ * `maxDuration`. Awaiting the full price lookup there freezes the caller and
+ * loses the grocery prices. A 202 lets the caller finish and gives this work a
+ * fresh invocation with a full budget.
+ */
 export async function POST(req: NextRequest) {
-  return withRouteBudget(() => handleGenerate_groceries(req));
+  let body: GroceryGenerationRequest = {};
+  try {
+    body = await req.json();
+  } catch {
+    // Legal: the handler falls back to the newest plan for the survey cookie
+    // when no mealPlanId is supplied.
+  }
+
+  if (body.backgroundGeneration) {
+    after(withRouteBudget(() => handleGenerate_groceries(body)));
+    return NextResponse.json({ accepted: true }, { status: 202 });
+  }
+
+  return withRouteBudget(() => handleGenerate_groceries(body));
 }
 
-async function handleGenerate_groceries(req: NextRequest) {
+async function handleGenerate_groceries(requestData: GroceryGenerationRequest) {
   const startTime = Date.now();
   console.log('[GROCERY-PRICES] 🛒 Starting grocery price lookup...');
 
@@ -60,11 +87,19 @@ async function handleGenerate_groceries(req: NextRequest) {
     console.log(`[GROCERY-PRICES] 📍 Location: ${streetAddress}, ${city}, ${state} ${zipcode}`);
     console.log(`[GROCERY-PRICES] 🎯 User goal: ${userGoal}`);
 
-    // Get the current meal plan with grocery items
-    const mealPlan = await prisma.mealPlan.findFirst({
-      where: { surveyId },
-      orderBy: { createdAt: 'desc' }
-    });
+    // Get the current meal plan with grocery items.
+    //
+    // Prefer the id the caller hands us. Re-deriving it with findFirst picks
+    // whatever plan is newest at the moment this route runs, which is not
+    // necessarily the plan whose grocery list the caller just wrote — a
+    // regeneration started in the meantime would win the ordering and get
+    // priced instead.
+    const mealPlan = requestData.mealPlanId
+      ? await prisma.mealPlan.findUnique({ where: { id: requestData.mealPlanId } })
+      : await prisma.mealPlan.findFirst({
+          where: { surveyId },
+          orderBy: { createdAt: 'desc' }
+        });
 
     if (!mealPlan) {
       console.error('[GROCERY-PRICES] ❌ No meal plan found');

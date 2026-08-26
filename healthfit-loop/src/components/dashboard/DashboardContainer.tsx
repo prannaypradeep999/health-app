@@ -12,7 +12,7 @@ import AccountCreationModal from './modals/AccountCreationModal';
 import { ForkKnife, Spinner } from '@phosphor-icons/react';
 import { motion } from 'framer-motion';
 import { DashboardChat } from '@/components/chat/DashboardChat';
-import { canResetPollCounter, hasGivenUpOnRestaurants } from '@/lib/utils/generation-progress';
+import { canResetPollCounter, hasGivenUpOnHomeMeals, hasGivenUpOnRestaurants } from '@/lib/utils/generation-progress';
 
 type Screen = 'dashboard' | 'meal-plan' | 'workout-plan' | 'progress' | 'account';
 
@@ -51,6 +51,11 @@ interface GenerationStatus {
    * running — see hasGivenUpOnRestaurants.
    */
   restaurantSearchFailed: boolean;
+  /**
+   * The home-meal phase stopped without producing meals. Same distinction as
+   * `restaurantSearchFailed` — see hasGivenUpOnHomeMeals.
+   */
+  homeMealsFailed: boolean;
 }
 
 export function DashboardContainer({ initialScreen = 'dashboard' }: DashboardContainerProps) {
@@ -66,7 +71,8 @@ export function DashboardContainer({ initialScreen = 'dashboard' }: DashboardCon
     restaurantsDiscovered: false,
     homeMealsGenerated: false,
     restaurantMealsGenerated: false,
-    restaurantSearchFailed: false
+    restaurantSearchFailed: false,
+    homeMealsFailed: false
   });
   const [loading, setLoading] = useState(true);
   const [navigating, setNavigating] = useState(false);
@@ -190,8 +196,12 @@ export function DashboardContainer({ initialScreen = 'dashboard' }: DashboardCon
                       !generationStatus.workoutsGenerated ||
                       (generationStatus.homeMealsGenerated && !generationStatus.restaurantMealsGenerated)) &&
                       // A restaurant phase we have given up on is not going to
-                      // start producing meals because we asked again.
-                      !generationStatus.restaurantSearchFailed;
+                      // start producing meals because we asked again. Same for
+                      // home meals: `homeMealsFailed` only goes true once the
+                      // plan has stopped being written to entirely, and no
+                      // amount of further polling restarts a dead relay hop.
+                      !generationStatus.restaurantSearchFailed &&
+                      !generationStatus.homeMealsFailed;
 
     if (shouldPoll && !pollErrorDashboard) {
       // More frequent polling if restaurants are still being discovered
@@ -215,7 +225,7 @@ export function DashboardContainer({ initialScreen = 'dashboard' }: DashboardCon
 
       return () => clearInterval(pollInterval);
     }
-  }, [generationStatus.mealsGenerated, generationStatus.workoutsGenerated, generationStatus.homeMealsGenerated, generationStatus.restaurantMealsGenerated, generationStatus.restaurantSearchFailed, pollErrorDashboard]);
+  }, [generationStatus.mealsGenerated, generationStatus.workoutsGenerated, generationStatus.homeMealsGenerated, generationStatus.restaurantMealsGenerated, generationStatus.restaurantSearchFailed, generationStatus.homeMealsFailed, pollErrorDashboard]);
 
   useEffect(() => {
     // Only reset once EVERY phase the loop waits on is done. Resetting on
@@ -456,7 +466,15 @@ export function DashboardContainer({ initialScreen = 'dashboard' }: DashboardCon
         nowMs: Date.now(),
       });
 
-      console.log(`Generation status: meals=${mealsGenerated}, workouts=${workoutsGenerated}, home=${homeMealsGenerated}, restaurants=${restaurantMealsGenerated}, restaurantsFailed=${restaurantSearchFailed}`);
+      const homeMealsFailed = hasGivenUpOnHomeMeals({
+        homeMealsGenerated,
+        planUpdatedAtMs,
+        pollAttempts: generationPollAttemptsRef.current,
+        maxPollAttempts: MAX_DASHBOARD_POLL_ATTEMPTS,
+        nowMs: Date.now(),
+      });
+
+      console.log(`Generation status: meals=${mealsGenerated}, workouts=${workoutsGenerated}, home=${homeMealsGenerated}, restaurants=${restaurantMealsGenerated}, restaurantsFailed=${restaurantSearchFailed}, homeFailed=${homeMealsFailed}`);
 
       setGenerationStatus({
         mealsGenerated,
@@ -464,7 +482,8 @@ export function DashboardContainer({ initialScreen = 'dashboard' }: DashboardCon
         restaurantsDiscovered,
         homeMealsGenerated,
         restaurantMealsGenerated,
-        restaurantSearchFailed
+        restaurantSearchFailed,
+        homeMealsFailed
       });
     } catch (error) {
       console.error('Failed to check generation status:', error);

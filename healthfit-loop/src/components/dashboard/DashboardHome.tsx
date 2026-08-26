@@ -31,7 +31,8 @@ import {
   Cloud,
   Sparkle,
   House,
-  Minus
+  Minus,
+  Warning
 } from "@phosphor-icons/react";
 import { motion } from "framer-motion";
 
@@ -66,6 +67,8 @@ interface DashboardHomeProps {
     restaurantMealsGenerated: boolean;
     /** Search stopped without producing meals; show a result, not a spinner. */
     restaurantSearchFailed?: boolean;
+    /** Home-meal generation stopped without producing meals; same treatment. */
+    homeMealsFailed?: boolean;
   };
   nutritionTargets?: {
     dailyCalories: number;
@@ -217,6 +220,17 @@ export function DashboardHome({ user, onNavigate, generationStatus, nutritionTar
   const [groceryPreview, setGroceryPreview] = useState<string>('');
   const [homeMealsCount, setHomeMealsCount] = useState<number>(0);
   const [workoutDaysCount, setWorkoutDaysCount] = useState<number>(0);
+
+  // Mirrors the four BuildingItem `isLoading` expressions below. Kept next to
+  // them rather than inlined in the header so the two cannot drift: a header
+  // that spins while every row has settled is exactly the stuck-forever
+  // spinner this codebase has already shipped once.
+  const anyPhaseInProgress =
+    (!generationStatus.homeMealsGenerated && !generationStatus.homeMealsFailed) ||
+    (!generationStatus.workoutsGenerated && generationStatus.homeMealsGenerated) ||
+    (!generationStatus.restaurantMealsGenerated &&
+      generationStatus.homeMealsGenerated &&
+      !generationStatus.restaurantSearchFailed);
 
   // GuestBanner component
   const GuestBanner = ({ onCreateAccount, onDismiss }: {
@@ -830,7 +844,7 @@ export function DashboardHome({ user, onNavigate, generationStatus, nutritionTar
               isRestaurantLoading: true,
               hideCalories: true
             };
-          } else if (isHome && !generationStatus.homeMealsGenerated) {
+          } else if (isHome && !generationStatus.homeMealsGenerated && !generationStatus.homeMealsFailed) {
             return {
               name: "Creating home meal...",
               image: null,
@@ -851,15 +865,27 @@ export function DashboardHome({ user, onNavigate, generationStatus, nutritionTar
                 emptyType: 'restaurant'
               };
             } else if (isHome) {
-              return {
-                name: "Meal skipped",
-                subtext: "Consider adding a snack",
-                image: null,
-                calories: 0,
-                hideCalories: true,
-                isEmpty: true,
-                emptyType: 'home'
-              };
+              // "Meal skipped" reads as a choice the user made. When the phase
+              // failed outright, say so — the user scheduled this slot and we
+              // did not fill it.
+              return generationStatus.homeMealsFailed
+                ? {
+                    name: "Meal unavailable",
+                    subtext: "Generation didn't finish — tap to retry",
+                    image: null,
+                    calories: 0,
+                    hideCalories: true,
+                    hasError: true
+                  }
+                : {
+                    name: "Meal skipped",
+                    subtext: "Consider adding a snack",
+                    image: null,
+                    calories: 0,
+                    hideCalories: true,
+                    isEmpty: true,
+                    emptyType: 'home'
+                  };
             } else {
               return {
                 name: "Couldn't load meal",
@@ -1430,9 +1456,19 @@ export function DashboardHome({ user, onNavigate, generationStatus, nutritionTar
         {/* What We're Building - Shows progress with REAL preview data, hides when all complete */}
         {(!generationStatus.mealsGenerated || !generationStatus.workoutsGenerated || !generationStatus.restaurantMealsGenerated) && (
           <div className="bg-gradient-to-r from-gray-50 to-slate-50 rounded-2xl p-4 sm:p-5 border border-gray-100 mb-4">
+            {/* Spin only while some phase below is actually still running. The
+                panel stays up either way so the user can see which phase
+                stopped short, but a spinner over four settled rows is the
+                "Finding nearby restaurants..." bug in a different costume. */}
             <div className="flex items-center gap-2 mb-3">
-              <Spinner size={18} className="text-red-600 animate-spin" />
-              <h3 className="font-medium text-gray-900 text-sm sm:text-base">Building your personalized plan</h3>
+              {anyPhaseInProgress ? (
+                <Spinner size={18} className="text-red-600 animate-spin" />
+              ) : (
+                <Warning size={18} className="text-amber-600" />
+              )}
+              <h3 className="font-medium text-gray-900 text-sm sm:text-base">
+                {anyPhaseInProgress ? 'Building your personalized plan' : 'Your plan is incomplete'}
+              </h3>
             </div>
 
             <div className="space-y-1">
@@ -1440,8 +1476,14 @@ export function DashboardHome({ user, onNavigate, generationStatus, nutritionTar
                 icon={ForkKnife}
                 label="Creating personalized meals"
                 isComplete={generationStatus.homeMealsGenerated}
-                isLoading={!generationStatus.homeMealsGenerated}
-                detail={generationStatus.homeMealsGenerated && homeMealsCount > 0 ? `${homeMealsCount} meals ready` : undefined}
+                isLoading={!generationStatus.homeMealsGenerated && !generationStatus.homeMealsFailed}
+                detail={
+                  generationStatus.homeMealsGenerated && homeMealsCount > 0
+                    ? `${homeMealsCount} meals ready`
+                    : generationStatus.homeMealsFailed
+                      ? "Didn't finish"
+                      : undefined
+                }
               />
               <BuildingItem
                 icon={Barbell}
@@ -1454,16 +1496,28 @@ export function DashboardHome({ user, onNavigate, generationStatus, nutritionTar
                 icon={MapPin}
                 label="Finding local restaurants"
                 isComplete={generationStatus.restaurantMealsGenerated}
-                isLoading={!generationStatus.restaurantMealsGenerated && generationStatus.homeMealsGenerated}
-                detail={generationStatus.restaurantMealsGenerated ? `${restaurantPreview.count} spots found` : undefined}
+                isLoading={!generationStatus.restaurantMealsGenerated && generationStatus.homeMealsGenerated && !generationStatus.restaurantSearchFailed}
+                detail={
+                  generationStatus.restaurantMealsGenerated
+                    ? `${restaurantPreview.count} spots found`
+                    : generationStatus.restaurantSearchFailed
+                      ? 'No spots found nearby'
+                      : undefined
+                }
                 preview={generationStatus.restaurantMealsGenerated ? restaurantPreview.names : undefined}
               />
               <BuildingItem
                 icon={ShoppingCart}
                 label="Preparing grocery list"
                 isComplete={generationStatus.homeMealsGenerated}
-                isLoading={!generationStatus.homeMealsGenerated}
-                detail={generationStatus.homeMealsGenerated ? groceryPreview : undefined}
+                isLoading={!generationStatus.homeMealsGenerated && !generationStatus.homeMealsFailed}
+                detail={
+                  generationStatus.homeMealsGenerated
+                    ? groceryPreview
+                    : generationStatus.homeMealsFailed
+                      ? "Needs home meals first"
+                      : undefined
+                }
               />
             </div>
           </div>

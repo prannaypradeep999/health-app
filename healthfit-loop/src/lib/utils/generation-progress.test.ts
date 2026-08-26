@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import {
   GENERATION_STALE_AFTER_MS,
   canResetPollCounter,
+  hasGivenUpOnHomeMeals,
   hasGivenUpOnRestaurants,
 } from './generation-progress';
 
@@ -60,6 +61,64 @@ test('restaurants that did generate are never reported as given up on', () => {
   assert.equal(
     hasGivenUpOnRestaurants(
       input({ restaurantMealsGenerated: true, planUpdatedAtMs: ancient, pollAttempts: 999 })
+    ),
+    false
+  );
+});
+
+function homeInput(
+  over: Partial<Parameters<typeof hasGivenUpOnHomeMeals>[0]> = {}
+) {
+  return {
+    homeMealsGenerated: false,
+    planUpdatedAtMs: NOW - 1000,
+    pollAttempts: 0,
+    maxPollAttempts: 120,
+    nowMs: NOW,
+    ...over,
+  };
+}
+
+test('a fresh plan with no home meals yet is still in progress', () => {
+  assert.equal(hasGivenUpOnHomeMeals(homeInput()), false);
+});
+
+test('home meals that never arrived are given up on once the plan goes stale', () => {
+  // The 2026-08-26 run: restaurants persisted, the relay died before home meals
+  // ran, and the dashboard showed "Creating home meal..." with nothing behind
+  // it. Nothing was ever going to write to this plan again.
+  assert.equal(
+    hasGivenUpOnHomeMeals(homeInput({ planUpdatedAtMs: NOW - GENERATION_STALE_AFTER_MS })),
+    true
+  );
+});
+
+test('home meals go stale exactly at the threshold, not a tick before', () => {
+  assert.equal(
+    hasGivenUpOnHomeMeals(homeInput({ planUpdatedAtMs: NOW - GENERATION_STALE_AFTER_MS + 1 })),
+    false
+  );
+});
+
+test('exhausting the poll budget gives up on home meals too', () => {
+  assert.equal(
+    hasGivenUpOnHomeMeals(homeInput({ pollAttempts: 120, maxPollAttempts: 120 })),
+    true
+  );
+});
+
+test('a plan with no known timestamp keeps home meals live', () => {
+  assert.equal(hasGivenUpOnHomeMeals(homeInput({ planUpdatedAtMs: null })), false);
+});
+
+test('home meals that did generate are never reported as given up on', () => {
+  assert.equal(
+    hasGivenUpOnHomeMeals(
+      homeInput({
+        homeMealsGenerated: true,
+        planUpdatedAtMs: NOW - 17 * 60 * 60 * 1000,
+        pollAttempts: 999,
+      })
     ),
     false
   );
