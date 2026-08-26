@@ -954,32 +954,25 @@ export function createRestaurantMealGenerationPrompt(context: RestaurantMealCont
   // Get strict exclusions warning
   const strictExclusionsWarning = formatStrictExclusions(surveyData);
 
-  // Build detailed restaurant info with ordering links prominently displayed
+  // Ordering links are deliberately NOT shown.
+  //
+  // They used to be, under the heading "MUST USE THESE EXACT URLs", because the
+  // model was required to copy them into its answer. It no longer is: the route
+  // joins them on from this same data afterwards
+  // (src/lib/utils/restaurant-join.ts). Printing URLs the model can neither use
+  // nor need would spend prompt tokens on the phase that already runs out of
+  // time, and would invite it to mention a link in prose.
+  //
+  // Whether a restaurant is orderable at all is still decided upstream —
+  // extractMenuInformation drops the ones with no usable link — so everything
+  // listed here is orderable by construction.
   const restaurantDetails = restaurantMenuData.map(restaurant => {
-    const links = restaurant.orderingLinks || {};
-    // All four platforms are listed, including the missing ones. Previously only
-    // the found links appeared, so a platform's absence was something the model
-    // had to infer from a gap in a list — and it filled the gap by inventing a
-    // URL or by writing the string "null". Stating "not available" explicitly
-    // makes the null case a thing to copy rather than a thing to deduce.
-    const ALL_PLATFORMS = ['doordash', 'ubereats', 'grubhub', 'direct'] as const;
-    const availableLinks = ALL_PLATFORMS
-      .map(platform => {
-        const url = (links as Record<string, unknown>)[platform];
-        const usable = typeof url === 'string' && /^https?:\/\/\S+$/i.test(url.trim());
-        return `${platform}: ${usable ? (url as string).trim() : 'not available — use null'}`;
-      })
-      .join('\n    ');
-
     return `
 RESTAURANT: ${restaurant.name}
   Cuisine: ${restaurant.cuisine || 'Mixed'}
   Address: ${restaurant.address}
   Rating: ${restaurant.rating || 'N/A'}
-  
-  ORDERING LINKS (MUST USE THESE EXACT URLs):
-    ${availableLinks || 'No links available'}
-  
+
   MENU ITEMS:
 ${(restaurant.menuData || []).slice(0, 8).map((item: any) =>
     // Protein is printed alongside calories because selection happens here and
@@ -1106,14 +1099,13 @@ ${(surveyData.preferredFoods || []).length > 0
    - Every item you combine MUST appear in that restaurant's menu listing above. Never invent a side, an extra-protein option, or a portion size that is not listed.
    - Prefer a single dish when a single dish genuinely fits. Combine only to close a real gap, and stop as soon as you are inside the window.
 6. For EACH meal, provide BOTH a primary AND alternative option from DIFFERENT restaurants
-7. ⚠️ ORDERING LINKS ARE REQUIRED: Copy the EXACT orderingLinks from the restaurant data above
+7. ⚠️ "restaurant" must be the restaurant's name copied EXACTLY as written above. It is the only thing linking your choice back to that restaurant's address and ordering links, which are attached after you answer — a name that matches nothing leaves the user a dish they cannot order
 8. ⚠️ VARIETY: No restaurant may be the primary pick for more than ${Math.max(1, Math.ceil(restaurantMealsSchedule.length / Math.max(1, restaurantMenuData.length)))} of the ${restaurantMealsSchedule.length} meals. With ${restaurantMenuData.length} restaurants available, repeating one is a choice, not a necessity.
 9. Consider meal timing (lighter lunches, heartier dinners)
 10. Stay within budget and dietary preferences
 11. Use ONLY restaurants and menu items from the data provided above
-12. NEVER omit an orderingLinks key. Each value is either a URL copied character-for-character from the restaurant data, or the JSON literal null (bare, not quoted) when that platform is listed as "not available"
-13. ⚠️ DIET TYPE + ALLERGIES ARE ABSOLUTE - never select forbidden items; dislikes should be minimized
-14. ⚠️ PREFERRED FOODS: When available, prioritize dishes featuring user's preferred ingredients
+12. ⚠️ DIET TYPE + ALLERGIES ARE ABSOLUTE - never select forbidden items; dislikes should be minimized
+13. ⚠️ PREFERRED FOODS: When available, prioritize dishes featuring user's preferred ingredients
 
 Return ONLY this JSON structure:
 {
@@ -1130,15 +1122,6 @@ Return ONLY this JSON structure:
         "protein": 35,
         "carbs": 45,
         "fat": 28,
-        "cuisine": "Italian",
-        "address": "Restaurant address from data",
-        "orderingLinks": {
-          "doordash": "https://www.doordash.com/store/...",
-          "ubereats": null,
-          "grubhub": null,
-          "direct": "https://restaurant-own-website.com"
-        },
-        "source": "restaurant",
         "tags": ["dinner", "italian", "protein-rich"]
       },
       "alternative": {
@@ -1150,31 +1133,16 @@ Return ONLY this JSON structure:
         "protein": 32,
         "carbs": 42,
         "fat": 25,
-        "cuisine": "Different cuisine",
-        "address": "Different restaurant address",
-        "orderingLinks": {
-          "doordash": null,
-          "ubereats": "https://www.ubereats.com/store/...",
-          "grubhub": null,
-          "direct": null
-        },
-        "source": "restaurant",
         "tags": ["dinner", "different-cuisine"]
       }
     }
   ]
 }
 
-⚠️ IMPORTANT: orderingLinks must ALWAYS contain all four keys — doordash, ubereats, grubhub and direct.
-
-A value is one of exactly two things:
-  • a URL copied character-for-character from the restaurant data above, or
-  • the bare JSON literal null
-
-Write null, not "null". The string "null" is a bug: it renders as a working
-order button that leads nowhere. Likewise never use "", "N/A", "not available",
-or a guessed URL. If a platform is marked "not available" for that restaurant,
-the value is null. An honest null is always better than a link that fails.`;
+Do not add fields. The restaurant's address, cuisine and ordering links are
+attached from the data above after you answer — writing them here would be
+retyping something already known, and a retyped URL that is one character off
+is an order button that leads nowhere.`;
 }
 
 // Restaurant selection prompt (for choosing best restaurants from search results)

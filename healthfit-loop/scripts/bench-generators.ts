@@ -44,9 +44,10 @@ import {
   pinnedMealDetail,
   pinnedHomeMealsLegacy,
   pinnedWorkoutDetail,
-  pinnedRestaurantMeals,
+  pinnedRestaurantMealChoices,
 } from '../src/lib/ai/schemas/index';
 import { MODELS } from '../src/lib/ai/models';
+import { joinRestaurantMealSlots } from '../src/lib/utils/restaurant-join';
 import { tally, type Finding, type CheckResult, type Family } from './eval/types';
 import { checkAtwater, checkTarget, checkSum } from './eval/arithmetic';
 import { checkCount, checkSlots, checkNonEmpty } from './eval/completeness';
@@ -696,12 +697,20 @@ did not find a real URL for. Extract 6-12 menu items maximum.`,
           surveyData: f.surveyData,
           nutritionTargets: f.nutritionTargets,
         }),
-        schema: pinnedRestaurantMeals(slots.length),
+        schema: pinnedRestaurantMealChoices(slots.length),
       };
     },
     check: async (d, f) => {
       const want = restaurantSlotsFrom(f.surveyData.weeklyMealSchedule);
-      const got = d.restaurantMeals as any[];
+      // Production joins each restaurant's address, cuisine and ordering links
+      // onto the model's choices rather than having the model retype them, so
+      // the bench scores the joined object — the thing a user actually sees.
+      // `fabricated-link` below therefore now grades the join, not the model;
+      // it should read zero, and a non-zero count means the join regressed.
+      const got = joinRestaurantMealSlots(
+        d.restaurantMeals as any[],
+        restaurantMenuDataFixture as any
+      ).slots as any[];
       const rules = rulesFor(f.surveyData);
       const findings: Finding[] = [
         ...checkCount('restaurantMeals', 'restaurant-count', got.length, want.length),

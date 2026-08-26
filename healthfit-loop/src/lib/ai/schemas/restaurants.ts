@@ -37,6 +37,42 @@ export const RestaurantMealSlot = z.object({
   alternative: RestaurantMealObject,
 }).strict();
 
+/**
+ * What meal selection actually decides, with the transcription removed.
+ *
+ * `RestaurantMealObject` above is the shape the rest of the app consumes, and
+ * it stays that shape — but five of its thirteen fields (`cuisine`, `address`,
+ * the four `orderingLinks`, `source`) were values printed into the prompt from
+ * Places and Perplexity and copied back out by the model one token at a time.
+ * Measured on plan cmt9jxhs30003l504dl202k46, that transcription was 47.7% of
+ * the emitted JSON, and on 2026-08-26 the selection call was cut off by the
+ * route deadline at 26691ms having produced nothing at all.
+ *
+ * `restaurant` stays because it is the choice — which of the listed places to
+ * order from. `src/lib/utils/restaurant-join.ts` looks the rest up from that
+ * name and rebuilds the full object, so nothing downstream sees a difference
+ * except that the links are now the ones we measured rather than the ones the
+ * model retyped.
+ */
+export const RestaurantMealChoice = z.object({
+  restaurant: z.string(),
+  dish: z.string(),
+  description: z.string(),
+  price: z.number(),
+  estimatedCalories: z.number(),
+  protein: z.number(),
+  carbs: z.number(),
+  fat: z.number(),
+  tags: z.array(z.string()),
+}).strict();
+
+export const RestaurantMealChoiceSlot = z.object({
+  day: z.string(),
+  mealType: z.string(),
+  primary: RestaurantMealChoice,
+  alternative: RestaurantMealChoice,
+}).strict();
+
 /** createRestaurantMealGenerationPrompt */
 export const RestaurantMealsSchema = z.object({
   restaurantMeals: z.array(RestaurantMealSlot),

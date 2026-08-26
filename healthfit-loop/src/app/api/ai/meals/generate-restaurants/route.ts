@@ -22,10 +22,10 @@ import { validateRestrictions } from '@/lib/utils/restriction-validator';
 import { MODELS, tuning } from '@/lib/ai/models';
 import {
   RestaurantSelectionSchema,
-  pinnedRestaurantMeals,
+  pinnedRestaurantMealChoices,
   toStrictJsonSchema,
-  normalizeOrderingLinks,
 } from '@/lib/ai/schemas';
+import { joinRestaurantMealSlots } from '@/lib/utils/restaurant-join';
 import { parseChoice } from '@/lib/ai/validate';
 import { logUsage } from '@/lib/ai/usage';
 import { trace } from '@/lib/utils/run-trace';
@@ -487,7 +487,13 @@ async function selectRestaurantMealsForSchedule(
 ): Promise<any[]> {
   console.log(`[RESTAURANT-SELECTION] 🍽️ Selecting ${restaurantMealsSchedule.length} restaurant meals from ${restaurantMenuData.length} restaurants with links...`);
   // One entry per scheduled eating-out slot, and the prompt names them all.
-  const MealsSchema = pinnedRestaurantMeals(restaurantMealsSchedule.length);
+  //
+  // The *choices* variant: address, cuisine, ordering links and `source` are
+  // joined on below from restaurantMenuData rather than emitted by the model.
+  // That was 47.7% of the output on plan cmt9jxhs30003l504dl202k46, and this
+  // call is the one that ran out of route budget at 26691ms on 2026-08-26 and
+  // saved nothing.
+  const MealsSchema = pinnedRestaurantMealChoices(restaurantMealsSchedule.length);
   
   // If no restaurants with ordering links, return empty
   if (restaurantMenuData.length === 0) {
@@ -551,16 +557,22 @@ async function selectRestaurantMealsForSchedule(
       return [];
     }
 
-    const selectedMeals = parsed.data.restaurantMeals;
+    // Put back the fields the model no longer has to retype. The result has
+    // exactly the shape the rest of the app already consumes, with the links
+    // and address taken from Places/Perplexity instead of from the model's
+    // transcription of them.
+    const { slots: selectedMeals, unmatched } = joinRestaurantMealSlots(
+      parsed.data.restaurantMeals,
+      restaurantMenuData
+    );
 
-    // The schema guarantees the four keys are present and string-or-null; it
-    // cannot stop the model from putting the *string* "null" in one. That value
-    // is truthy, so it reached the UI as an enabled "Order Now" button pointing
-    // nowhere. Normalizing here keeps the emitted shape byte-identical — same
-    // keys, same types — while making the null actually null.
-    for (const meal of selectedMeals) {
-      meal.primary.orderingLinks = normalizeOrderingLinks(meal.primary.orderingLinks);
-      meal.alternative.orderingLinks = normalizeOrderingLinks(meal.alternative.orderingLinks);
+    if (unmatched.length > 0) {
+      // Not fatal — the meal still renders, without an order button. Worth a
+      // loud line because it means the model named a restaurant that was not on
+      // the list, which is the one failure this join cannot repair.
+      console.warn(
+        `[RESTAURANT-SELECTION] ⚠️ ${unmatched.length} option(s) named a restaurant not in the menu data: ${[...new Set(unmatched)].join(', ')}`
+      );
     }
 
     console.log(`[RESTAURANT-SELECTION] ✅ Selected ${selectedMeals.length}/${restaurantMealsSchedule.length} restaurant meals`);

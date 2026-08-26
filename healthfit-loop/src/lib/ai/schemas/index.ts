@@ -43,7 +43,7 @@ export * from './grocery';
 import { GroceryList, MealSlot } from './shared';
 import { PlannedMeal } from './meals';
 import { WorkoutDayDetail } from './workout';
-import { RestaurantMealSlot } from './restaurants';
+import { RestaurantMealSlot, RestaurantMealChoiceSlot } from './restaurants';
 import { GroceryStoreObject } from './grocery';
 
 /**
@@ -71,4 +71,14 @@ export const pinnedWorkoutDetail = (count: number) =>
 
 export const pinnedRestaurantMeals = (count: number) =>
   z.object({ restaurantMeals: exactly(RestaurantMealSlot, count) }).strict();
+
+/**
+ * The count-pinned schema meal selection actually asks for.
+ *
+ * Same slot count, roughly half the tokens: the restaurant's address, cuisine,
+ * ordering links and `source` are joined on afterwards from data we already
+ * hold rather than retyped by the model. See `RestaurantMealChoice`.
+ */
+export const pinnedRestaurantMealChoices = (count: number) =>
+  z.object({ restaurantMeals: exactly(RestaurantMealChoiceSlot, count) }).strict();
 
