@@ -381,6 +381,14 @@ export const nearbyRestaurantsFixture = [
  * string back as a dish name with 0 calories. The bench had never once tested
  * dish grounding, and the resulting `invented-dish` findings were about the
  * harness rather than the generator.
+ *
+ * Each dish must also carry estimatedProtein/Carbs/Fat, which extraction has
+ * required since B8 and the selection prompt prints. Without them the prompt
+ * showed "? g protein" for every dish and the model answered 0, which scored as
+ * `atwater-mismatch` against a generator that had been shown nothing.
+ * `meal-generation.test.ts` parses these records against MenuExtractionSchema
+ * so the next field to go missing breaks the bench instead of quietly draining
+ * it of signal.
  */
 export const restaurantMenuDataFixture = [
   {
@@ -390,26 +398,26 @@ export const restaurantMenuDataFixture = [
       ubereats: null, grubhub: null, direct: 'https://sakuraramenhouse.com',
     },
     menuData: [
-      { name: 'Tonkotsu Ramen', price: 16.5, category: 'dinner', estimatedCalories: 780, description: 'Pork bone broth with chashu' },
-      { name: 'Vegetable Gyoza', price: 8.5, category: 'lunch', estimatedCalories: 320, description: 'Six pieces, pan fried' },
-      { name: 'Salmon Poke Bowl', price: 18.25, category: 'lunch', estimatedCalories: 620, description: 'Over brown rice' },
+      { name: 'Tonkotsu Ramen', price: 16.5, category: 'dinner', estimatedCalories: 780, estimatedProtein: 36, estimatedCarbs: 82, estimatedFat: 34, healthRating: 'fair', description: 'Pork bone broth with chashu' },
+      { name: 'Vegetable Gyoza', price: 8.5, category: 'lunch', estimatedCalories: 320, estimatedProtein: 12, estimatedCarbs: 40, estimatedFat: 12, healthRating: 'good', description: 'Six pieces, pan fried' },
+      { name: 'Salmon Poke Bowl', price: 18.25, category: 'lunch', estimatedCalories: 620, estimatedProtein: 40, estimatedCarbs: 64, estimatedFat: 23, healthRating: 'excellent', description: 'Over brown rice' },
     ],
   },
   {
     name: 'Zaytoon Mediterranean', cuisine: 'middle_eastern', address: '1133 Solano Ave, Berkeley',
     orderingLinks: { doordash: null, ubereats: null, grubhub: null, direct: 'https://zaytoonberkeley.com' },
     menuData: [
-      { name: 'Chicken Shawarma Plate', price: 17.0, category: 'dinner', estimatedCalories: 720, description: 'With rice and salad' },
-      { name: 'Falafel Wrap', price: 12.5, category: 'lunch', estimatedCalories: 540, description: 'Tahini and pickles' },
-      { name: 'Lamb Kofta', price: 21.0, category: 'dinner', estimatedCalories: 810, description: 'Grilled, with hummus' },
+      { name: 'Chicken Shawarma Plate', price: 17.0, category: 'dinner', estimatedCalories: 720, estimatedProtein: 50, estimatedCarbs: 72, estimatedFat: 26, healthRating: 'good', description: 'With rice and salad' },
+      { name: 'Falafel Wrap', price: 12.5, category: 'lunch', estimatedCalories: 540, estimatedProtein: 19, estimatedCarbs: 64, estimatedFat: 23, healthRating: 'good', description: 'Tahini and pickles' },
+      { name: 'Lamb Kofta', price: 21.0, category: 'dinner', estimatedCalories: 810, estimatedProtein: 51, estimatedCarbs: 57, estimatedFat: 42, healthRating: 'fair', description: 'Grilled, with hummus' },
     ],
   },
   {
     name: 'Comal Next Door', cuisine: 'mexican', address: '2020 Shattuck Ave, Berkeley',
     orderingLinks: { doordash: null, ubereats: null, grubhub: null, direct: null },
     menuData: [
-      { name: 'Carnitas Tacos', price: 14.0, category: 'lunch', estimatedCalories: 610, description: 'Three tacos, salsa verde' },
-      { name: 'Grilled Fish Bowl', price: 18.0, category: 'dinner', estimatedCalories: 650, description: 'Rice, beans, cabbage' },
+      { name: 'Carnitas Tacos', price: 14.0, category: 'lunch', estimatedCalories: 610, estimatedProtein: 34, estimatedCarbs: 55, estimatedFat: 28, healthRating: 'fair', description: 'Three tacos, salsa verde' },
+      { name: 'Grilled Fish Bowl', price: 18.0, category: 'dinner', estimatedCalories: 650, estimatedProtein: 44, estimatedCarbs: 70, estimatedFat: 21, healthRating: 'excellent', description: 'Rice, beans, cabbage' },
     ],
   },
 ];

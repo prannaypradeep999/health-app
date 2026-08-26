@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createRestaurantMealGenerationPrompt } from './meal-generation';
+import { MenuExtractionSchema } from '../schemas/restaurants';
 import { restaurantMenuDataFixture, fixtures } from '../../../../scripts/fixtures/surveys';
 
 /**
@@ -96,6 +97,46 @@ test('the bench fixture actually reaches the model as a menu', () => {
   for (const restaurant of restaurantMenuDataFixture) {
     for (const item of restaurant.menuData) {
       assert.ok(prompt.includes(item.name), `${item.name} missing from benched prompt`);
+    }
+  }
+});
+
+test('every benched dish is the shape menu extraction really produces', () => {
+  // The structural version of the test above, and the one that generalises.
+  // Renaming `menuItems` to `menuData` fixed the field that had gone missing;
+  // this catches the next one. The fixture had no estimatedProtein/Carbs/Fat
+  // either, which the extraction schema has required since B8, so the model was
+  // shown "? g protein" for every dish and answered 0 — scored as eight
+  // `atwater-mismatch` errors against a generator that had been told nothing.
+  //
+  // Parsing against the real schema means a field added to extraction breaks
+  // the bench loudly instead of quietly draining it of signal.
+  for (const restaurant of restaurantMenuDataFixture) {
+    const parsed = MenuExtractionSchema.safeParse({
+      menuItems: restaurant.menuData,
+      orderingLinks: restaurant.orderingLinks,
+    });
+    assert.ok(
+      parsed.success,
+      `${restaurant.name} is not a valid extraction record: ${
+        parsed.success ? '' : JSON.stringify(parsed.error.issues)
+      }`
+    );
+  }
+});
+
+test('benched dish macros agree with their stated calories', () => {
+  // Otherwise the ARITHMETIC column measures the fixture's arithmetic, not the
+  // model's. Atwater: 4 cal/g protein, 4 cal/g carb, 9 cal/g fat.
+  for (const restaurant of restaurantMenuDataFixture) {
+    for (const item of restaurant.menuData) {
+      const fromMacros =
+        item.estimatedProtein * 4 + item.estimatedCarbs * 4 + item.estimatedFat * 9;
+      const drift = Math.abs(fromMacros - item.estimatedCalories) / item.estimatedCalories;
+      assert.ok(
+        drift <= 0.1,
+        `${item.name}: ${item.estimatedCalories} cal stated vs ${fromMacros} from macros`
+      );
     }
   }
 });
