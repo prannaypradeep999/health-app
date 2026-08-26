@@ -1,4 +1,4 @@
-import { NextRequest, NextResponse } from 'next/server';
+import { NextRequest, NextResponse, after } from 'next/server';
 import { withRouteBudget, reservingBudget } from '@/lib/utils/route-budget';
 import { cookies } from 'next/headers';
 import { prisma } from '@/lib/db';
@@ -687,6 +687,52 @@ function validateRestaurantMeals(
   console.log(`[RESTAURANT-VALIDATOR] Validation complete: ${restaurantMeals.length} meals, ${warningCount} warning(s), ${errorCount} error(s)`);
 }
 
+/**
+ * Second hop of the generation relay.
+ *
+ * Home meals need the restaurant calories to size the remaining daily budget,
+ * so this hop cannot start until restaurant generation finishes. It used to be
+ * awaited inside the survey route, which meant one 60s function had to cover
+ * both ~53s phases. It never did — the survey handler returned first and the
+ * promise was reclaimed, so home meals and groceries were never generated at
+ * all. Triggering from here gives the hop its own full 60s.
+ *
+ * generate-home triggers groceries itself, so the relay completes from here.
+ */
+async function triggerHomeMeals(
+  surveyId: string,
+  sessionId: string,
+  mealPlanId: string | undefined,
+  restaurantCalories: Array<{ day: string; mealType: string; calories: number }>
+): Promise<void> {
+  const base = process.env.NEXT_PUBLIC_BASE_URL || process.env.VERCEL_URL || 'http://localhost:3000';
+  const url = base.startsWith('http') ? base : `https://${base}`;
+
+  console.log('[RESTAURANT-GENERATION] 🏠 Handing off to home meal generation...', {
+    mealPlanId: mealPlanId ?? 'none',
+    restaurantMealsCounted: restaurantCalories.length,
+  });
+
+  try {
+    const res = await fetch(`${url}/api/ai/meals/generate-home`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Cookie': `survey_id=${surveyId}; guest_session=${sessionId}`,
+      },
+      body: JSON.stringify({ backgroundGeneration: true, mealPlanId, restaurantCalories }),
+    });
+
+    if (res.ok) {
+      console.log('[RESTAURANT-GENERATION] ✅ Home meal generation accepted the handoff');
+    } else {
+      console.error('[RESTAURANT-GENERATION] ❌ Home meal handoff rejected:', res.status);
+    }
+  } catch (error) {
+    console.error('[RESTAURANT-GENERATION] ❌ Home meal handoff threw:', error);
+  }
+}
+
 export async function POST(req: NextRequest) {
   return withRouteBudget(() => handleGenerate_restaurants(req));
 }
@@ -1046,6 +1092,23 @@ async function handleGenerate_restaurants(req: NextRequest) {
       );
     }
     
+    // The relay's second hop. after() keeps this instance alive past the
+    // response so the fetch is actually dispatched — the survey route's
+    // equivalent call was orphaned exactly like this and silently dropped.
+    // Placed after persistence so home meals read a saved plan, not a partial.
+    after(
+      triggerHomeMeals(
+        surveyData.id,
+        sessionId || '',
+        requestData.mealPlanId,
+        (selectedRestaurantMeals || []).map((meal: any) => ({
+          day: meal.day,
+          mealType: meal.mealType,
+          calories: meal.primary?.estimatedCalories || meal.estimatedCalories || 0,
+        }))
+      )
+    );
+
     const totalTime = Date.now() - startTime;
     console.log(`[RESTAURANT-GENERATION] 🏁 Restaurant generation completed in ${totalTime}ms (${(totalTime/1000).toFixed(2)}s)`);
     console.log(`[RESTAURANT-GENERATION] 📊 Summary:`);
