@@ -37,6 +37,26 @@ const budgetStore = new AsyncLocalStorage<{ deadline: number }>();
 export const ROUTE_TOTAL_BUDGET_MS = 53_000;
 
 /**
+ * Time held back from the Perplexity menu search so the GPT call that structures
+ * its output can always finish. Passed to `reservingBudget` at that call site.
+ *
+ * Measured on the 2026-08-25 production run: structuring succeeded at clamps of
+ * 8151ms and above, and timed out at 7184ms and 5521ms. A timeout there is not a
+ * slow result — `processWithGPT4` returns zero menu items, and
+ * generate-restaurants then drops the restaurant from the plan entirely. Two of
+ * six restaurants were lost that way, both after their Perplexity search had
+ * already returned good content we had paid for.
+ *
+ * 9s clears the highest observed success by a small margin. Raising it further
+ * starves the search itself, which took 6466-15398ms in the same run.
+ *
+ * It lives here rather than in perplexity-client because that module builds a
+ * client at import time and throws without PERPLEXITY_API_KEY, so a test cannot
+ * import a constant from it. This file has no side effects.
+ */
+export const MENU_STRUCTURING_RESERVE_MS = 9_000;
+
+/**
  * Run `fn` under a shared deadline. Wrap the whole body of a route handler.
  */
 export function withRouteBudget<T>(fn: () => Promise<T>, totalMs = ROUTE_TOTAL_BUDGET_MS): Promise<T> {

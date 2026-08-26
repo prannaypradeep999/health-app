@@ -16,6 +16,7 @@ import { createLimiter } from '@/lib/utils/concurrency';
 import { corroborate } from '@/lib/external/link-check';
 import { parseReceipt, sourceHostsFrom, type SearchItem } from '@/lib/verification/receipt';
 import { computeStoreTotals, planPriceChunks } from '@/lib/utils/store-totals';
+import { reservingBudget, MENU_STRUCTURING_RESERVE_MS } from '@/lib/utils/route-budget';
 
 /**
  * Process-wide gate on every Perplexity request.
@@ -282,7 +283,13 @@ export class PerplexityClient {
 
       console.log(`[PERPLEXITY] 🚀 Making API request to ${this.baseUrl}`);
 
-      const perplexityResult = await perplexityLimit(() => withPerplexityRetry(async (signal) => {
+      // The search is the greedy phase and the structuring call below is the
+      // deliverable. Left to a plain shared deadline the search takes whatever
+      // it wants and structuring gets the remainder, which was sometimes 5.5s
+      // against an 8s need — and a structuring timeout costs the whole
+      // restaurant, not just its prose.
+      const perplexityResult = await reservingBudget(MENU_STRUCTURING_RESERVE_MS, () =>
+        perplexityLimit(() => withPerplexityRetry(async (signal) => {
         const response = await fetch(this.baseUrl, {
           method: 'POST',
           headers: {
@@ -311,7 +318,7 @@ export class PerplexityClient {
         }
 
         return response.json();
-      }, `Restaurant menu for ${restaurantName}`));
+      }, `Restaurant menu for ${restaurantName}`)));
 
       if (!perplexityResult.success) {
         throw new Error(`Perplexity API failed after retries: ${perplexityResult.error}`);
