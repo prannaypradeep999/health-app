@@ -125,6 +125,37 @@ test('every benched dish is the shape menu extraction really produces', () => {
   }
 });
 
+test('no benched restaurant renders a placeholder in the selection prompt', () => {
+  // The structural guard above cannot see this class of drift, and `rating`
+  // proved it. These records are a JOIN — extraction's output merged onto the
+  // chosen restaurant — so a field belonging to the selection half is absent
+  // from MenuExtractionSchema and parses clean by being missing.
+  //
+  // `Rating: ${restaurant.rating || 'N/A'}` therefore printed N/A for all three
+  // restaurants, and the bench never once exercised the model's ability to
+  // prefer a well-reviewed place. Reading the rendered prompt for placeholders
+  // catches any field that goes quiet, whichever half it came from.
+  const prompt = createRestaurantMealGenerationPrompt({
+    restaurantMealsSchedule: [{ day: 'tuesday', mealType: 'lunch' }],
+    restaurantMenuData: restaurantMenuDataFixture,
+    surveyData: SURVEY,
+    nutritionTargets: fixtures[0].nutritionTargets,
+  } as Parameters<typeof createRestaurantMealGenerationPrompt>[0]);
+
+  for (const placeholder of ['N/A', 'No menu items available', 'undefined', ': ?']) {
+    assert.ok(
+      !prompt.includes(placeholder),
+      `the benched selection prompt renders "${placeholder}" — a fixture field has gone quiet`
+    );
+  }
+  for (const restaurant of restaurantMenuDataFixture) {
+    assert.ok(
+      prompt.includes(String(restaurant.rating)),
+      `${restaurant.name}'s rating is missing from the benched prompt`
+    );
+  }
+});
+
 test('benched dish macros agree with their stated calories', () => {
   // Otherwise the ARITHMETIC column measures the fixture's arithmetic, not the
   // model's. Atwater: 4 cal/g protein, 4 cal/g carb, 9 cal/g fat.

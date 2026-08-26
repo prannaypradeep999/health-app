@@ -520,8 +520,26 @@ const SITES: Site[] = [
         }),
         ...checkTarget('recipe', d.nutrition.calories, want.calories),
         ...checkNonEmpty('recipe.ingredients', 'no-ingredients', d.ingredientsWithNutrition, 3),
+        // `d.dishName` was read here and RecipeSchema is .strict() with no such
+        // key — it is `name`. So this resolved to '' on every run and the dish
+        // name was never checked: the `restricted` fixture asks for a "Lamb and
+        // Chickpea Tagine" against a halal-and-no-lamb survey and passed on its
+        // name for as long as the check has existed.
+        //
+        // `d.ingredients` is added alongside `ingredientsWithNutrition` because
+        // the two lists are written separately and can disagree — the plain one
+        // is what the user reads.
+        //
+        // `description` is deliberately NOT scanned, for the same reason the
+        // restaurant path scans it only at warning severity: it is prose, the
+        // term matcher is word-anchored but negation-blind, and "made without
+        // butter" reads there as butter.
         ...checkText('recipe',
-          [d.dishName ?? '', ...(d.ingredientsWithNutrition ?? []).map((i: any) => i.item)].join(' '),
+          [
+            d.name ?? '',
+            ...(d.ingredients ?? []),
+            ...(d.ingredientsWithNutrition ?? []).map((i: any) => i.item),
+          ].join(' '),
           rulesFor(f.surveyData)),
       ];
 
@@ -732,22 +750,33 @@ did not find a real URL for. Extract 6-12 menu items maximum.`,
             carbs: meal.carbs, fat: meal.fat,
           }));
           if (target) findings.push(...checkTarget(where, meal.estimatedCalories, target.calories));
-          // The dish name only, which is also all production checks:
-          // validateRestrictions reads `meal.name || meal.dish || meal.description`,
-          // and for a restaurant meal `dish` is always truthy, so the description
-          // never reaches it.
+          // The dish name at error severity, and the description separately at
+          // warning severity — which is what production now does too, since
+          // validateRestrictions grew a second pass. (It used to read
+          // `meal.name || meal.dish || meal.description`; `dish` is always
+          // truthy for a restaurant meal, so the description was never read.)
           //
-          // Scanning the description here as well produced six restriction
-          // violations against a Falafel Wrap, because the model's own
-          // justification prose reads "no meat, poultry, fish, or gelatin
-          // listed" and the term matcher is word-anchored but negation-blind.
-          // A checker that cries wolf on a compliant dish hides the real ones.
+          // The severity split is not squeamishness. Scanning the description
+          // at error severity produced six restriction violations against a
+          // compliant Falafel Wrap, because the model's own justification prose
+          // reads "no meat, poultry, fish, or gelatin listed" and the term
+          // matcher is word-anchored but negation-blind. A checker that cries
+          // wolf on a compliant dish hides the real ones.
           //
           // Teaching containsTerm about negation was the obvious fix and is the
           // wrong one: it would make a dietary and allergy check more permissive
           // by trusting the model's own claim that an ingredient is absent.
-          // Over-flagging fails safe; under-flagging does not.
+          // Over-flagging fails safe; under-flagging does not. The prompt was
+          // changed instead, to stop the model writing absence prose at all.
           findings.push(...checkText(where, String(meal.dish ?? ''), rules));
+
+          const dishText = String(meal.dish ?? '').toLowerCase();
+          const descText = String(meal.description ?? '').toLowerCase();
+          if (descText && descText !== dishText) {
+            for (const v of checkText(where, descText, rules)) {
+              findings.push({ ...v, severity: 'warn', code: `${v.code}-in-description` });
+            }
+          }
 
           const source = truth.get(String(meal.restaurant).toLowerCase());
           if (!source) {
@@ -758,10 +787,30 @@ did not find a real URL for. Extract 6-12 menu items maximum.`,
             continue;
           }
 
-          if (!source.menuData.some(mi => mi.name.toLowerCase() === String(meal.dish).toLowerCase())) {
+          // The prompt tells the model to combine dishes to hit a protein
+          // target and to write the combination joined with " + " (rule 5,
+          // 'Chicken Shawarma Platter + Side of Grilled Chicken + Hummus'), so
+          // exact equality against a single menu name meant that OBEYING the
+          // prompt guaranteed an ADHERENCE error. Every correctly combined
+          // dish scored as invented, which is the opposite of the signal this
+          // check exists to give.
+          //
+          // Each component is checked instead. A combination is invented when
+          // any one of its parts is — which is the real failure, and is still
+          // caught.
+          const onMenu = (dish: string) =>
+            source.menuData.some(mi => mi.name.toLowerCase() === dish.trim().toLowerCase());
+          const components = String(meal.dish).split('+').map(s => s.trim()).filter(Boolean);
+          const invented = components.filter(c => !onMenu(c));
+          if (components.length > 0 && invented.length > 0) {
             findings.push({
               family: 'ADHERENCE', severity: 'error', code: 'invented-dish',
-              where, message: `"${meal.dish}" is not on ${source.name}'s supplied menu`,
+              where,
+              message: components.length === 1
+                ? `"${meal.dish}" is not on ${source.name}'s supplied menu`
+                : `"${meal.dish}" combines ${components.length} items and ` +
+                  `${invented.map(c => `"${c}"`).join(', ')} ${invented.length === 1 ? 'is' : 'are'} ` +
+                  `not on ${source.name}'s supplied menu`,
             });
           }
 

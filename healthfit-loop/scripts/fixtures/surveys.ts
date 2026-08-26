@@ -452,10 +452,20 @@ export const nearbyRestaurantsFixture = [
  * `meal-generation.test.ts` parses these records against MenuExtractionSchema
  * so the next field to go missing breaks the bench instead of quietly draining
  * it of signal.
+ *
+ * That guard could not catch `rating`, which went missing anyway. These records
+ * are a JOIN — menu extraction's output merged onto the chosen restaurant — and
+ * `rating` comes from the selection half, so parsing against the extraction
+ * schema alone passes without it forever. The selection prompt prints
+ * `Rating: ${restaurant.rating || 'N/A'}`, so all three restaurants read "N/A"
+ * and the bench never once exercised the model's ability to prefer a
+ * well-reviewed place. Production ratings come from Places and are populated.
+ * The guard test now asserts the joined shape, not just the extraction half.
  */
 export const restaurantMenuDataFixture = [
   {
     name: 'Sakura Ramen House', cuisine: 'japanese', address: '2100 Shattuck Ave, Berkeley',
+    rating: 4.4,
     orderingLinks: {
       doordash: 'https://www.doordash.com/store/sakura-ramen-house-berkeley-12345/',
       ubereats: null, grubhub: null, direct: 'https://sakuraramenhouse.com',
@@ -468,6 +478,7 @@ export const restaurantMenuDataFixture = [
   },
   {
     name: 'Zaytoon Mediterranean', cuisine: 'middle_eastern', address: '1133 Solano Ave, Berkeley',
+    rating: 4.6,
     orderingLinks: { doordash: null, ubereats: null, grubhub: null, direct: 'https://zaytoonberkeley.com' },
     menuData: [
       { name: 'Chicken Shawarma Plate', price: 17.0, category: 'dinner', estimatedCalories: 720, estimatedProtein: 50, estimatedCarbs: 72, estimatedFat: 26, healthRating: 'good', description: 'With rice and salad' },
@@ -477,6 +488,7 @@ export const restaurantMenuDataFixture = [
   },
   {
     name: 'Comal Next Door', cuisine: 'mexican', address: '2020 Shattuck Ave, Berkeley',
+    rating: 4.1,
     orderingLinks: { doordash: null, ubereats: null, grubhub: null, direct: null },
     menuData: [
       { name: 'Carnitas Tacos', price: 14.0, category: 'lunch', estimatedCalories: 610, estimatedProtein: 34, estimatedCarbs: 55, estimatedFat: 28, healthRating: 'fair', description: 'Three tacos, salsa verde' },
