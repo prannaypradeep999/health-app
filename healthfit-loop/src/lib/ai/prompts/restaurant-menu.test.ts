@@ -45,6 +45,15 @@ test('the search prompt still carries what it always carried', () => {
   assert.match(p, /grubhub\.com/);
 });
 
+test('the search prompt tells the model not to stop once it has found a platform', () => {
+  // GrubHub is listed third, and a model that treats the list as ranked stops
+  // after DoorDash and Uber Eats answer. The links are then permanently absent
+  // for that restaurant, so the UI has nothing to show no matter how it renders.
+  const p = createMenuSearchPrompt(restaurant, survey);
+  assert.match(p, /Do NOT stop early/i);
+  assert.match(p, /equally important/i);
+});
+
 test('the search prompt no longer asks the model to re-check distance', () => {
   // Distance is decided on coordinates before this prompt runs. Under a min(1)
   // schema, a model that "skips extraction" because it thinks the restaurant is

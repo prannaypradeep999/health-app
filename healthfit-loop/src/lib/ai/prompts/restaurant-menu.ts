@@ -90,16 +90,24 @@ RESTAURANT DETAILS:
 - Cuisine Type: ${restaurantCuisine}
 
 CRITICAL - ORDERING LINKS SEARCH:
-You MUST specifically search for this restaurant on these delivery platforms:
+Search ALL FOUR of these independently. They are equally important — finding a
+restaurant on one platform tells you NOTHING about whether it is on the others,
+and most restaurants are listed on several at once.
 1. DoorDash - Search doordash.com for "${restaurantName}" in ${restaurantCity}
 2. Uber Eats - Search ubereats.com for "${restaurantName}" in ${restaurantCity}
 3. GrubHub - Search grubhub.com for "${restaurantName}" in ${restaurantCity}
 4. Restaurant's own website for direct ordering
 
+Do NOT stop early. Run the GrubHub search even when DoorDash and Uber Eats have
+already returned a result — GrubHub is listed third here only for ordering, not
+because it matters less, and a null we could have filled costs the user an
+ordering option they would have used.
+
 For each platform, provide the ACTUAL URL if the restaurant is listed there.
 Set a platform to null if you did not find the restaurant on it. Every platform
 key must be present.
-NEVER make up or guess URLs - only include links you actually find.
+NEVER make up or guess URLs - only include links you actually find. A guessed
+GrubHub URL is worse than a null one.
 
 MENU SEARCH REQUIREMENTS:
 1. Find 8-12 specific menu items with current prices

@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useMemo } from "react";
+import { useState, useEffect, useMemo, useRef } from "react";
 import { ChatSearchBar } from "@/components/chat/ChatSearchBar";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -66,6 +66,67 @@ interface MealPlanPageProps {
   } | null;
 }
 
+/**
+ * Recipe generation measures at 6-8s on gpt-5.4-mini (bench-results, 2026-08-25,
+ * 6 runs), and near-instant on a cache hit. That range sits in the band where a
+ * user needs to be told something is happening but does NOT need a countdown.
+ *
+ * Deliberately counts UP, not down. The spread between a cache hit and a cold
+ * generation is roughly 40x, so any predicted finish time would be wrong most of
+ * the time, and a countdown that overruns reads as a hang — worse than showing
+ * nothing. Elapsed time makes no promise it can break.
+ *
+ * The stages below are the route's real phases, not decoration: it checks the
+ * recipe cache, then calls the model with the nutrition targets and dietary
+ * restrictions, then validates that the per-ingredient numbers sum correctly.
+ */
+const RECIPE_STAGES: Array<{ afterMs: number; label: string }> = [
+  { afterMs: 0, label: 'Checking saved recipes…' },
+  { afterMs: 1500, label: 'Writing the recipe…' },
+  { afterMs: 4000, label: 'Matching ingredients to your macros…' },
+  { afterMs: 8000, label: 'Checking the numbers add up…' },
+  { afterMs: 15000, label: 'Taking longer than usual — still working…' },
+];
+
+function RecipeLoadingOverlay({ dishName, onCancel }: { dishName: string; onCancel: () => void }) {
+  const [elapsedMs, setElapsedMs] = useState(0);
+
+  useEffect(() => {
+    const startedAt = Date.now();
+    const id = setInterval(() => setElapsedMs(Date.now() - startedAt), 250);
+    return () => clearInterval(id);
+  }, []);
+
+  const stage = [...RECIPE_STAGES].reverse().find(s => elapsedMs >= s.afterMs) ?? RECIPE_STAGES[0];
+  const seconds = Math.floor(elapsedMs / 1000);
+
+  return (
+    <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4">
+      <div className="bg-white rounded-xl border border-gray-200 shadow-lg max-w-sm w-full p-6 text-center">
+        <div className="w-10 h-10 mx-auto mb-4 border-[3px] border-purple-200 border-t-purple-600 rounded-full animate-spin" />
+
+        <h2 className="text-base font-semibold text-gray-900">{dishName}</h2>
+
+        {/* aria-live so screen readers announce each stage change. */}
+        <p className="text-sm text-gray-600 mt-2 min-h-[20px]" aria-live="polite">
+          {stage.label}
+        </p>
+
+        <p className="text-xs text-gray-400 mt-3 tabular-nums">
+          {seconds}s{seconds >= 10 ? ' · usually about 7s' : ''}
+        </p>
+
+        <button
+          onClick={onCancel}
+          className="mt-5 text-xs text-gray-500 hover:text-gray-800 underline underline-offset-2 transition-colors"
+        >
+          Cancel
+        </button>
+      </div>
+    </div>
+  );
+}
+
 export function MealPlanPage({ onNavigate, generationStatus, nutritionTargets: nutritionTargetsProp }: MealPlanPageProps) {
   const [selectedDay, setSelectedDay] = useState('');
   const [mealData, setMealData] = useState<any>(null);
@@ -95,6 +156,14 @@ export function MealPlanPage({ onNavigate, generationStatus, nutritionTargets: n
 
   // Loading state for recipe generation - also lifted to parent
   const [loadingRecipeMeal, setLoadingRecipeMeal] = useState<string | null>(null);
+
+  // So the overlay's Cancel actually cancels the request rather than just
+  // hiding it — a button that says Cancel and doesn't is worse than no button.
+  const recipeAbortRef = useRef<AbortController | null>(null);
+
+  // Named separately from loadingRecipeMeal (which holds the slot, e.g.
+  // "dinner") so the overlay can show the dish the user actually clicked.
+  const [recipeLoadingDishName, setRecipeLoadingDishName] = useState<string | null>(null);
 
   // ADD: Meal feedback state
   const [mealFeedback, setMealFeedback] = useState<{
@@ -1059,19 +1128,49 @@ export function MealPlanPage({ onNavigate, generationStatus, nutritionTargets: n
       (meal.alternative.name !== "Alternative not available") &&
       (meal.alternative.dish !== "Alternative not available");
 
-    // Check if this meal has any ordering links (same logic as RestaurantListSection)
-    const hasOrderingLinks = (meal: any): boolean => {
-      if (!meal) return false;
-      const links = meal.orderingLinks || {};
-      return !!(
-        (links.doordash && links.doordash.trim() !== '') ||
-        (links.ubereats && links.ubereats.trim() !== '') ||
-        (links.grubhub && links.grubhub.trim() !== '') ||
-        (links.direct && links.direct.trim() !== '') ||
-        meal.orderingUrl ||
-        meal.website ||
-        meal.menu_url
-      );
+    /**
+     * Colours match RestaurantListSection so the same platform looks the same
+     * wherever it appears.
+     */
+    const ORDER_PLATFORMS = [
+      { key: 'doordash', label: 'DoorDash', className: 'bg-red-500 hover:bg-red-600' },
+      { key: 'ubereats', label: 'Uber Eats', className: 'bg-green-600 hover:bg-green-700' },
+      { key: 'grubhub', label: 'GrubHub', className: 'bg-orange-500 hover:bg-orange-600' },
+      { key: 'direct', label: 'Direct', className: 'bg-[#8b5cf6] hover:bg-purple-700' },
+    ] as const;
+
+    /**
+     * Every platform the restaurant is actually listed on, not just the first.
+     *
+     * This card used to open `doordash || ubereats || grubhub || direct` behind
+     * a single "Order" button, so GrubHub was reachable only when BOTH DoorDash
+     * and Uber Eats were missing — a link we had found, verified and stored, and
+     * then never showed. RestaurantListSection has always rendered one button per
+     * platform; this brings the meal card in line with it.
+     *
+     * The model is told to write null for a platform it could not find, but the
+     * string "null" has come back before (see the link-resolution tests), so it
+     * is filtered here alongside blanks.
+     */
+    const availableOrderLinks = (meal: any) => {
+      const links = meal?.orderingLinks || {};
+      const found = ORDER_PLATFORMS
+        .map(p => ({ ...p, url: typeof links[p.key] === 'string' ? links[p.key].trim() : '' }))
+        .filter(p => p.url !== '' && p.url.toLowerCase() !== 'null');
+
+      if (found.length > 0) return found;
+
+      // Legacy single-field shape, for plans generated before orderingLinks existed.
+      const legacy = meal?.orderingUrl || meal?.website || meal?.menu_url;
+      return legacy
+        ? [{ key: 'direct', label: 'Order', className: 'bg-[#8b5cf6] hover:bg-purple-700', url: String(legacy) }]
+        : [];
+    };
+
+    const openOrderingLink = (url: string, platform: string) => {
+      console.log(`🍽️ [Order] Opening ${platform}:`, url);
+      // Universal Links open the native app when it is installed.
+      window.open(url, '_blank');
     };
 
     const handleRecipeClick = async (selectedMeal: any) => {
@@ -1112,7 +1211,13 @@ export function MealPlanPage({ onNavigate, generationStatus, nutritionTargets: n
       }
 
       setLoadingRecipeMeal(type);
+      setRecipeLoadingDishName(mealName);
       console.log('🍳 [Recipe] Generating...');
+
+      recipeAbortRef.current?.abort();
+      const abortController = new AbortController();
+      recipeAbortRef.current = abortController;
+
       try {
         // Get grocery list from mealData (available in parent scope)
         const groceryList = mealData?.mealPlan?.groceryList || mealData?.mealPlan?.planData?.groceryList;
@@ -1134,7 +1239,8 @@ export function MealPlanPage({ onNavigate, generationStatus, nutritionTargets: n
             },
             // NEW: Pass existing grocery items
             existingGroceryItems: groceryItems
-          })
+          }),
+          signal: abortController.signal
         });
 
         if (!response.ok) {
@@ -1153,10 +1259,19 @@ export function MealPlanPage({ onNavigate, generationStatus, nutritionTargets: n
           throw new Error(data.error || 'Failed to generate recipe');
         }
       } catch (error) {
+        // The user pressing Cancel is not a failure, and must not be reported
+        // as one.
+        if (error instanceof DOMException && error.name === 'AbortError') {
+          console.log('🍳 [Recipe] Cancelled by user');
+          return;
+        }
         console.error('🍳 [Recipe] ERROR:', error);
         // Show error to user instead of silent failure
         alert('Failed to generate recipe. Please try again.');
       } finally {
+        if (recipeAbortRef.current === abortController) {
+          recipeAbortRef.current = null;
+        }
         setLoadingRecipeMeal(null);
         console.log('🍳 [Recipe] Done');
       }
@@ -1423,17 +1538,18 @@ export function MealPlanPage({ onNavigate, generationStatus, nutritionTargets: n
 
               {/* Recipe button for home meals, Order only if restaurant has links */}
               {isRestaurant ? (
-                hasOrderingLinks(mealOption) && (
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    onClick={() => handleRecipeClick(mealOption)}
-                    disabled={loadingRecipeMeal === type}
-                    className="text-xs px-3 py-1 h-7 border-purple-300 text-purple-700 hover:bg-purple-50"
-                  >
-                    Order
-                  </Button>
-                )
+                <div className="flex flex-wrap items-center justify-end gap-1.5">
+                  {availableOrderLinks(mealOption).map((p) => (
+                    <Button
+                      key={p.key}
+                      size="sm"
+                      onClick={() => openOrderingLink(p.url, p.label)}
+                      className={`text-xs px-2.5 py-1 h-7 text-white border-0 shadow-sm ${p.className}`}
+                    >
+                      {p.label}
+                    </Button>
+                  ))}
+                </div>
               ) : (
                 <Button
                   size="sm"
@@ -1531,18 +1647,17 @@ export function MealPlanPage({ onNavigate, generationStatus, nutritionTargets: n
                       <div className="flex flex-wrap items-center gap-2 sm:gap-3">
                         {/* Recipe button for home meals, Order Now only if restaurant has links */}
                         {currentMeal.source === 'restaurant' ? (
-                          hasOrderingLinks(currentMeal) && (
+                          availableOrderLinks(currentMeal).map((p) => (
                             <Button
-                              variant="outline"
+                              key={p.key}
                               size="sm"
-                              onClick={() => handleRecipeClick(currentMeal)}
-                              disabled={loadingRecipeMeal === type}
-                              className="bg-purple-50 border-purple-300 text-purple-700 hover:bg-purple-100 transition-colors"
+                              onClick={() => openOrderingLink(p.url, p.label)}
+                              className={`text-white border-0 shadow-sm transition-colors ${p.className}`}
                             >
                               <ArrowSquareOut className="w-4 h-4 mr-1" weight="regular" />
-                              Order Now
+                              {p.label}
                             </Button>
-                          )
+                          ))
                         ) : (
                           <Button
                             variant="outline"
@@ -1659,6 +1774,18 @@ export function MealPlanPage({ onNavigate, generationStatus, nutritionTargets: n
             </div>
           )}
         </div>
+
+        {/* Shown the instant the button is pressed, so the click is visibly
+            acknowledged rather than only shrinking a spinner into the button. */}
+        {loadingRecipeMeal === type && (
+          <RecipeLoadingOverlay
+            dishName={recipeLoadingDishName || 'Your recipe'}
+            onCancel={() => {
+              recipeAbortRef.current?.abort();
+              setLoadingRecipeMeal(null);
+            }}
+          />
+        )}
 
         {/* Recipe Modal - Clean & Professional */}
         {activeRecipeModal?.mealType === type && activeRecipeModal?.recipeData && (
