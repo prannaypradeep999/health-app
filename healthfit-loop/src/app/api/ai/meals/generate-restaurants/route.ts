@@ -868,9 +868,24 @@ async function handleGenerate_restaurants(req: NextRequest) {
     // How much Phase 3 is promised is MEAL_SELECTION_RESERVE_MS, which lives in
     // route-budget.ts beside the measurement that justifies it. It was an
     // inline 22_000 here, chosen when selection took ~18s; selection's p95 at
-    // seven eating-out slots is 22.8s, so the reserve had quietly fallen below
+    // seven eating-out slots was 22.8s, so the reserve had quietly fallen below
     // the p95 of the phase it reserves for. Fewer enriched menus is a smaller
     // loss than no meals at all.
+    //
+    // ⚠️ 26_000 is better than 22_000 but is NOT known to be sufficient. That
+    // 22.8s was measured against a bench fixture of three restaurants of three
+    // dishes. Re-measured 2026-08-26 against six of eight — which is what this
+    // prompt's own `.slice(0, 8)` cap admits, so it is the real ceiling — the
+    // same seven-slot fixture gives p50 30.9s and p95 34.8s. A controlled A/B in
+    // one session: old fixture p50 20.2s, new p50 30.9s, so menu size causes it.
+    //
+    // At that size the three phases do not fit the route budget at all:
+    // discovery 9.5s + this phase's 9s floor + selection 34.8s = 53.2s against
+    // ROUTE_TOTAL_BUDGET_MS of 53s. No reserve value fixes that; there is
+    // nothing left to take. It is survivable today only because link filtering
+    // leaves 2-4 restaurants rather than six — so fixing the restaurant pool
+    // size would surface this as total loss of the restaurant half.
+    // See docs/superpowers/specs/2026-08-26-restaurant-remaining-defects-design.md.
     const menuExtractionStart = Date.now();
     const restaurantMenuData = await reservingBudget(MEAL_SELECTION_RESERVE_MS, () =>
       extractMenuInformation(selectedRestaurants, surveyData)

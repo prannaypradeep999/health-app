@@ -213,18 +213,67 @@ The constant is extracted and named so the reserve and the measurement that
 justifies it sit next to each other, the way `MENU_STRUCTURING_RESERVE_MS`
 already does in `route-budget.ts`.
 
-### The measurement that is still owed
+### The measurement that was owed — taken 2026-08-26
 
-Every latency number above comes from the bench fixture, which shows the model
-three restaurants of three dishes each. Production shows it up to six
-restaurants of eight. The margin is therefore an overestimate by an unmeasured
-amount, and the honest response is to measure it rather than to argue about it:
-add a production-shaped fixture (six restaurants, eight dishes) and re-run the
-seven-slot benchmark against it before believing the 15%.
+Every latency number above came from a fixture showing the model three
+restaurants of three dishes. Production shows it up to six of eight. The fixture
+is now six of eight — the prompt's own `.slice(0, 8)` cap means eight is the
+real per-restaurant ceiling, so this saturates production rather than
+exaggerating it — and the seven-slot benchmark was re-run.
 
-If that measurement puts p95 above 26s, the reserve is not the answer and the
-next move is to split selection into two calls — but that is a larger change and
-is not proposed here on the strength of a number that has not been taken.
+**The 15% margin was an artefact of the small fixture. It is gone.**
+
+A/B in one session, same model and conditions, `eats-out-often` (7 slots), n=5:
+
+| | old fixture 3×3 | new fixture 6×8 | available |
+|---|---|---|---|
+| p50 | 20,156 ms | **30,872 ms** | 26,705 ms |
+| p95 | 28,778 ms | **34,752 ms** | 26,705 ms |
+
+The old fixture reproduces ~20s against the ~17.4s originally recorded, so the
+harness is consistent and the +53% p50 is caused by menu size, not by drift or a
+slow API day. The median run now exceeds the budget; p95 exceeds it by 30%.
+
+### What this means: the reserve is necessary but not sufficient
+
+Raising the reserve to 26,000 is still strictly better than 22,000 and should
+stay. But it cannot close this gap, because at full menu size **the three phases
+do not fit the route budget at all**:
+
+```
+discovery        9,466 ms   (OBSERVED_RESTAURANT_DISCOVERY_MS)
+extraction floor 9,000 ms   (MENU_STRUCTURING_RESERVE_MS)
+selection p95   34,752 ms   (measured above)
+                ─────────
+                53,218 ms   against ROUTE_TOTAL_BUDGET_MS of 53,000
+```
+
+There is no reserve value that fixes this. Reserves divide the budget; they do
+not create it.
+
+**Why production has not collapsed:** link filtering leaves 2-4 restaurants
+rather than six, so the real prompt sits between the two fixtures. The
+restaurant-pool defect is currently *masking* the latency defect. Fixing the
+pool — previously logged as "the next real defect" — would surface this as total
+loss of the restaurant half, because Phase 3 is all-or-nothing. **These two must
+be scheduled together, pool first only if latency is addressed in the same
+change.**
+
+### Deliberately not fixed here
+
+Each remaining option changes generation behaviour or the route's shape, which
+is outside the containment this work was scoped to. Ranked by contained-ness:
+
+1. **Lower the dish cap** — `.slice(0, 8)` → 5 in `meal-generation.ts:979`. A
+   one-number change that directly attacks the +53%. Costs the model choice, so
+   fit and variety may worsen; wants a bench run, not a guess.
+2. **Split selection into two parallel calls** — roughly halves wall time and
+   keeps every dish. The largest change, and the one the original design named
+   as the fallback if this measurement came in above 26s. It did.
+3. **Raise `ROUTE_TOTAL_BUDGET_MS`** 53s → ~56s. Buys ~3s of a ~9s gap and eats
+   headroom against `maxDuration = 60`. Insufficient alone.
+
+The reserve change stays shipped. Nothing above was undertaken unilaterally.
 
 ---
 
