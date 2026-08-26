@@ -732,7 +732,22 @@ did not find a real URL for. Extract 6-12 menu items maximum.`,
             carbs: meal.carbs, fat: meal.fat,
           }));
           if (target) findings.push(...checkTarget(where, meal.estimatedCalories, target.calories));
-          findings.push(...checkText(where, `${meal.dish} ${meal.description}`, rules));
+          // The dish name only, which is also all production checks:
+          // validateRestrictions reads `meal.name || meal.dish || meal.description`,
+          // and for a restaurant meal `dish` is always truthy, so the description
+          // never reaches it.
+          //
+          // Scanning the description here as well produced six restriction
+          // violations against a Falafel Wrap, because the model's own
+          // justification prose reads "no meat, poultry, fish, or gelatin
+          // listed" and the term matcher is word-anchored but negation-blind.
+          // A checker that cries wolf on a compliant dish hides the real ones.
+          //
+          // Teaching containsTerm about negation was the obvious fix and is the
+          // wrong one: it would make a dietary and allergy check more permissive
+          // by trusting the model's own claim that an ingredient is absent.
+          // Over-flagging fails safe; under-flagging does not.
+          findings.push(...checkText(where, String(meal.dish ?? ''), rules));
 
           const source = truth.get(String(meal.restaurant).toLowerCase());
           if (!source) {
