@@ -430,10 +430,24 @@ export const nearbyRestaurantsFixture = [
 /**
  * Stands in for the menu data the restaurant-meal prompt receives.
  *
- * The ordering links here are the ground truth: Sakura has DoorDash and a
- * direct site, Zaytoon has only a direct site, Comal has nothing. A generated
- * meal that produces a Grubhub URL for any of them invented it — the prompt
- * explicitly tells the model to use null for platforms marked "not available".
+ * Six restaurants of eight dishes, because that is what production sends. It
+ * held three of three until 2026-08-26, and the selection latency budget was
+ * set from a p95 measured against that — 22.8s against 26.7s available, which
+ * looked like a 15% margin and was really a measurement of a prompt a third the
+ * size of the real one. A fixture that is cheap to run is not evidence about a
+ * phase whose cost scales with the menu it is handed.
+ *
+ * The ordering links here are the ground truth: Sakura and Great China have
+ * Grubhub and a direct site, Kiraku only Grubhub, Zaytoon and Angeline's only a
+ * direct site, Comal nothing. A generated meal that produces a URL for a
+ * platform marked null invented it — the prompt explicitly tells the model to
+ * use null for platforms marked "not available". DoorDash and UberEats are null
+ * throughout on purpose: both 403 datacenter IPs, so the prober strips them and
+ * production never ships one.
+ *
+ * Ratings agree with `nearbyRestaurantsFixture` for the restaurants that appear
+ * in both. They did not before — Sakura was 4.4 here and 4.5 there — which made
+ * the selection site's `rating-mismatch` check gradeable only by luck.
  *
  * The dish list must be called `menuData`, not `menuItems`. `menuItems` is the
  * name the extraction *schema* uses for the model's own output; the route
@@ -457,42 +471,118 @@ export const nearbyRestaurantsFixture = [
  * are a JOIN — menu extraction's output merged onto the chosen restaurant — and
  * `rating` comes from the selection half, so parsing against the extraction
  * schema alone passes without it forever. The selection prompt prints
- * `Rating: ${restaurant.rating || 'N/A'}`, so all three restaurants read "N/A"
- * and the bench never once exercised the model's ability to prefer a
+ * `Rating: ${restaurant.rating || 'N/A'}`, so every restaurant read "N/A" and
+ * the bench never once exercised the model's ability to prefer a
  * well-reviewed place. Production ratings come from Places and are populated.
  * The guard test now asserts the joined shape, not just the extraction half.
  */
 export const restaurantMenuDataFixture = [
   {
     name: 'Sakura Ramen House', cuisine: 'japanese', address: '2100 Shattuck Ave, Berkeley',
-    rating: 4.4,
+    rating: 4.5,
     orderingLinks: {
-      doordash: 'https://www.doordash.com/store/sakura-ramen-house-berkeley-12345/',
-      ubereats: null, grubhub: null, direct: 'https://sakuraramenhouse.com',
+      doordash: null, ubereats: null,
+      grubhub: 'https://www.grubhub.com/restaurant/sakura-ramen-house-berkeley/1234567', direct: 'https://sakuraramenhouse.com',
     },
     menuData: [
-      { name: 'Tonkotsu Ramen', price: 16.5, category: 'dinner', estimatedCalories: 780, estimatedProtein: 36, estimatedCarbs: 82, estimatedFat: 34, healthRating: 'fair', description: 'Pork bone broth with chashu' },
-      { name: 'Vegetable Gyoza', price: 8.5, category: 'lunch', estimatedCalories: 320, estimatedProtein: 12, estimatedCarbs: 40, estimatedFat: 12, healthRating: 'good', description: 'Six pieces, pan fried' },
-      { name: 'Salmon Poke Bowl', price: 18.25, category: 'lunch', estimatedCalories: 620, estimatedProtein: 40, estimatedCarbs: 64, estimatedFat: 23, healthRating: 'excellent', description: 'Over brown rice' },
+      { name: 'Tonkotsu Ramen', price: 16.5, category: 'dinner', estimatedCalories: 778, estimatedProtein: 36, estimatedCarbs: 82, estimatedFat: 34, healthRating: 'fair', description: 'Pork bone broth with chashu and soft egg' },
+      { name: 'Shoyu Chicken Ramen', price: 15.5, category: 'dinner', estimatedCalories: 646, estimatedProtein: 34, estimatedCarbs: 78, estimatedFat: 22, healthRating: 'good', description: 'Soy broth, grilled chicken, bamboo shoots' },
+      { name: 'Vegetable Gyoza', price: 8.5, category: 'lunch', estimatedCalories: 316, estimatedProtein: 12, estimatedCarbs: 40, estimatedFat: 12, healthRating: 'good', description: 'Six pieces, pan fried' },
+      { name: 'Salmon Poke Bowl', price: 18.25, category: 'lunch', estimatedCalories: 623, estimatedProtein: 40, estimatedCarbs: 64, estimatedFat: 23, healthRating: 'excellent', description: 'Over brown rice with edamame' },
+      { name: 'Chicken Karaage', price: 11.0, category: 'snack', estimatedCalories: 432, estimatedProtein: 28, estimatedCarbs: 26, estimatedFat: 24, healthRating: 'fair', description: 'Japanese fried chicken, lemon' },
+      { name: 'Spicy Miso Ramen', price: 17.0, category: 'dinner', estimatedCalories: 722, estimatedProtein: 33, estimatedCarbs: 80, estimatedFat: 30, healthRating: 'fair', description: 'Fermented chili miso, ground pork' },
+      { name: 'Agedashi Tofu', price: 7.5, category: 'snack', estimatedCalories: 243, estimatedProtein: 14, estimatedCarbs: 22, estimatedFat: 11, healthRating: 'good', description: 'Fried tofu in dashi broth' },
+      { name: 'Seaweed Salad', price: 6.0, category: 'lunch', estimatedCalories: 117, estimatedProtein: 4, estimatedCarbs: 14, estimatedFat: 5, healthRating: 'excellent', description: 'Wakame with sesame' },
     ],
   },
   {
     name: 'Zaytoon Mediterranean', cuisine: 'middle_eastern', address: '1133 Solano Ave, Berkeley',
-    rating: 4.6,
-    orderingLinks: { doordash: null, ubereats: null, grubhub: null, direct: 'https://zaytoonberkeley.com' },
+    rating: 4.4,
+    orderingLinks: {
+      doordash: null, ubereats: null,
+      grubhub: null, direct: 'https://zaytoonberkeley.com',
+    },
     menuData: [
-      { name: 'Chicken Shawarma Plate', price: 17.0, category: 'dinner', estimatedCalories: 720, estimatedProtein: 50, estimatedCarbs: 72, estimatedFat: 26, healthRating: 'good', description: 'With rice and salad' },
-      { name: 'Falafel Wrap', price: 12.5, category: 'lunch', estimatedCalories: 540, estimatedProtein: 19, estimatedCarbs: 64, estimatedFat: 23, healthRating: 'good', description: 'Tahini and pickles' },
+      { name: 'Chicken Shawarma Plate', price: 17.0, category: 'dinner', estimatedCalories: 722, estimatedProtein: 50, estimatedCarbs: 72, estimatedFat: 26, healthRating: 'good', description: 'With rice and salad' },
+      { name: 'Falafel Wrap', price: 12.5, category: 'lunch', estimatedCalories: 539, estimatedProtein: 19, estimatedCarbs: 64, estimatedFat: 23, healthRating: 'good', description: 'Tahini and pickles' },
       { name: 'Lamb Kofta', price: 21.0, category: 'dinner', estimatedCalories: 810, estimatedProtein: 51, estimatedCarbs: 57, estimatedFat: 42, healthRating: 'fair', description: 'Grilled, with hummus' },
+      { name: 'Chicken Kabob Bowl', price: 16.5, category: 'lunch', estimatedCalories: 586, estimatedProtein: 46, estimatedCarbs: 60, estimatedFat: 18, healthRating: 'excellent', description: 'Grilled breast over basmati' },
+      { name: 'Hummus and Pita', price: 9.0, category: 'snack', estimatedCalories: 386, estimatedProtein: 13, estimatedCarbs: 52, estimatedFat: 14, healthRating: 'good', description: 'Chickpea, tahini, olive oil' },
+      { name: 'Fattoush Salad', price: 11.0, category: 'lunch', estimatedCalories: 312, estimatedProtein: 8, estimatedCarbs: 34, estimatedFat: 16, healthRating: 'excellent', description: 'Romaine, sumac, crisp pita' },
+      { name: 'Beef Shawarma Plate', price: 19.0, category: 'dinner', estimatedCalories: 758, estimatedProtein: 47, estimatedCarbs: 66, estimatedFat: 34, healthRating: 'fair', description: 'Shaved beef, garlic sauce' },
+      { name: 'Stuffed Grape Leaves', price: 8.5, category: 'snack', estimatedCalories: 284, estimatedProtein: 6, estimatedCarbs: 38, estimatedFat: 12, healthRating: 'good', description: 'Rice and herbs, six pieces' },
     ],
   },
   {
     name: 'Comal Next Door', cuisine: 'mexican', address: '2020 Shattuck Ave, Berkeley',
-    rating: 4.1,
-    orderingLinks: { doordash: null, ubereats: null, grubhub: null, direct: null },
+    rating: 4.3,
+    orderingLinks: {
+      doordash: null, ubereats: null,
+      grubhub: null, direct: null,
+    },
     menuData: [
-      { name: 'Carnitas Tacos', price: 14.0, category: 'lunch', estimatedCalories: 610, estimatedProtein: 34, estimatedCarbs: 55, estimatedFat: 28, healthRating: 'fair', description: 'Three tacos, salsa verde' },
-      { name: 'Grilled Fish Bowl', price: 18.0, category: 'dinner', estimatedCalories: 650, estimatedProtein: 44, estimatedCarbs: 70, estimatedFat: 21, healthRating: 'excellent', description: 'Rice, beans, cabbage' },
+      { name: 'Carnitas Tacos', price: 14.0, category: 'lunch', estimatedCalories: 608, estimatedProtein: 34, estimatedCarbs: 55, estimatedFat: 28, healthRating: 'fair', description: 'Three tacos, salsa verde' },
+      { name: 'Grilled Fish Bowl', price: 18.0, category: 'dinner', estimatedCalories: 645, estimatedProtein: 44, estimatedCarbs: 70, estimatedFat: 21, healthRating: 'excellent', description: 'Rice, beans, cabbage' },
+      { name: 'Chicken Tinga Bowl', price: 16.0, category: 'lunch', estimatedCalories: 611, estimatedProtein: 42, estimatedCarbs: 68, estimatedFat: 19, healthRating: 'excellent', description: 'Chipotle chicken, black beans' },
+      { name: 'Veggie Burrito', price: 13.0, category: 'lunch', estimatedCalories: 622, estimatedProtein: 20, estimatedCarbs: 86, estimatedFat: 22, healthRating: 'good', description: 'Rice, beans, roasted peppers' },
+      { name: 'Carne Asada Plate', price: 21.0, category: 'dinner', estimatedCalories: 688, estimatedProtein: 48, estimatedCarbs: 52, estimatedFat: 32, healthRating: 'fair', description: 'Grilled steak, tortillas' },
+      { name: 'Chips and Guacamole', price: 9.5, category: 'snack', estimatedCalories: 486, estimatedProtein: 8, estimatedCarbs: 46, estimatedFat: 30, healthRating: 'fair', description: 'Fresh avocado, lime' },
+      { name: 'Shrimp Ceviche', price: 15.0, category: 'lunch', estimatedCalories: 272, estimatedProtein: 30, estimatedCarbs: 20, estimatedFat: 8, healthRating: 'excellent', description: 'Lime cured, cucumber' },
+      { name: 'Black Bean Soup', price: 7.5, category: 'snack', estimatedCalories: 238, estimatedProtein: 12, estimatedCarbs: 34, estimatedFat: 6, healthRating: 'excellent', description: 'Cumin, epazote' },
+    ],
+  },
+  {
+    name: 'Great China', cuisine: 'chinese', address: '2190 Bancroft Way, Berkeley',
+    rating: 4.2,
+    orderingLinks: {
+      doordash: null, ubereats: null,
+      grubhub: 'https://www.grubhub.com/restaurant/great-china-berkeley/2345678', direct: 'https://greatchinaberkeley.com',
+    },
+    menuData: [
+      { name: 'Steamed Fish Fillet', price: 22.0, category: 'dinner', estimatedCalories: 382, estimatedProtein: 46, estimatedCarbs: 18, estimatedFat: 14, healthRating: 'excellent', description: 'Ginger and scallion' },
+      { name: 'Kung Pao Chicken', price: 17.5, category: 'dinner', estimatedCalories: 578, estimatedProtein: 38, estimatedCarbs: 48, estimatedFat: 26, healthRating: 'good', description: 'Peanuts, dried chili' },
+      { name: 'Vegetable Chow Mein', price: 14.0, category: 'lunch', estimatedCalories: 588, estimatedProtein: 14, estimatedCarbs: 88, estimatedFat: 20, healthRating: 'good', description: 'Egg noodles, bok choy' },
+      { name: 'Beijing Duck Bun', price: 12.0, category: 'snack', estimatedCalories: 344, estimatedProtein: 18, estimatedCarbs: 32, estimatedFat: 16, healthRating: 'fair', description: 'Two buns, hoisin' },
+      { name: 'Mapo Tofu', price: 15.0, category: 'dinner', estimatedCalories: 456, estimatedProtein: 26, estimatedCarbs: 34, estimatedFat: 24, healthRating: 'good', description: 'Sichuan peppercorn, ground pork' },
+      { name: 'Garlic Green Beans', price: 11.0, category: 'lunch', estimatedCalories: 206, estimatedProtein: 7, estimatedCarbs: 22, estimatedFat: 10, healthRating: 'excellent', description: 'Wok blistered' },
+      { name: 'Hot and Sour Soup', price: 8.0, category: 'snack', estimatedCalories: 183, estimatedProtein: 10, estimatedCarbs: 20, estimatedFat: 7, healthRating: 'good', description: 'Tofu, bamboo, vinegar' },
+      { name: 'Salt and Pepper Prawns', price: 23.0, category: 'dinner', estimatedCalories: 454, estimatedProtein: 40, estimatedCarbs: 24, estimatedFat: 22, healthRating: 'good', description: 'Shell on, jalapeno' },
+    ],
+  },
+  {
+    name: 'Angeline\'s Louisiana Kitchen', cuisine: 'cajun', address: '2261 Shattuck Ave, Berkeley',
+    rating: 4.1,
+    orderingLinks: {
+      doordash: null, ubereats: null,
+      grubhub: null, direct: 'https://angelineskitchen.com',
+    },
+    menuData: [
+      { name: 'Blackened Catfish', price: 23.0, category: 'dinner', estimatedCalories: 500, estimatedProtein: 44, estimatedCarbs: 36, estimatedFat: 20, healthRating: 'good', description: 'Cajun spice, dirty rice' },
+      { name: 'Shrimp Etouffee', price: 21.5, category: 'dinner', estimatedCalories: 618, estimatedProtein: 34, estimatedCarbs: 62, estimatedFat: 26, healthRating: 'fair', description: 'Roux gravy over rice' },
+      { name: 'Jambalaya', price: 19.0, category: 'dinner', estimatedCalories: 640, estimatedProtein: 36, estimatedCarbs: 70, estimatedFat: 24, healthRating: 'fair', description: 'Andouille, chicken, trinity' },
+      { name: 'Gumbo Cup', price: 10.0, category: 'snack', estimatedCalories: 294, estimatedProtein: 16, estimatedCarbs: 26, estimatedFat: 14, healthRating: 'good', description: 'Dark roux, okra' },
+      { name: 'Red Beans and Rice', price: 14.0, category: 'lunch', estimatedCalories: 508, estimatedProtein: 22, estimatedCarbs: 78, estimatedFat: 12, healthRating: 'good', description: 'Slow simmered, smoked ham' },
+      { name: 'Fried Green Tomatoes', price: 11.5, category: 'snack', estimatedCalories: 364, estimatedProtein: 8, estimatedCarbs: 38, estimatedFat: 20, healthRating: 'fair', description: 'Remoulade' },
+      { name: 'Grilled Chicken Salad', price: 16.0, category: 'lunch', estimatedCalories: 358, estimatedProtein: 40, estimatedCarbs: 18, estimatedFat: 14, healthRating: 'excellent', description: 'Creole vinaigrette' },
+      { name: 'Collard Greens', price: 7.0, category: 'lunch', estimatedCalories: 142, estimatedProtein: 6, estimatedCarbs: 16, estimatedFat: 6, healthRating: 'excellent', description: 'Braised with vinegar' },
+    ],
+  },
+  {
+    name: 'Kiraku Izakaya', cuisine: 'japanese', address: '2566 Telegraph Ave, Berkeley',
+    rating: 4.4,
+    orderingLinks: {
+      doordash: null, ubereats: null,
+      grubhub: 'https://www.grubhub.com/restaurant/kiraku-berkeley/3456789', direct: null,
+    },
+    menuData: [
+      { name: 'Grilled Mackerel', price: 18.0, category: 'dinner', estimatedCalories: 418, estimatedProtein: 42, estimatedCarbs: 4, estimatedFat: 26, healthRating: 'excellent', description: 'Salt grilled, daikon' },
+      { name: 'Chicken Yakitori', price: 13.0, category: 'snack', estimatedCalories: 294, estimatedProtein: 30, estimatedCarbs: 12, estimatedFat: 14, healthRating: 'good', description: 'Four skewers, tare glaze' },
+      { name: 'Beef Tataki', price: 19.5, category: 'dinner', estimatedCalories: 372, estimatedProtein: 38, estimatedCarbs: 10, estimatedFat: 20, healthRating: 'good', description: 'Seared rare, ponzu' },
+      { name: 'Vegetable Tempura', price: 12.5, category: 'lunch', estimatedCalories: 464, estimatedProtein: 8, estimatedCarbs: 54, estimatedFat: 24, healthRating: 'fair', description: 'Assorted, tentsuyu' },
+      { name: 'Chirashi Bowl', price: 24.0, category: 'dinner', estimatedCalories: 608, estimatedProtein: 44, estimatedCarbs: 72, estimatedFat: 16, healthRating: 'excellent', description: 'Assorted sashimi over rice' },
+      { name: 'Edamame', price: 6.5, category: 'snack', estimatedCalories: 158, estimatedProtein: 12, estimatedCarbs: 14, estimatedFat: 6, healthRating: 'excellent', description: 'Sea salt' },
+      { name: 'Tofu Steak', price: 14.0, category: 'lunch', estimatedCalories: 322, estimatedProtein: 20, estimatedCarbs: 20, estimatedFat: 18, healthRating: 'good', description: 'Mushroom butter sauce' },
+      { name: 'Chicken Nanban', price: 17.0, category: 'dinner', estimatedCalories: 564, estimatedProtein: 34, estimatedCarbs: 44, estimatedFat: 28, healthRating: 'fair', description: 'Sweet vinegar, tartar' },
     ],
   },
 ];

@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createRestaurantMealGenerationPrompt } from './meal-generation';
 import { MenuExtractionSchema } from '../schemas/restaurants';
-import { restaurantMenuDataFixture, fixtures } from '../../../../scripts/fixtures/surveys';
+import { restaurantMenuDataFixture, nearbyRestaurantsFixture, fixtures } from '../../../../scripts/fixtures/surveys';
 
 /**
  * The restaurant-selection prompt's one irreplaceable job is to show the model
@@ -152,6 +152,43 @@ test('no benched restaurant renders a placeholder in the selection prompt', () =
     assert.ok(
       prompt.includes(String(restaurant.rating)),
       `${restaurant.name}'s rating is missing from the benched prompt`
+    );
+  }
+});
+
+test('the benched menu stays the size production actually sends', () => {
+  // The latency budget is derived from this prompt's p95, and this prompt's
+  // cost scales with the menu. Measured against three restaurants of three
+  // dishes, selection p95 was 22.8s against 26.7s available and the 15% margin
+  // was an artefact of a fixture a third of production's size.
+  //
+  // So the size is load-bearing, not incidental, and shrinking it silently
+  // invalidates the budget rather than just making the bench cheaper.
+  assert.ok(
+    restaurantMenuDataFixture.length >= 6,
+    `only ${restaurantMenuDataFixture.length} benched restaurants — production sends six, ` +
+      'and the selection latency budget was measured against that'
+  );
+  for (const restaurant of restaurantMenuDataFixture) {
+    assert.ok(
+      restaurant.menuData.length >= 8,
+      `${restaurant.name} has ${restaurant.menuData.length} dishes — extraction returns about eight`
+    );
+  }
+});
+
+test('a restaurant in both fixtures has one rating, not two', () => {
+  // The selection site grades `rating-mismatch` by comparing the model's echoed
+  // rating against the supplied one. Which fixture supplied it depends on the
+  // site, so when the two disagreed the check was gradeable only by luck.
+  const nearby = new Map(nearbyRestaurantsFixture.map(r => [r.name, r.rating]));
+  for (const restaurant of restaurantMenuDataFixture) {
+    const other = nearby.get(restaurant.name);
+    if (other === undefined) continue;
+    assert.equal(
+      restaurant.rating,
+      other,
+      `${restaurant.name} is rated ${restaurant.rating} here and ${other} in nearbyRestaurantsFixture`
     );
   }
 });
