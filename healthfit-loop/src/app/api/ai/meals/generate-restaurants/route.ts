@@ -28,6 +28,7 @@ import {
 } from '@/lib/ai/schemas';
 import { parseChoice } from '@/lib/ai/validate';
 import { logUsage } from '@/lib/ai/usage';
+import { trace } from '@/lib/utils/run-trace';
 
 export const runtime = 'nodejs';
 // 60s is the Hobby ceiling and is valid on every Vercel plan. Without this
@@ -723,12 +724,24 @@ async function triggerHomeMeals(
       body: JSON.stringify({ backgroundGeneration: true, mealPlanId, restaurantCalories }),
     });
 
+    // The handoff is the single most important thing to be able to confirm
+    // after a run: if it does not appear, home meals and groceries never ran.
+    trace(mealPlanId, 'restaurants', res.ok ? 'ok' : 'fail', {
+      step: 'handoff-to-home',
+      httpStatus: res.status,
+      restaurantMealsCounted: restaurantCalories.length,
+    });
+
     if (res.ok) {
       console.log('[RESTAURANT-GENERATION] ✅ Home meal generation accepted the handoff');
     } else {
       console.error('[RESTAURANT-GENERATION] ❌ Home meal handoff rejected:', res.status);
     }
   } catch (error) {
+    trace(mealPlanId, 'restaurants', 'fail', {
+      step: 'handoff-to-home',
+      error: error instanceof Error ? error.message.slice(0, 120) : 'unknown',
+    });
     console.error('[RESTAURANT-GENERATION] ❌ Home meal handoff threw:', error);
   }
 }
@@ -749,6 +762,10 @@ async function handleGenerate_restaurants(req: NextRequest) {
     } catch {
       console.log(`[RESTAURANT-GENERATION] 📄 Empty request body, using defaults`);
     }
+
+    trace(requestData.mealPlanId, 'restaurants', 'start', {
+      background: requestData.backgroundGeneration ?? false,
+    });
 
     console.log(`[RESTAURANT-GENERATION] 📋 Request data:`, {
       backgroundGeneration: requestData.backgroundGeneration,
@@ -1092,6 +1109,16 @@ async function handleGenerate_restaurants(req: NextRequest) {
       );
     }
     
+    // Recorded before the handoff so a run that dies during the handoff still
+    // shows what the restaurant phase actually produced. mealsSelected=0 here
+    // is the exact failure that emptied a plan on 2026-08-26.
+    trace(requestData.mealPlanId, 'restaurants', 'ok', {
+      ms: Date.now() - startTime,
+      searched: selectedRestaurants.length,
+      withLinks: restaurantMenuData.length,
+      mealsSelected: (selectedRestaurantMeals || []).length,
+    });
+
     // The relay's second hop. after() keeps this instance alive past the
     // response so the fetch is actually dispatched — the survey route's
     // equivalent call was orphaned exactly like this and silently dropped.

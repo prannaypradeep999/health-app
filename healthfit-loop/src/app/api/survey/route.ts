@@ -8,6 +8,7 @@ import { getStartOfWeek } from '@/lib/utils/date-utils';
 import { checkPreferenceConflicts } from '@/lib/utils/preference-conflict-checker';
 import { sendEmail, generateDashboardReadyEmail } from '@/lib/email';
 import { getAuthUserId } from '@/lib/auth';
+import { trace } from '@/lib/utils/run-trace';
 
 export const runtime = 'nodejs';
 
@@ -293,6 +294,14 @@ export async function POST(req: Request) {
       });
       console.log(`[SURVEY-API] 🍪 Set cookies: guest_session=${sessionId}, survey_id=${survey.id}, meal_plan_id=${mealPlan.id} (maxAge: 30d)`);
 
+      // Opens the timeline. Every later hop repeats run=<mealPlan.id>, so this
+      // line is what a post-run review greps for to find the chain's start.
+      trace(mealPlan.id, 'survey', 'start', {
+        surveyId: survey.id,
+        session: sessionId,
+        zip: survey.zipCode ?? null,
+      });
+
       // Step 2: Sequential meal generation + parallel workout generation
       // The LoadingJourney will poll for status updates
 
@@ -322,6 +331,10 @@ export async function POST(req: Request) {
         try {
           console.log('[FINAL] 🏪 Starting restaurant generation first (sequential)...');
           const restaurantResult = await triggerRestaurantGeneration(survey.id, sessionId, baseUrl, mealPlan.id);
+          trace(mealPlan.id, 'survey', restaurantResult.success ? 'ok' : 'fail', {
+            step: 'restaurant-kickoff',
+            error: restaurantResult.error ?? null,
+          });
           console.log('[FINAL] 🏪 Restaurant kickoff settled:', {
             success: restaurantResult.success,
             error: restaurantResult.error ?? null,

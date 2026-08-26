@@ -27,6 +27,7 @@ import {
 } from '@/lib/ai/schemas';
 import { parseChoice } from '@/lib/ai/validate';
 import { runVerification, verifyGroceryCoverage } from '@/lib/verification';
+import { trace } from '@/lib/utils/run-trace';
 
 export const runtime = 'nodejs';
 // 60s is the Hobby ceiling and is valid on every Vercel plan. Without this
@@ -804,7 +805,7 @@ async function enhanceMealsWithImages(homeMeals: any[]): Promise<any[]> {
  * Trigger background grocery price lookup
  * Runs after meal plan is saved to enrich grocery list with real local prices
  */
-async function triggerGroceryPriceLookup(surveyId: string) {
+async function triggerGroceryPriceLookup(surveyId: string, mealPlanId?: string) {
   console.log('[HOME-MEALS] 🛒 Triggering background grocery price lookup...');
 
   try {
@@ -825,11 +826,21 @@ async function triggerGroceryPriceLookup(surveyId: string) {
 
     if (res.ok) {
       const data = await res.json();
+      // The relay's last hop. Its absence is what "no grocery stores" looks
+      // like in the logs.
+      trace(mealPlanId, 'groceries', 'ok', {
+        items: data.itemCount ?? 0,
+        store: data.recommendedStore ?? null,
+      });
       console.log(`[HOME-MEALS] ✅ Grocery prices complete: ${data.itemCount} items, best store: ${data.recommendedStore}`);
     } else {
+      trace(mealPlanId, 'groceries', 'fail', { httpStatus: res.status });
       console.warn('[HOME-MEALS] ⚠️ Grocery price lookup failed:', res.status);
     }
   } catch (error) {
+    trace(mealPlanId, 'groceries', 'fail', {
+      error: error instanceof Error ? error.message.slice(0, 120) : 'unknown',
+    });
     console.error('[HOME-MEALS] ❌ Failed to trigger grocery price lookup:', error);
   }
 }
@@ -1416,6 +1427,13 @@ async function handleGenerate_home(req: NextRequest) {
       console.log(`[HOME-GENERATION] 📄 Empty request body, using defaults`);
     }
 
+    // Receipt for the relay's second hop. If this line exists, the restaurant
+    // route's handoff actually landed in a new function invocation.
+    trace(requestData.mealPlanId, 'home-meals', 'start', {
+      background: requestData.backgroundGeneration ?? false,
+      restaurantCaloriesReceived: requestData.restaurantCalories?.length ?? 0,
+    });
+
     console.log(`[HOME-GENERATION] 📋 Request data:`, {
       backgroundGeneration: requestData.backgroundGeneration,
       mealPlanId: requestData.mealPlanId || 'none - will create new',
@@ -1681,7 +1699,7 @@ async function handleGenerate_home(req: NextRequest) {
 
       // Runs after the response is flushed, but the platform keeps the instance
       // alive for it.
-      after(triggerGroceryPriceLookup(surveyData.id));
+      after(triggerGroceryPriceLookup(surveyData.id, requestData.mealPlanId ?? mealPlan?.id));
 
     } catch (dbError) {
       console.error(`[HOME-GENERATION] ❌ Failed to save home meal plan:`, dbError);

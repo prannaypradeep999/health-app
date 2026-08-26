@@ -13,6 +13,7 @@ import { logUsage } from '@/lib/ai/usage';
 import { WorkoutPlanSchema, pinnedWorkoutDetail, toStrictJsonSchema } from '@/lib/ai/schemas';
 import { parseChoice } from '@/lib/ai/validate';
 import { runVerification, verifyWorkoutPlan, equipmentFromGymAccess } from '@/lib/verification';
+import { trace } from '@/lib/utils/run-trace';
 
 export const runtime = 'nodejs';
 // 60s is the Hobby ceiling and is valid on every Vercel plan. Without this
@@ -189,6 +190,14 @@ async function handleGenerateWorkout(req: NextRequest) {
         { status: 500 }
       );
     }
+
+    // Workouts run on a side branch off the survey, not through the meal
+    // relay, so they are keyed by survey id. Without this line a run where
+    // meals succeeded and workouts died looks identical to a complete one.
+    trace(surveyData?.id, 'workouts', 'ok', {
+      ms: totalTime,
+      days: persistedWorkoutPlan?.weeklyPlan?.length ?? 0,
+    });
 
     return NextResponse.json({
       success: true,

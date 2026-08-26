@@ -4,6 +4,7 @@ import { cookies } from 'next/headers';
 import { prisma } from '@/lib/db';
 import { getAuthUserId } from '@/lib/auth';
 import { MODELS } from '@/lib/ai/models';
+import { trace } from '@/lib/utils/run-trace';
 
 const openai = new OpenAI({
   apiKey: process.env.GPT_KEY,
@@ -295,6 +296,11 @@ Guidelines:
 
     let toolCallRounds = 0;
     const maxToolRounds = 3;
+    const chatStarted = Date.now();
+    // Keyed by meal plan so a chat question lands in the same timeline as the
+    // generation run it is asking about.
+    const chatRunId = (await cookies()).get('meal_plan_id')?.value;
+    trace(chatRunId, 'chat', 'start', { turns: messages.length });
 
     while (toolCallRounds < maxToolRounds) {
       const completion = await openai.chat.completions.create({
@@ -311,6 +317,14 @@ Guidelines:
       conversationMessages.push(response);
 
       if (!response.tool_calls || response.tool_calls.length === 0) {
+        // The only success path out of the loop. Its absence in a run means
+        // the request was killed mid-loop, which is exactly what the missing
+        // maxDuration caused.
+        trace(chatRunId, 'chat', 'ok', {
+          ms: Date.now() - chatStarted,
+          toolRounds: toolCallRounds,
+          chars: (response.content || '').length,
+        });
         // No tool calls, return final response as stream
         let streamClosed = false;
         const stream = new ReadableStream({
