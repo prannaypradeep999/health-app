@@ -12,6 +12,7 @@ import AccountCreationModal from './modals/AccountCreationModal';
 import { ForkKnife, Spinner } from '@phosphor-icons/react';
 import { motion } from 'framer-motion';
 import { DashboardChat } from '@/components/chat/DashboardChat';
+import { canResetPollCounter, hasGivenUpOnRestaurants } from '@/lib/utils/generation-progress';
 
 type Screen = 'dashboard' | 'meal-plan' | 'workout-plan' | 'progress' | 'account';
 
@@ -44,6 +45,12 @@ interface GenerationStatus {
   restaurantsDiscovered: boolean;
   homeMealsGenerated: boolean;
   restaurantMealsGenerated: boolean;
+  /**
+   * The restaurant phase stopped without producing meals. Distinct from
+   * `!restaurantMealsGenerated`, which is also true while the search is still
+   * running — see hasGivenUpOnRestaurants.
+   */
+  restaurantSearchFailed: boolean;
 }
 
 export function DashboardContainer({ initialScreen = 'dashboard' }: DashboardContainerProps) {
@@ -58,7 +65,8 @@ export function DashboardContainer({ initialScreen = 'dashboard' }: DashboardCon
     workoutsGenerated: false,
     restaurantsDiscovered: false,
     homeMealsGenerated: false,
-    restaurantMealsGenerated: false
+    restaurantMealsGenerated: false,
+    restaurantSearchFailed: false
   });
   const [loading, setLoading] = useState(true);
   const [navigating, setNavigating] = useState(false);
@@ -178,9 +186,12 @@ export function DashboardContainer({ initialScreen = 'dashboard' }: DashboardCon
 
   useEffect(() => {
     // Poll for generation status updates - different intervals based on what's still pending
-    const shouldPoll = !generationStatus.mealsGenerated ||
+    const shouldPoll = (!generationStatus.mealsGenerated ||
                       !generationStatus.workoutsGenerated ||
-                      (generationStatus.homeMealsGenerated && !generationStatus.restaurantMealsGenerated);
+                      (generationStatus.homeMealsGenerated && !generationStatus.restaurantMealsGenerated)) &&
+                      // A restaurant phase we have given up on is not going to
+                      // start producing meals because we asked again.
+                      !generationStatus.restaurantSearchFailed;
 
     if (shouldPoll && !pollErrorDashboard) {
       // More frequent polling if restaurants are still being discovered
@@ -204,13 +215,21 @@ export function DashboardContainer({ initialScreen = 'dashboard' }: DashboardCon
 
       return () => clearInterval(pollInterval);
     }
-  }, [generationStatus.mealsGenerated, generationStatus.workoutsGenerated, generationStatus.homeMealsGenerated, generationStatus.restaurantMealsGenerated, pollErrorDashboard]);
+  }, [generationStatus.mealsGenerated, generationStatus.workoutsGenerated, generationStatus.homeMealsGenerated, generationStatus.restaurantMealsGenerated, generationStatus.restaurantSearchFailed, pollErrorDashboard]);
 
   useEffect(() => {
-    if (generationStatus.mealsGenerated && generationStatus.workoutsGenerated) {
+    // Only reset once EVERY phase the loop waits on is done. Resetting on
+    // meals+workouts alone meant a plan that finished without restaurants
+    // cleared the counter on every tick, so MAX_DASHBOARD_POLL_ATTEMPTS never
+    // fired and the dashboard polled every 3s indefinitely.
+    if (canResetPollCounter(generationStatus)) {
       generationPollAttemptsRef.current = 0;
     }
-  }, [generationStatus.mealsGenerated, generationStatus.workoutsGenerated]);
+  }, [
+    generationStatus.mealsGenerated,
+    generationStatus.workoutsGenerated,
+    generationStatus.restaurantMealsGenerated,
+  ]);
 
   // Read tab param from URL on mount (client-side only)
   useEffect(() => {
@@ -332,11 +351,18 @@ export function DashboardContainer({ initialScreen = 'dashboard' }: DashboardCon
       let homeMealsGenerated = false;
       let restaurantMealsGenerated = false;
       let restaurantsDiscovered = false;
+      // Null until the meals payload parses. hasGivenUpOnRestaurants treats
+      // null as "still live", so a failed parse never fabricates a timeout.
+      let planUpdatedAtMs: number | null = null;
 
       // If meals exist, check if it's a split pipeline result
       if (mealsGenerated) {
         try {
           const mealsData = await mealsResponse.json();
+          const parsedUpdatedAt = mealsData.planUpdatedAt
+            ? Date.parse(mealsData.planUpdatedAt)
+            : NaN;
+          planUpdatedAtMs = Number.isNaN(parsedUpdatedAt) ? null : parsedUpdatedAt;
           setMealPlanTargets(mealsData.mealPlan?.nutritionTargets || null);
           if (typeof mealsData.isCurrentWeek === 'boolean') {
             setMealWeekStatus({
@@ -422,14 +448,23 @@ export function DashboardContainer({ initialScreen = 'dashboard' }: DashboardCon
         }
       }
 
-      console.log(`Generation status: meals=${mealsGenerated}, workouts=${workoutsGenerated}, home=${homeMealsGenerated}, restaurants=${restaurantMealsGenerated}`);
+      const restaurantSearchFailed = hasGivenUpOnRestaurants({
+        restaurantMealsGenerated,
+        planUpdatedAtMs,
+        pollAttempts: generationPollAttemptsRef.current,
+        maxPollAttempts: MAX_DASHBOARD_POLL_ATTEMPTS,
+        nowMs: Date.now(),
+      });
+
+      console.log(`Generation status: meals=${mealsGenerated}, workouts=${workoutsGenerated}, home=${homeMealsGenerated}, restaurants=${restaurantMealsGenerated}, restaurantsFailed=${restaurantSearchFailed}`);
 
       setGenerationStatus({
         mealsGenerated,
         workoutsGenerated,
         restaurantsDiscovered,
         homeMealsGenerated,
-        restaurantMealsGenerated
+        restaurantMealsGenerated,
+        restaurantSearchFailed
       });
     } catch (error) {
       console.error('Failed to check generation status:', error);

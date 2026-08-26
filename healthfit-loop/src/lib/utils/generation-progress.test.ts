@@ -1,0 +1,98 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import {
+  GENERATION_STALE_AFTER_MS,
+  canResetPollCounter,
+  hasGivenUpOnRestaurants,
+} from './generation-progress';
+
+const NOW = 1_800_000_000_000;
+
+function input(over: Partial<Parameters<typeof hasGivenUpOnRestaurants>[0]> = {}) {
+  return {
+    restaurantMealsGenerated: false,
+    planUpdatedAtMs: NOW - 1000,
+    pollAttempts: 0,
+    maxPollAttempts: 120,
+    nowMs: NOW,
+    ...over,
+  };
+}
+
+test('a fresh plan with no restaurants yet is still in progress', () => {
+  assert.equal(hasGivenUpOnRestaurants(input()), false);
+});
+
+test('the plan that spun for 17 hours is given up on', () => {
+  // Observed: cmt9ldt760003kw04r2o3cqnh, last written 04:28Z, polled at 21:54Z.
+  const seventeenHours = 17 * 60 * 60 * 1000;
+  assert.equal(
+    hasGivenUpOnRestaurants(input({ planUpdatedAtMs: NOW - seventeenHours })),
+    true
+  );
+});
+
+test('a plan goes stale exactly at the threshold, not a tick before', () => {
+  assert.equal(
+    hasGivenUpOnRestaurants(input({ planUpdatedAtMs: NOW - GENERATION_STALE_AFTER_MS + 1 })),
+    false
+  );
+  assert.equal(
+    hasGivenUpOnRestaurants(input({ planUpdatedAtMs: NOW - GENERATION_STALE_AFTER_MS })),
+    true
+  );
+});
+
+test('exhausting the poll budget gives up even on a fresh plan', () => {
+  assert.equal(
+    hasGivenUpOnRestaurants(input({ pollAttempts: 120, maxPollAttempts: 120 })),
+    true
+  );
+});
+
+test('a plan with no known timestamp is treated as live', () => {
+  // Otherwise the first render, before any fetch resolves, would show failure.
+  assert.equal(hasGivenUpOnRestaurants(input({ planUpdatedAtMs: null })), false);
+});
+
+test('restaurants that did generate are never reported as given up on', () => {
+  const ancient = NOW - 17 * 60 * 60 * 1000;
+  assert.equal(
+    hasGivenUpOnRestaurants(
+      input({ restaurantMealsGenerated: true, planUpdatedAtMs: ancient, pollAttempts: 999 })
+    ),
+    false
+  );
+});
+
+test('the poll counter may not reset while restaurants are outstanding', () => {
+  // This is the exact state that polled forever: meals and workouts done,
+  // restaurants never arriving, counter reset on every tick.
+  assert.equal(
+    canResetPollCounter({
+      mealsGenerated: true,
+      workoutsGenerated: true,
+      restaurantMealsGenerated: false,
+    }),
+    false
+  );
+});
+
+test('the poll counter resets only when every phase is complete', () => {
+  assert.equal(
+    canResetPollCounter({
+      mealsGenerated: true,
+      workoutsGenerated: true,
+      restaurantMealsGenerated: true,
+    }),
+    true
+  );
+  assert.equal(
+    canResetPollCounter({
+      mealsGenerated: false,
+      workoutsGenerated: true,
+      restaurantMealsGenerated: true,
+    }),
+    false
+  );
+});

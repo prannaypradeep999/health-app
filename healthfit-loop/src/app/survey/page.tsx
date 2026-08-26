@@ -2869,6 +2869,25 @@ function SurveyContent() {
     checkAndResetSession();
   }, []); // Only run once on component mount
 
+  // Keep the address bar honest once generation starts.
+  //
+  // LoadingJourney is rendered from this page behind `showLoadingJourney`,
+  // which is React state — the URL stays `/survey` the whole time it is on
+  // screen. Refreshing therefore dropped the state and re-rendered the survey
+  // questions, which read to users as "it sent me back to the survey and lost
+  // my answers". Their answers were never lost; the plan was already saved and
+  // generating server-side.
+  //
+  // replaceState rather than a router push: the visible component must not
+  // change (the journey animation continues uninterrupted), only the entry the
+  // browser will reload. A refresh now lands on /dashboard, which polls the
+  // same plan and renders its own progress state.
+  useEffect(() => {
+    if (showLoadingJourney && typeof window !== 'undefined') {
+      window.history.replaceState({}, '', '/dashboard');
+    }
+  }, [showLoadingJourney]);
+
   const handleStart = () => {
     setShowSteps(true);
   };

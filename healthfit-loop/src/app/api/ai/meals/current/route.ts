@@ -403,7 +403,13 @@ export async function GET() {
       mealPlan: mealData,
       isCurrentWeek,
       weekOf: mealData.weekOf,
-      currentWeek: formatDateKey(currentWeekStart)
+      currentWeek: formatDateKey(currentWeekStart),
+      // When this plan was last written. The dashboard uses it to tell an
+      // in-progress phase apart from one that stopped hours ago: a `partial`
+      // plan whose phase flags never flip is indistinguishable from a live one
+      // without a clock, which is why the restaurant spinner once ran for 17
+      // hours against a plan that had finished the previous night.
+      planUpdatedAt: mealPlan?.updatedAt ?? null
     });
 
   } catch (error) {

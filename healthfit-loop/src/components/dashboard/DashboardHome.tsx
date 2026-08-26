@@ -64,6 +64,8 @@ interface DashboardHomeProps {
     restaurantsDiscovered: boolean;
     homeMealsGenerated: boolean;
     restaurantMealsGenerated: boolean;
+    /** Search stopped without producing meals; show a result, not a spinner. */
+    restaurantSearchFailed?: boolean;
   };
   nutritionTargets?: {
     dailyCalories: number;
@@ -228,10 +230,11 @@ export function DashboardHome({ user, onNavigate, generationStatus, nutritionTar
         <div className="flex-1">
           <div className="flex items-center gap-2 mb-2">
             <Sparkle size={20} weight="fill" className="text-yellow-300" />
-            <h3 className="font-semibold text-lg">You're browsing as a guest</h3>
+            <h3 className="font-semibold text-lg">Your plan is saved on this device</h3>
           </div>
           <p className="text-red-100 text-sm sm:text-base">
-            Create a free account to save your personalized meal plan and workouts forever.
+            You can close this tab and come back — we&apos;ll remember your plan on this
+            browser for 30 days. Create a free account to keep it for good and open it anywhere.
           </p>
           <div className="hidden sm:flex items-center gap-4 mt-3 text-xs text-red-200">
             <span className="flex items-center gap-1"><Cloud size={14} /> Access anywhere</span>
@@ -292,11 +295,28 @@ export function DashboardHome({ user, onNavigate, generationStatus, nutritionTar
     </div>
   );
 
+  const RestaurantUnavailableCard = () => (
+    <div className="flex items-center space-x-3 sm:space-x-4 p-2 sm:p-3 bg-gray-50 border border-gray-200 rounded-lg">
+      <div className="w-12 h-12 sm:w-14 sm:h-14 bg-gray-200 rounded-lg flex items-center justify-center">
+        <MapPin className="w-5 h-5 text-gray-400" />
+      </div>
+      <div className="flex-1 min-w-0">
+        <p className="text-sm text-gray-700 font-medium">No restaurant picks for this meal</p>
+        <p className="text-xs text-gray-500">The search didn&apos;t finish — browse the meal plan for alternatives</p>
+      </div>
+    </div>
+  );
+
   // Enhanced meal card renderer that handles all states
   const renderMealCard = (meal: any, mealType: string, option: 'primary' | 'alternative', onScreenNavigate?: (screen: string) => void) => {
     // Special handling for restaurant loading state
     if (meal.isRestaurantLoading) {
-      return <RestaurantSearchingCard />;
+      // A search that has stopped is a result, not a state to animate. Without
+      // this branch the bouncing pin ran indefinitely on any plan that ended
+      // with zero restaurant meals.
+      return generationStatus.restaurantSearchFailed
+        ? <RestaurantUnavailableCard />
+        : <RestaurantSearchingCard />;
     }
 
     // Empty state styling based on type
