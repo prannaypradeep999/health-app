@@ -878,6 +878,15 @@ async function handleGenerate_restaurants(req: NextRequest) {
     const selectedRestaurantMeals = await selectRestaurantMealsForSchedule(restaurantMenuData, restaurantMealsSchedule, surveyData, nutritionTargets);
     const mealSelectionTime = Date.now() - mealSelectionStart;
 
+    // "completed" has to mean meals exist, not merely that the code reached
+    // the end. On 2026-08-26 selection timed out after 26.7s of a 53s route
+    // budget and returned zero meals, and the phase still recorded ok/completed
+    // — so the plan read as healthy with the whole restaurant half of the week
+    // empty, the dashboard believed restaurant meals had arrived, and nothing
+    // downstream had cause to warn.
+    const restaurantPhaseStatus =
+      (selectedRestaurantMeals || []).length > 0 ? 'completed' : 'failed';
+
     // Validate restaurant meals (log only, do not block saving)
     if (selectedRestaurantMeals.length > 0) {
       validateRestaurantMeals(selectedRestaurantMeals, nutritionTargets, restaurantMenuData.length);
@@ -1039,11 +1048,11 @@ async function handleGenerate_restaurants(req: NextRequest) {
           ],
           generators: {
             ...existingContext.generators,
-            restaurants: 'completed'
+            restaurants: restaurantPhaseStatus
           },
           metadata: {
             ...existingContext.metadata,
-            restaurantsStatus: 'completed',
+            restaurantsStatus: restaurantPhaseStatus,
             restaurantsWithLinks: restaurantMenuData.length,
             totalRestaurantsSearched: selectedRestaurants.length,
             restaurantTimings: {
@@ -1076,7 +1085,7 @@ async function handleGenerate_restaurants(req: NextRequest) {
           metadata: {
             type: 'restaurant_meals_only',
             generationMethod: 'split_pipeline_phase2',
-            restaurantsStatus: 'completed',
+            restaurantsStatus: restaurantPhaseStatus,
             restaurantsWithLinks: restaurantMenuData.length,
             totalRestaurantsSearched: selectedRestaurants.length
           }
@@ -1114,7 +1123,7 @@ async function handleGenerate_restaurants(req: NextRequest) {
     // Recorded before the handoff so a run that dies during the handoff still
     // shows what the restaurant phase actually produced. mealsSelected=0 here
     // is the exact failure that emptied a plan on 2026-08-26.
-    trace(requestData.mealPlanId, 'restaurants', 'ok', {
+    trace(requestData.mealPlanId, 'restaurants', restaurantPhaseStatus === 'completed' ? 'ok' : 'fail', {
       ms: Date.now() - startTime,
       searched: selectedRestaurants.length,
       withLinks: restaurantMenuData.length,

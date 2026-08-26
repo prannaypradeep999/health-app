@@ -33,6 +33,16 @@ export const GENERATION_STALE_AFTER_MS = 10 * 60 * 1000;
 export interface PhaseProgressInput {
   /** True once the phase has persisted something. */
   phaseComplete: boolean;
+  /**
+   * The generator itself recorded that it finished empty.
+   *
+   * Staleness and attempt count are both inferences from silence. This is the
+   * phase saying so directly, which it can do the moment it happens: on
+   * 2026-08-26 restaurant meal selection timed out and persisted zero meals,
+   * and without this the panel would have waited out the full staleness window
+   * for a phase that was already over.
+   */
+  phaseReportedFailure?: boolean;
   /** `updatedAt` of the meal plan, in ms. Null when not yet known. */
   planUpdatedAtMs: number | null;
   /** Poll ticks spent on this plan. */
@@ -52,6 +62,10 @@ export interface PhaseProgressInput {
  */
 export function hasGivenUpOnPhase(input: PhaseProgressInput): boolean {
   if (input.phaseComplete) return false;
+
+  // Checked after phaseComplete so a late write still wins over a stale status
+  // field, and before the inferences below because it is not an inference.
+  if (input.phaseReportedFailure) return true;
 
   if (input.pollAttempts >= input.maxPollAttempts) return true;
 

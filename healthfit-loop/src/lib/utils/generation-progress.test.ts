@@ -155,3 +155,30 @@ test('the poll counter resets only when every phase is complete', () => {
     false
   );
 });
+
+test('a phase that reports its own failure is given up on immediately', () => {
+  // The 2026-08-26 run: restaurant meal selection timed out and returned zero
+  // meals. Waiting out the staleness window would have spun the panel for ten
+  // more minutes over a phase that had already finished and knows it failed.
+  assert.equal(
+    hasGivenUpOnRestaurants(input({ phaseReportedFailure: true })),
+    true
+  );
+  assert.equal(
+    hasGivenUpOnHomeMeals(homeInput({ phaseReportedFailure: true })),
+    true
+  );
+});
+
+test('a reported failure does not override meals that actually arrived', () => {
+  // A late write beats a stale status field. If the meals are there, show them.
+  assert.equal(
+    hasGivenUpOnRestaurants(input({ phaseReportedFailure: true, restaurantMealsGenerated: true })),
+    false
+  );
+});
+
+test('no reported failure leaves the existing staleness rules untouched', () => {
+  assert.equal(hasGivenUpOnRestaurants(input({ phaseReportedFailure: false })), false);
+  assert.equal(hasGivenUpOnRestaurants(input({ phaseReportedFailure: undefined })), false);
+});

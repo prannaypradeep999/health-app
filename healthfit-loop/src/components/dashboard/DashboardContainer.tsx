@@ -361,6 +361,9 @@ export function DashboardContainer({ initialScreen = 'dashboard' }: DashboardCon
       let homeMealsGenerated = false;
       let restaurantMealsGenerated = false;
       let restaurantsDiscovered = false;
+      // Set when the restaurant phase itself recorded that it finished empty,
+      // as opposed to us inferring failure from silence.
+      let restaurantsReportedFailure = false;
       // Null until the meals payload parses. hasGivenUpOnRestaurants treats
       // null as "still live", so a failed parse never fabricates a timeout.
       let planUpdatedAtMs: number | null = null;
@@ -425,6 +428,12 @@ export function DashboardContainer({ initialScreen = 'dashboard' }: DashboardCon
             if (metadata?.restaurantsStatus === 'pending') {
               restaurantsDiscovered = false;
               restaurantMealsGenerated = false;
+            } else if (metadata?.restaurantsStatus === 'failed') {
+              // The phase ran to the end and persisted nothing. Settle now
+              // rather than waiting out the staleness window.
+              restaurantsDiscovered = false;
+              restaurantMealsGenerated = false;
+              restaurantsReportedFailure = true;
             } else if (metadata?.restaurantsStatus === 'completed') {
               restaurantsDiscovered = true;
               restaurantMealsGenerated = true;
@@ -460,6 +469,7 @@ export function DashboardContainer({ initialScreen = 'dashboard' }: DashboardCon
 
       const restaurantSearchFailed = hasGivenUpOnRestaurants({
         restaurantMealsGenerated,
+        phaseReportedFailure: restaurantsReportedFailure,
         planUpdatedAtMs,
         pollAttempts: generationPollAttemptsRef.current,
         maxPollAttempts: MAX_DASHBOARD_POLL_ATTEMPTS,
