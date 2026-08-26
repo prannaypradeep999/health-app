@@ -125,6 +125,29 @@ test('checkOrderingLinks skips nulls and needs at least one usable link', async 
   assert.deepEqual(some, []);
 });
 
+test('a filtered-empty link set on a named restaurant is a warning, not an error', async () => {
+  // The old behaviour reported `no-usable-link` here, which claimed the Order
+  // button had nowhere to go. It has somewhere to go: the card derives a Maps
+  // search from the name and address. 14 of 140 benched options tripped this
+  // and none of them were generator failures.
+  const out = await checkOrderingLinks('monday.dinner',
+    { doordash: null, ubereats: null, grubhub: null, direct: null },
+    { probeNetwork: false, owner: { restaurant: 'Comal Next Door', address: '2020 Shattuck Ave' } });
+  assert.equal(out.length, 1);
+  assert.equal(out[0].code, 'locate-only');
+  assert.equal(out[0].severity, 'warn');
+});
+
+test('with no name to search for, it is still an error', async () => {
+  // The only case where the original claim is literally true.
+  const out = await checkOrderingLinks('monday.dinner',
+    { doordash: null, ubereats: null, grubhub: null, direct: null },
+    { probeNetwork: false, owner: { restaurant: '', address: '2020 Shattuck Ave' } });
+  assert.equal(out.length, 1);
+  assert.equal(out[0].code, 'no-usable-link');
+  assert.equal(out[0].severity, 'error');
+});
+
 test('a bot wall is unverifiable, not dead', async () => {
   // doordash.com 403s every non-browser request, homepage included. Grading that
   // as a dead link would fail every DoorDash link the app has ever produced.

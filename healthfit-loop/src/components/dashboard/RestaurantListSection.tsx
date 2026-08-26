@@ -13,6 +13,7 @@ import {
   ChefHat,
   Target
 } from '@phosphor-icons/react';
+import { orderOptionsFor } from '@/lib/utils/restaurant-links';
 
 interface Restaurant {
   name: string;
@@ -272,6 +273,36 @@ export function RestaurantListSection({ restaurants, metadata }: RestaurantListS
                           <Phone className="w-3 h-3 mr-1" />
                           Call
                         </Button>
+                      )}
+
+                      {/*
+                        The last resort, and the one that is always available.
+
+                        DoorDash and Uber Eats are suppressed before probing
+                        (they 403 datacenter IPs, so a link we cannot check is a
+                        link we will not show), and verifyLinks drops whatever
+                        does not answer. A restaurant is kept on the strength of
+                        its menu, not its links — correctly — so this card can
+                        end up with four nulls and no phone, and rendered
+                        nothing at all.
+
+                        A Maps SEARCH, not a place deep link: a search cannot
+                        land on the wrong restaurant. Only shown when there is
+                        genuinely nothing else, and labelled as directions
+                        rather than dressed up as ordering.
+                      */}
+                      {orderOptionsFor(restaurant).map((o) =>
+                        o.kind === 'locate' && !restaurant.phone ? (
+                          <Button
+                            key={o.key}
+                            size="sm"
+                            onClick={() => openOrderingLink(o.url, 'Maps')}
+                            className="bg-gray-600 hover:bg-gray-700 text-white border-0 shadow-sm transition-all duration-200 hover:scale-105 text-xs h-8"
+                          >
+                            <MapPin className="w-3 h-3 mr-1" />
+                            Find it
+                          </Button>
+                        ) : null
                       )}
                     </div>
 

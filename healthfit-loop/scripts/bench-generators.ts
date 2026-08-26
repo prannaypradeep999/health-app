@@ -782,8 +782,14 @@ did not find a real URL for. Extract 6-12 menu items maximum.`,
             }
           }
 
+          // `owner: meal` is what lets the check ask the question production
+          // now asks — not "did a platform link survive" but "does this card
+          // have anywhere to send the user". The meal carries the restaurant
+          // name and address, so a Maps search is derivable and the finding
+          // drops to `locate-only` at warning severity.
           findings.push(...await checkOrderingLinks(
-            `${where}.orderingLinks`, meal.orderingLinks ?? {}, { probeNetwork: PROBE_LINKS }));
+            `${where}.orderingLinks`, meal.orderingLinks ?? {},
+            { probeNetwork: PROBE_LINKS, owner: meal }));
         }
       }
 

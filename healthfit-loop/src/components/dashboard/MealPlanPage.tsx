@@ -31,6 +31,7 @@ import { GroceryListSection } from './GroceryListSection';
 import { RestaurantListSection } from './RestaurantListSection';
 import { MealSwapDialog } from './MealSwapDialog';
 import { collectAllMeals, CollectedMeal } from '@/lib/utils/meal-utils';
+import { orderOptionsFor } from '@/lib/utils/restaurant-links';
 import Logo from '@/components/logo';
 import { getPlanDayIndex, getCurrentMealPeriod, getPlanDays, getDayStatus, isPlanExpired, getBrowserTimezone, type MealPeriod } from '@/lib/utils/date-utils';
 
@@ -1129,43 +1130,34 @@ export function MealPlanPage({ onNavigate, generationStatus, nutritionTargets: n
       (meal.alternative.dish !== "Alternative not available");
 
     /**
-     * Colours match RestaurantListSection so the same platform looks the same
-     * wherever it appears.
-     */
-    const ORDER_PLATFORMS = [
-      { key: 'doordash', label: 'DoorDash', className: 'bg-red-500 hover:bg-red-600' },
-      { key: 'ubereats', label: 'Uber Eats', className: 'bg-green-600 hover:bg-green-700' },
-      { key: 'grubhub', label: 'GrubHub', className: 'bg-orange-500 hover:bg-orange-600' },
-      { key: 'direct', label: 'Direct', className: 'bg-[#8b5cf6] hover:bg-purple-700' },
-    ] as const;
-
-    /**
-     * Every platform the restaurant is actually listed on, not just the first.
+     * Which platform links survived, or — when none did — where to find the
+     * place instead.
      *
-     * This card used to open `doordash || ubereats || grubhub || direct` behind
-     * a single "Order" button, so GrubHub was reachable only when BOTH DoorDash
-     * and Uber Eats were missing — a link we had found, verified and stored, and
-     * then never showed. RestaurantListSection has always rendered one button per
-     * platform; this brings the meal card in line with it.
+     * This used to return `[]` when nothing survived, and the two render sites
+     * below map over it, so the card showed a dish name and no button at all.
+     * 14 of 140 benched options and most production restaurants land there:
+     * DoorDash and Uber Eats are suppressed unprobed (they 403 datacenter IPs,
+     * so we cannot tell live from dead), and `verifyLinks` drops whatever does
+     * not answer. Those filters are right; leaving the user with nothing was
+     * not.
      *
-     * The model is told to write null for a platform it could not find, but the
-     * string "null" has come back before (see the link-resolution tests), so it
-     * is filtered here alongside blanks.
+     * `orderOptionsFor` supplies a Google Maps search built from the name and
+     * address Places already gave us. Styled grey and labelled "Find it", not
+     * dressed as an order button — it is directions, and the card must say so.
      */
-    const availableOrderLinks = (meal: any) => {
-      const links = meal?.orderingLinks || {};
-      const found = ORDER_PLATFORMS
-        .map(p => ({ ...p, url: typeof links[p.key] === 'string' ? links[p.key].trim() : '' }))
-        .filter(p => p.url !== '' && p.url.toLowerCase() !== 'null');
-
-      if (found.length > 0) return found;
-
-      // Legacy single-field shape, for plans generated before orderingLinks existed.
-      const legacy = meal?.orderingUrl || meal?.website || meal?.menu_url;
-      return legacy
-        ? [{ key: 'direct', label: 'Order', className: 'bg-[#8b5cf6] hover:bg-purple-700', url: String(legacy) }]
-        : [];
+    const ORDER_CLASSNAMES: Record<string, string> = {
+      doordash: 'bg-red-500 hover:bg-red-600',
+      ubereats: 'bg-green-600 hover:bg-green-700',
+      grubhub: 'bg-orange-500 hover:bg-orange-600',
+      direct: 'bg-[#8b5cf6] hover:bg-purple-700',
+      maps: 'bg-gray-600 hover:bg-gray-700',
     };
+
+    const availableOrderLinks = (meal: any) =>
+      orderOptionsFor(meal).map(o => ({
+        ...o,
+        className: ORDER_CLASSNAMES[o.key] ?? ORDER_CLASSNAMES.direct,
+      }));
 
     const openOrderingLink = (url: string, platform: string) => {
       console.log(`🍽️ [Order] Opening ${platform}:`, url);
@@ -1183,24 +1175,16 @@ export function MealPlanPage({ onNavigate, generationStatus, nutritionTargets: n
       if (isRestaurant) {
         console.log('🍳 [Recipe] Restaurant meal - opening external link');
 
-        // Check orderingLinks object (same structure used in RestaurantListSection)
-        const links = selectedMeal.orderingLinks || {};
-        const orderingUrl =
-          links.doordash ||
-          links.ubereats ||
-          links.grubhub ||
-          links.direct ||
-          // Fallback to legacy fields
-          selectedMeal.orderingUrl ||
-          selectedMeal.website ||
-          selectedMeal.menu_url;
-
-        if (orderingUrl && orderingUrl.trim() !== '') {
-          console.log('🍳 [Recipe] Opening ordering link:', orderingUrl);
+        // Same resolution the buttons use, so tapping the card and tapping a
+        // button cannot disagree about where this restaurant is. Falls back to
+        // a Maps search when no platform link survived verification; returns
+        // nothing only when we do not even have a restaurant name.
+        const [best] = orderOptionsFor(selectedMeal);
+        if (best) {
+          console.log(`🍳 [Recipe] Opening ${best.kind === 'locate' ? 'map' : 'ordering'} link:`, best.url);
           // Universal Links will automatically open the app if installed on mobile
-          window.open(orderingUrl, '_blank');
+          window.open(best.url, '_blank');
         }
-        // If no URL found, button shouldn't be shown anyway (see Change 2)
         return;
       }
 

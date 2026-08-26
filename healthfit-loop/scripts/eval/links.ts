@@ -3,6 +3,7 @@ import {
   probe, PLATFORM_HOSTS, parseHttpUrl, isUsableLink, isHomepageRedirect,
   type LinkVerdict,
 } from '../../src/lib/external/link-check';
+import { orderOptionsFor } from '../../src/lib/utils/restaurant-links';
 
 export { probe, PLATFORM_HOSTS, type LinkVerdict };
 
@@ -42,7 +43,7 @@ const BOT_WALL_STATUSES: number[] = [403, 429];
 export async function checkOrderingLinks(
   where: string,
   links: Record<string, string | null>,
-  opts: { probeNetwork?: boolean } = {}
+  opts: { probeNetwork?: boolean; owner?: unknown } = {}
 ): Promise<Finding[]> {
   const probeNetwork = opts.probeNetwork ?? true;
   const out: Finding[] = [];
@@ -50,8 +51,26 @@ export async function checkOrderingLinks(
   const usable = Object.entries(links ?? {}).filter(([, v]) => isUsableLink(v)) as Array<[string, string]>;
 
   if (usable.length === 0) {
+    // `no-usable-link` used to fire here unconditionally, and it described a
+    // generator failure that had not happened: three upstream filters drop
+    // unverifiable links for good reasons, so an empty object is the expected
+    // outcome for a walk-in restaurant, not a fault. 14 of 140 benched options
+    // tripped it.
+    //
+    // What the error was really claiming is that the button has nowhere to go.
+    // That is now only true when the option has no name to search for either,
+    // so it is what is checked. `owner` is the meal or restaurant record the
+    // links came off; without one the old behaviour stands, since there is
+    // nothing to derive a destination from.
+    const locate = opts.owner === undefined ? [] : orderOptionsFor(opts.owner);
+    if (locate.length > 0) {
+      out.push(finding('LINKS', 'warn', 'locate-only', where,
+        'no orderable link survived verification — the card falls back to a Maps search'));
+      return out;
+    }
     out.push(finding('LINKS', 'error', 'no-usable-link', where,
-      'no orderable link on any platform — the Order Now button has nowhere to go'));
+      'no orderable link on any platform, and no restaurant name to search for — ' +
+      'the Order Now button has nowhere to go'));
     return out;
   }
 
