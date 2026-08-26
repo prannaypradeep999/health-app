@@ -35,6 +35,46 @@ export const PLATFORM_HOSTS: Record<string, RegExp> = {
   grubhub: /(^|\.)grubhub\.com$/i,
 };
 
+/**
+ * The platforms whose links we are willing to put in front of a user.
+ *
+ * Measured 2026-08-25 against the deployed function:
+ *
+ *   GET https://www.doordash.com/  -> 403   (our UA and a Chrome UA alike)
+ *   GET https://www.ubereats.com/  -> 403
+ *   GET https://www.grubhub.com/   -> 200
+ *
+ * DoorDash and Uber Eats refuse datacenter IPs outright, so `probe` cannot tell
+ * a dead link from a live one it is not allowed to see. In production this
+ * dropped every DoorDash link the model found — 3 of 3 in the observed run —
+ * while logging them as "unreachable", which was a guess dressed as a fact.
+ *
+ * Rather than show links we cannot stand behind, we show the two we can check.
+ * This is deliberately a policy switch and not a code change: when there is a
+ * verification path for the other two (a residential egress, an official API,
+ * or treating 403 as `unverified` rather than `contradicted` and labelling it
+ * in the UI), add them back here and the rest of the pipeline follows.
+ */
+export const DISPLAYED_PLATFORMS: readonly string[] = ['grubhub', 'direct'];
+
+/**
+ * Null out every platform not in DISPLAYED_PLATFORMS, preserving the key set.
+ *
+ * Keys are preserved rather than deleted because `OrderingLinks` in
+ * src/lib/ai/schemas/shared.ts is `.strict()` with all four keys required —
+ * a missing key is a schema violation, whereas null is how that schema spells
+ * "no link". The UI already skips nulls.
+ */
+export function suppressUndisplayablePlatforms(
+  links: Record<string, string | null | undefined>
+): Record<string, string | null> {
+  const out: Record<string, string | null> = {};
+  for (const [platform, url] of Object.entries(links ?? {})) {
+    out[platform] = DISPLAYED_PLATFORMS.includes(platform) && isUsableLink(url) ? url.trim() : null;
+  }
+  return out;
+}
+
 export function parseHttpUrl(url: string): URL | null {
   try {
     const u = new URL(url);

@@ -4,7 +4,7 @@ import { cookies } from 'next/headers';
 import { prisma } from '@/lib/db';
 import { googlePlacesClient, Restaurant } from '@/lib/external/places-client';
 import { perplexityClient } from '@/lib/external/perplexity-client';
-import { verifyLinks, isUsableLink } from '@/lib/external/link-check';
+import { verifyLinks, isUsableLink, suppressUndisplayablePlatforms } from '@/lib/external/link-check';
 import { radiusMilesFor, milesBetween } from '@/lib/utils/distance';
 import { buildRestaurantFacts } from '@/lib/utils/restaurant-facts';
 import { runVerification, verifyRestaurantPayload } from '@/lib/verification';
@@ -391,10 +391,13 @@ async function extractMenuInformation(restaurants: Restaurant[], surveyData: any
       // the only source here that looked the business up rather than recalled
       // it. The model's value survives only as the fallback.
       const placesWebsite = (restaurant as { website?: string }).website;
-      const candidateLinks = {
+      // Suppressed before probing, not after: a platform we will not display is
+      // not worth an HTTP request from inside the tightest phase of the route
+      // budget. This removes two probes per restaurant.
+      const candidateLinks = suppressUndisplayablePlatforms({
         ...orderingLinks,
         direct: isUsableLink(placesWebsite) ? placesWebsite : orderingLinks.direct ?? null,
-      };
+      });
 
       // B1. Nothing had ever requested one of these URLs. A 404 doordash link
       // renders as an order button that leads nowhere, which is worse than no

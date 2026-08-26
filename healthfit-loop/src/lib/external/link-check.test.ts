@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
   parseHttpUrl, isUsableLink, hostMatchesPlatform, isHomepageRedirect, verifyLinks,
-  corroborate,
+  corroborate, DISPLAYED_PLATFORMS, suppressUndisplayablePlatforms,
   type LinkVerdict,
 } from './link-check';
 
@@ -144,4 +144,39 @@ test('an unparseable citation does not throw', () => {
 test('an empty citation list marks everything uncited', () => {
   const result = corroborate({ direct: 'https://fanoos.com' }, []);
   assert.equal(result.direct, 'uncited');
+});
+
+test('suppression keeps grubhub and direct', () => {
+  const out = suppressUndisplayablePlatforms({
+    doordash: 'https://www.doordash.com/store/x',
+    ubereats: 'https://www.ubereats.com/store/x',
+    grubhub: 'https://www.grubhub.com/restaurant/x',
+    direct: 'https://example.com',
+  });
+  assert.equal(out.grubhub, 'https://www.grubhub.com/restaurant/x');
+  assert.equal(out.direct, 'https://example.com');
+});
+
+test('suppression nulls the platforms that 403 datacenter IPs', () => {
+  // Not "drops": OrderingLinks is .strict() and every key is required, so a
+  // missing key is a schema violation downstream. Null is the schema's way of
+  // saying "no link", and it is what the UI already skips.
+  const out = suppressUndisplayablePlatforms({
+    doordash: 'https://www.doordash.com/store/x',
+    ubereats: 'https://www.ubereats.com/store/x',
+    grubhub: null,
+    direct: null,
+  });
+  assert.equal(out.doordash, null);
+  assert.equal(out.ubereats, null);
+  assert.ok('doordash' in out, 'the key must survive even though the value does not');
+  assert.ok('ubereats' in out);
+});
+
+test('suppression leaves an already-empty object alone', () => {
+  assert.deepEqual(suppressUndisplayablePlatforms({}), {});
+});
+
+test('DISPLAYED_PLATFORMS is the single switch for this policy', () => {
+  assert.deepEqual([...DISPLAYED_PLATFORMS].sort(), ['direct', 'grubhub']);
 });
