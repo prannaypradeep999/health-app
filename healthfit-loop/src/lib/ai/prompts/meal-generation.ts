@@ -963,9 +963,11 @@ export function createRestaurantMealGenerationPrompt(context: RestaurantMealCont
   // nor need would spend prompt tokens on the phase that already runs out of
   // time, and would invite it to mention a link in prose.
   //
-  // Whether a restaurant is orderable at all is still decided upstream —
-  // extractMenuInformation drops the ones with no usable link — so everything
-  // listed here is orderable by construction.
+  // A restaurant listed here may have no ordering link at all —
+  // extractMenuInformation keeps anything with a menu, deliberately, because a
+  // place you can walk into is still a real recommendation. That is not the
+  // model's problem to solve: it picks the best dish, and the card renders
+  // whatever buttons the joined links support, down to none.
   const restaurantDetails = restaurantMenuData.map(restaurant => {
     return `
 RESTAURANT: ${restaurant.name}
