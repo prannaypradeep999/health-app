@@ -11,6 +11,15 @@ const openai = new OpenAI({
 
 export const runtime = 'nodejs';
 
+/**
+ * The tool-calling loop below runs up to `maxToolRounds` (3) sequential
+ * non-streaming completions, with Prisma reads between them. Without this
+ * declaration the route inherited the ~10s platform default and was killed
+ * mid-loop on every production request, so the assistant answered nothing.
+ * 60 is the Vercel Hobby ceiling and matches every other AI route here.
+ */
+export const maxDuration = 60;
+
 // Tool definitions for OpenAI function calling
 const tools: OpenAI.Chat.Completions.ChatCompletionTool[] = [
   {
