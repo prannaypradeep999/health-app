@@ -38,6 +38,7 @@ import { RecipeSchema } from '../src/lib/ai/schemas/recipe';
 import { MenuExtractionSchema, RestaurantSelectionSchema } from '../src/lib/ai/schemas/restaurants';
 import { GroceryPricesSchema } from '../src/lib/ai/schemas/grocery';
 import { createGroceryPricePrompt } from '../src/lib/ai/prompts/grocery-prices';
+import { createMenuStructuringPrompt } from '../src/lib/ai/prompts/restaurant-menu';
 import {
   toStrictJsonSchema,
   pinnedMealPlan,
@@ -663,27 +664,27 @@ const SITES: Site[] = [
   {
     name: 'menu-extraction',
     model: M.DETAIL, maxTokens: 4000, temperature: 0.1,
+    // The real prompt builder, not a paraphrase of it.
+    //
+    // This site used to inline a hand-written prompt that resembled
+    // createMenuStructuringPrompt without being it. The two drifted, and the
+    // part that drifted is the part that matters: the real builder ends with
+    // buildDietaryRulesBlock and buildAllergyBlock — the entire dietary-safety
+    // mechanism for menu extraction, and the vocabulary CLAUDE.md warns must
+    // stay in step with normalizeRestriction and validateRestrictions. None of
+    // it was ever benched. The inlined copy carried a one-line "Apply the
+    // dietary restrictions above" instead, so a `restricted` fixture measured
+    // a rule production does not send.
+    //
+    // A bench that measures a different prompt from production measures
+    // nothing, which is the same principle link-check.ts states about probes.
     build: async (f) => ({
-      prompt: `Extract structured menu data from the following restaurant research.
-
-RESEARCH:
-${menuProseFixture}
-
-RESTAURANT: Sakura Ramen House
-CITY: Berkeley
-
-USER PREFERENCES:
-- Diet Restrictions: ${(f.surveyData.dietPrefs || []).join(', ') || 'None'}
-
-EXTRACTION RULES FOR MENU ITEMS:
-1. Extract ONLY menu items that have clear prices mentioned
-2. Categorize by meal type (breakfast, lunch, dinner, snack)
-3. Estimate calories based on typical dish composition
-4. Rate healthiness (excellent/good/fair/poor) based on ingredients
-5. Apply the dietary restrictions above, excluding non-compliant dishes
-
-IMPORTANT: orderingLinks must carry all four keys. Use null for any platform you
-did not find a real URL for. Extract 6-12 menu items maximum.`,
+      prompt: createMenuStructuringPrompt({
+        content: menuProseFixture,
+        citations: ['https://sakuraramenhouse.com/menu'],
+        restaurant: { name: 'Sakura Ramen House', city: 'Berkeley' },
+        surveyData: f.surveyData,
+      }),
       schema: MenuExtractionSchema,
     }),
     check: async (d, f) => {
