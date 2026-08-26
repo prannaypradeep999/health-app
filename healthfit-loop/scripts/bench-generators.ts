@@ -182,6 +182,51 @@ async function planFor(f: Fixture): Promise<any> {
 }
 
 /**
+ * The detail phase's output for a fixture: meals that actually carry recipes.
+ *
+ * The grocery site needs this and was given `plan.mealPlan` instead.
+ * createGroceryPrompt reads `meal.primary?.ingredientsWithNutrition`, which a
+ * PLANNED meal does not have — planning produces names and macro targets, the
+ * detail phase produces the ingredients. So the benched prompt rendered
+ *
+ *     ALL INGREDIENTS FROM RECIPES:
+ *     <nothing>
+ *
+ * for every fixture, and every grocery finding since was about the harness:
+ * the model was asked to consolidate an empty list and then graded on what it
+ * invented to fill it. Same class as the menuData bug — a field name that goes
+ * quiet rather than throwing.
+ *
+ * One chunk rather than the whole week, which is also how the route splits it,
+ * and cached for the same reason planFor is.
+ */
+const detailCache = new Map<string, any>();
+
+async function detailFor(f: Fixture): Promise<any[]> {
+  const cached = detailCache.get(f.name);
+  if (cached) return cached;
+
+  const plan = await planFor(f);
+  const days = [...new Set(plan.mealPlan.map((m: any) => m.day))].slice(0, 2);
+  const chunk = plan.mealPlan.filter((m: any) => days.includes(m.day));
+  if (chunk.length === 0) {
+    detailCache.set(f.name, []);
+    return [];
+  }
+
+  const prompt = createDetailPrompt(chunk, {
+    homeMeals: chunk.map((m: any) => ({ day: m.day, mealType: m.mealType })),
+    surveyData: f.surveyData, nutritionTargets: f.nutritionTargets,
+    scheduleText: 'Details for Chunk A',
+  });
+  const res = await callOnce(M.DETAIL, prompt, pinnedMealDetail(chunk.length), 'meal_detail', 12000, 0.5);
+  if (!res.parsed) throw new Error(`Could not seed recipes for fixture ${f.name}: ${res.error}`);
+  const meals = (res.parsed.meals ?? []) as any[];
+  detailCache.set(f.name, meals);
+  return meals;
+}
+
+/**
  * Whether LINKS-family checks may make HTTP requests. Set from --no-links in
  * main(). Module-level rather than threaded through every check signature: the
  * flag is process-wide and read-only after startup.
@@ -306,31 +351,64 @@ const SITES: Site[] = [
     name: 'grocery-list',
     model: M.DETAIL, maxTokens: 4000, temperature: 0.3,
     build: async (f) => {
-      const plan = await planFor(f);
+      // Detailed meals, not planned ones: createGroceryPrompt reads
+      // `meal.primary?.ingredientsWithNutrition` and only the detail phase
+      // produces that. See detailFor.
+      const meals = await detailFor(f);
+      if (meals.length === 0) return null;
       return {
-        prompt: createGroceryPrompt(plan.mealPlan, f.surveyData),
+        prompt: createGroceryPrompt(meals, f.surveyData),
         schema: GroceryListSchema,
       };
     },
     check: async (d, f) => {
-      const plan = await planFor(f);
+      const meals = await detailFor(f);
       const list = d.groceryList as Record<string, Array<{ name: string; quantity: string; uses: string }>>;
       const all = Object.values(list).flat();
       const rules = rulesFor(f.surveyData);
       const findings: Finding[] = [
         ...checkNonEmpty('groceryList', 'empty-grocery-list', all, 8),
       ];
+
+      // Every ingredient the recipes actually call for. This is the ground
+      // truth the site never had: with an empty prompt there was nothing to
+      // compare the list against, so a plausible invented list scored clean.
+      const sourceIngredients = new Set(
+        meals.flatMap((m: any) =>
+          ((m.primary?.ingredientsWithNutrition ?? []) as any[]).map(i => String(i.item).toLowerCase())
+        )
+      );
+
       // A plan with N meals that yields a handful of items has silently dropped
       // most of the shopping.
-      if (all.length > 0 && all.length < plan.mealPlan.length) {
+      if (all.length > 0 && all.length < meals.length) {
         findings.push({
           family: 'COMPLETENESS', severity: 'warn', code: 'thin-grocery-list',
           where: 'groceryList',
-          message: `${all.length} items for ${plan.mealPlan.length} planned meals`,
+          message: `${all.length} items for ${meals.length} detailed meals`,
         });
       }
       for (const item of all) {
         findings.push(...checkText(`groceryList.${item.name}`, item.name, rules));
+
+        // Prompt requirement 5: "Include ONLY primary recipe ingredients".
+        // Substring either way, because consolidation legitimately renames —
+        // "chicken breast" and "boneless chicken breast" are the same buy.
+        // Warning, not error: the minimum-items-per-category rules above it
+        // actively push the model to add staples nobody's recipe listed, so the
+        // two requirements are in tension by design and this measures the size
+        // of that tension rather than declaring it a failure.
+        const name = item.name.toLowerCase();
+        const grounded = sourceIngredients.size === 0 || [...sourceIngredients].some(
+          ing => ing.includes(name) || name.includes(ing)
+        );
+        if (!grounded) {
+          findings.push({
+            family: 'ADHERENCE', severity: 'warn', code: 'ungrounded-grocery-item',
+            where: `groceryList.${item.name}`,
+            message: `"${item.name}" is not an ingredient of any benched recipe`,
+          });
+        }
         // 'varies' is what buildFallbackGroceryList emits; a real list never has it.
         if (!item.quantity || /^(varies|as needed|some)$/i.test(item.quantity.trim())) {
           findings.push({
@@ -427,11 +505,23 @@ const SITES: Site[] = [
     name: 'workout-detail',
     model: M.DETAIL, maxTokens: 12000, temperature: 0.5,
     build: async (f) => {
+      // The outline used to be hard-coded to monday-training / tuesday-rest for
+      // every fixture, while verifyWorkoutPlan below is handed that fixture's
+      // real availableDays. `restricted` trains tue/thu/sun and `rural-sparse`
+      // trains sat/sun, so both scored a GROUNDING error for training on a day
+      // they had not agreed to — a day the BENCH chose, not the model. The
+      // model was never shown an alternative and could not have avoided it.
+      //
+      // Deriving the outline from availableDays means the only way to earn that
+      // verdict is for the model to actually invent a day.
+      const available = ((f.workoutPrefs as any).availableDays ?? []) as string[];
+      const trainingDay = available[0] ?? 'monday';
+      const restDay = available[1] ?? (trainingDay === 'monday' ? 'tuesday' : 'monday');
       const outline = [
-        { day: 'monday', restDay: false, focus: 'Upper push', estimatedTime: '45 min',
+        { day: trainingDay, restDay: false, focus: 'Upper push', estimatedTime: '45 min',
           estimatedCalories: 320, targetMuscles: ['chest', 'shoulders', 'triceps'],
           description: 'Pressing volume' },
-        { day: 'tuesday', restDay: true, focus: 'Recovery', estimatedTime: '20 min',
+        { day: restDay, restDay: true, focus: 'Recovery', estimatedTime: '20 min',
           estimatedCalories: 90, targetMuscles: [], description: 'Light movement' },
       ];
       return {
@@ -909,6 +999,19 @@ did not find a real URL for. Extract 6-12 menu items maximum.`,
           });
         }
         for (const o of item.storeOptions) {
+          // `price` is .nullable() on purpose: with a required non-nullable
+          // number Sonar answered 0 for everything it could not find, and zero
+          // is not a cheap price, it is a missing one — it made whichever store
+          // failed to price an item look cheapest. null is the model correctly
+          // saying "I could not price this", and `!(o.price > 0)` graded that
+          // as `implausible-price`, i.e. an error for doing the right thing.
+          if (o.price === null) {
+            findings.push({
+              family: 'COMPLETENESS', severity: 'warn', code: 'unpriced-option',
+              where: `${where}.${o.store}`, message: 'no price found for this store',
+            });
+            continue;
+          }
           if (!(o.price > 0) || o.price > 500) {
             findings.push({
               family: 'ARITHMETIC', severity: 'error', code: 'implausible-price',
@@ -916,7 +1019,7 @@ did not find a real URL for. Extract 6-12 menu items maximum.`,
             });
           }
         }
-        const prices = item.storeOptions.map(o => o.price);
+        const prices = item.storeOptions.map(o => o.price).filter((p): p is number => p !== null);
         if (prices.length > 1 && new Set(prices).size === 1) {
           findings.push({
             family: 'ARITHMETIC', severity: 'warn', code: 'identical-prices',
