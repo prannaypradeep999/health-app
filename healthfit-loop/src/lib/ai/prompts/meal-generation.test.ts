@@ -1,0 +1,101 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import { createRestaurantMealGenerationPrompt } from './meal-generation';
+import { restaurantMenuDataFixture, fixtures } from '../../../../scripts/fixtures/surveys';
+
+/**
+ * The restaurant-selection prompt's one irreplaceable job is to show the model
+ * the dishes it is allowed to pick from. Everything else in that prompt is
+ * advice; the menu is the entire ground truth.
+ *
+ * It silently stopped doing that in the benchmark. The record the route builds
+ * calls the dish list `menuData` — the extraction schema returns `menuItems`
+ * and the route immediately re-homes it — but the bench fixture kept the
+ * schema's name. `restaurant.menuData` was therefore undefined for every
+ * restaurant, the listing collapsed to the literal string "No menu items
+ * available", and the model echoed that back as a dish name with 0 calories.
+ * The bench read those as `invented-dish` and `off-target` errors against the
+ * generator, when the generator had been handed nothing to choose from.
+ *
+ * A rename fixes it once. These tests are what stop it drifting back, because
+ * the failure mode is a field name going quiet rather than anything throwing.
+ */
+
+const SURVEY = { dietPrefs: [], preferredCuisines: [] };
+const TARGETS = {
+  mealTargets: { lunch: { calories: 480, protein: 30, carbs: 55, fat: 15 } },
+};
+
+function promptFor(restaurantMenuData: unknown[]) {
+  return createRestaurantMealGenerationPrompt({
+    restaurantMealsSchedule: [{ day: 'tuesday', mealType: 'lunch' }],
+    restaurantMenuData,
+    surveyData: SURVEY,
+    nutritionTargets: TARGETS,
+  } as Parameters<typeof createRestaurantMealGenerationPrompt>[0]);
+}
+
+test('the prompt lists the dishes it was given', () => {
+  const prompt = promptFor([
+    {
+      name: 'Sakura Ramen House',
+      cuisine: 'japanese',
+      address: '2100 Shattuck Ave',
+      menuData: [{ name: 'Vegetable Gyoza', price: 8.5, estimatedCalories: 320 }],
+    },
+  ]);
+  assert.ok(prompt.includes('Vegetable Gyoza'), 'dish name missing from prompt');
+  assert.ok(prompt.includes('320'), 'dish calories missing from prompt');
+});
+
+test('a restaurant with no dishes says so, and that is the only time it does', () => {
+  // The placeholder is legitimate — extractMenuInformation can hand back a
+  // restaurant whose lookup failed. What must never happen is every restaurant
+  // showing it because the field was spelled wrong.
+  const empty = promptFor([{ name: 'Comal Next Door', cuisine: 'mexican', address: 'x', menuData: [] }]);
+  assert.ok(empty.includes('No menu items available'));
+});
+
+test('the dish list is read from menuData, not the extraction schema name', () => {
+  // This is the exact regression: `menuItems` is what the model returns from
+  // menu extraction; `menuData` is what the record carries afterwards. A
+  // fixture or caller using the former renders an empty menu.
+  const wrongName = promptFor([
+    {
+      name: 'Sakura Ramen House',
+      cuisine: 'japanese',
+      address: '2100 Shattuck Ave',
+      menuItems: [{ name: 'Vegetable Gyoza', price: 8.5, estimatedCalories: 320 }],
+    },
+  ]);
+  assert.ok(
+    !wrongName.includes('Vegetable Gyoza'),
+    'menuItems must not be read — if this passes, the builder now accepts both ' +
+      'names and this test should be deleted rather than made to pass'
+  );
+  assert.ok(wrongName.includes('No menu items available'));
+});
+
+test('the bench fixture actually reaches the model as a menu', () => {
+  // The test that would have caught it. The bench is only evidence about the
+  // generator if the generator was shown the menu.
+  const veg = fixtures.find(f => f.name === 'vegetarian-cut');
+  assert.ok(veg, 'vegetarian-cut fixture is missing');
+
+  const prompt = createRestaurantMealGenerationPrompt({
+    restaurantMealsSchedule: [{ day: 'tuesday', mealType: 'lunch' }],
+    restaurantMenuData: restaurantMenuDataFixture,
+    surveyData: veg.surveyData,
+    nutritionTargets: veg.nutritionTargets,
+  } as Parameters<typeof createRestaurantMealGenerationPrompt>[0]);
+
+  assert.ok(
+    !prompt.includes('No menu items available'),
+    'every benched restaurant rendered an empty menu'
+  );
+  for (const restaurant of restaurantMenuDataFixture) {
+    for (const item of restaurant.menuData) {
+      assert.ok(prompt.includes(item.name), `${item.name} missing from benched prompt`);
+    }
+  }
+});

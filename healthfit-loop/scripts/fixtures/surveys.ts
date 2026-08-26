@@ -371,6 +371,16 @@ export const nearbyRestaurantsFixture = [
  * direct site, Zaytoon has only a direct site, Comal has nothing. A generated
  * meal that produces a Grubhub URL for any of them invented it — the prompt
  * explicitly tells the model to use null for platforms marked "not available".
+ *
+ * The dish list must be called `menuData`, not `menuItems`. `menuItems` is the
+ * name the extraction *schema* uses for the model's own output; the route
+ * immediately restores it under `menuData` (generate-restaurants route.ts, the
+ * `menuData: menuItems` line), and that is the shape the selection prompt
+ * reads. This fixture spelled it `menuItems`, so every restaurant in the
+ * benched prompt printed "No menu items available" and the model echoed that
+ * string back as a dish name with 0 calories. The bench had never once tested
+ * dish grounding, and the resulting `invented-dish` findings were about the
+ * harness rather than the generator.
  */
 export const restaurantMenuDataFixture = [
   {
@@ -379,7 +389,7 @@ export const restaurantMenuDataFixture = [
       doordash: 'https://www.doordash.com/store/sakura-ramen-house-berkeley-12345/',
       ubereats: null, grubhub: null, direct: 'https://sakuraramenhouse.com',
     },
-    menuItems: [
+    menuData: [
       { name: 'Tonkotsu Ramen', price: 16.5, category: 'dinner', estimatedCalories: 780, description: 'Pork bone broth with chashu' },
       { name: 'Vegetable Gyoza', price: 8.5, category: 'lunch', estimatedCalories: 320, description: 'Six pieces, pan fried' },
       { name: 'Salmon Poke Bowl', price: 18.25, category: 'lunch', estimatedCalories: 620, description: 'Over brown rice' },
@@ -388,7 +398,7 @@ export const restaurantMenuDataFixture = [
   {
     name: 'Zaytoon Mediterranean', cuisine: 'middle_eastern', address: '1133 Solano Ave, Berkeley',
     orderingLinks: { doordash: null, ubereats: null, grubhub: null, direct: 'https://zaytoonberkeley.com' },
-    menuItems: [
+    menuData: [
       { name: 'Chicken Shawarma Plate', price: 17.0, category: 'dinner', estimatedCalories: 720, description: 'With rice and salad' },
       { name: 'Falafel Wrap', price: 12.5, category: 'lunch', estimatedCalories: 540, description: 'Tahini and pickles' },
       { name: 'Lamb Kofta', price: 21.0, category: 'dinner', estimatedCalories: 810, description: 'Grilled, with hummus' },
@@ -397,7 +407,7 @@ export const restaurantMenuDataFixture = [
   {
     name: 'Comal Next Door', cuisine: 'mexican', address: '2020 Shattuck Ave, Berkeley',
     orderingLinks: { doordash: null, ubereats: null, grubhub: null, direct: null },
-    menuItems: [
+    menuData: [
       { name: 'Carnitas Tacos', price: 14.0, category: 'lunch', estimatedCalories: 610, description: 'Three tacos, salsa verde' },
       { name: 'Grilled Fish Bowl', price: 18.0, category: 'dinner', estimatedCalories: 650, description: 'Rice, beans, cabbage' },
     ],

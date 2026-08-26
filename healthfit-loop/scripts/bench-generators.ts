@@ -743,7 +743,7 @@ did not find a real URL for. Extract 6-12 menu items maximum.`,
             continue;
           }
 
-          if (!source.menuItems.some(mi => mi.name.toLowerCase() === String(meal.dish).toLowerCase())) {
+          if (!source.menuData.some(mi => mi.name.toLowerCase() === String(meal.dish).toLowerCase())) {
             findings.push({
               family: 'ADHERENCE', severity: 'error', code: 'invented-dish',
               where, message: `"${meal.dish}" is not on ${source.name}'s supplied menu`,
