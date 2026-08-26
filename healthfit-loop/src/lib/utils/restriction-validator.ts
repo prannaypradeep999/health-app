@@ -159,8 +159,52 @@ export function validateRestrictions(
       : '';
     const searchText = `${mealName} ${ingredients}`;
 
+    /**
+     * The second pass, and the reason it is separate.
+     *
+     * A home recipe carries an `ingredients` array and that is where its
+     * forbidden foods appear. A restaurant option carries none —
+     * `RestaurantMealObject` in src/lib/ai/schemas/restaurants.ts defines no
+     * ingredients field — so everything known about what is in the dish sits in
+     * `description`.
+     *
+     * `mealName` above is `name || dish || description`. Those are `||`, and
+     * both meal routes set `name` before calling, so `name` was always truthy
+     * and the description was never once read. A dish called "Bento Box"
+     * described as pork belly passed a vegetarian check.
+     *
+     * It is scanned at `warning` severity regardless of what the restriction
+     * itself declares, because a description is prose a model wrote and
+     * `containsTerm` is word-anchored and negation-blind: it cannot tell "pork
+     * belly" from "no pork". Six spurious violations against a compliant
+     * falafel wrap were measured that way during the 2026-08-26 bench work.
+     *
+     * The alternative — teaching `containsTerm` about negation — is rejected on
+     * purpose. It would make a dietary and allergy check MORE permissive by
+     * believing the model's own claim that an ingredient is absent.
+     * Over-flagging fails safe; under-flagging does not. Warning severity keeps
+     * the flag visible (violations are stored on the plan and rendered in
+     * MealPlanPage) without letting a model's phrasing invalidate a week.
+     *
+     * Skipped when the description already IS `mealName`, so the pre-existing
+     * fallback path keeps its full severity instead of being demoted here.
+     */
+    const description = String(meal.description ?? '').toLowerCase();
+    const descriptionText = description && description !== mealName ? description : '';
+
+    // Terms the first pass already reported on this meal. The description pass
+    // skips them, so a term present in both is reported once and keeps the
+    // declared severity rather than being duplicated as a warning.
+    //
+    // Deliberately NOT consulted by the first pass: one term can arrive from
+    // two restrictions ("peanut" from both the allergy and the nuts table) and
+    // reporting it against each is the existing behaviour, which this change
+    // has no business altering.
+    const seen = new Set<string>();
+
     forbiddenTerms.forEach(({ term, restriction, severity }) => {
       if (containsTerm(searchText, term)) {
+        seen.add(term);
         violations.push({
           mealName: meal.name || meal.dish || meal.description || 'Unknown meal',
           day: meal.day || 'unknown',
@@ -169,6 +213,24 @@ export function validateRestrictions(
           ingredient: term,
           restriction,
           severity,
+        });
+      }
+    });
+
+    if (!descriptionText) return;
+
+    forbiddenTerms.forEach(({ term, restriction }) => {
+      if (seen.has(term)) return;
+      if (containsTerm(descriptionText, term)) {
+        seen.add(term);
+        violations.push({
+          mealName: meal.name || meal.dish || meal.description || 'Unknown meal',
+          day: meal.day || 'unknown',
+          mealType: meal.mealType || 'unknown',
+          violation: `Description mentions "${term}"`,
+          ingredient: term,
+          restriction,
+          severity: 'warning',
         });
       }
     });

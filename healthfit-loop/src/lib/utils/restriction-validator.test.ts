@@ -85,3 +85,97 @@ test('unknown restrictions register no terms and do not crash', () => {
   const r = validateRestrictions([meal('Anything')], { dietPrefs: ['low-FODMAP'] });
   assert.equal(r.valid, true);
 });
+
+/**
+ * A restaurant meal is nothing like a home meal here.
+ *
+ * A home recipe arrives with an `ingredients` array, and that array is where
+ * the forbidden foods actually appear. A restaurant option has no ingredients
+ * field at all — `RestaurantMealObject` does not define one — so everything we
+ * know about what is in the dish is in its `description`.
+ *
+ * The search text was built as `meal.name || meal.dish || meal.description`.
+ * Those are `||`, not concatenation, and the restaurant route sets `name`
+ * before calling. `name` is therefore always truthy and the description was
+ * never once read. "Bento Box" described as pork belly passed a vegetarian
+ * check.
+ */
+const restaurantOption = (dish: string, description: string) => ({
+  name: dish, dish, description, day: 'tuesday', mealType: 'lunch',
+});
+
+test('a restaurant dish is checked on its description, not just its name', () => {
+  const r = validateRestrictions(
+    [restaurantOption('Bento Box', 'Braised pork belly over rice with pickles')],
+    { dietPrefs: ['vegetarian'] }
+  );
+  assert.ok(
+    r.violations.some(v => v.ingredient === 'pork'),
+    'the description was not scanned'
+  );
+});
+
+test('a description hit warns rather than invalidating the plan', () => {
+  // Deliberate. The description is prose a model wrote, and a word-anchored
+  // matcher cannot tell "pork belly" from "no pork". Over-flagging fails safe
+  // only while the flag is advisory; making it an error would let the model's
+  // own phrasing delete a user's week.
+  const r = validateRestrictions(
+    [restaurantOption('Bento Box', 'Braised pork belly over rice')],
+    { dietPrefs: ['vegetarian'] }
+  );
+  assert.equal(r.valid, true);
+  assert.ok(r.violations.every(v => v.severity === 'warning'));
+});
+
+test('the name still errors at full severity — the description pass adds, never downgrades', () => {
+  const r = validateRestrictions(
+    [restaurantOption('Pork Belly Bao', 'Steamed buns')],
+    { dietPrefs: ['vegetarian'] }
+  );
+  assert.equal(r.valid, false);
+  assert.ok(r.violations.some(v => v.ingredient === 'pork' && v.severity === 'error'));
+});
+
+test('a term in both the name and the description is reported once, at the higher severity', () => {
+  const r = validateRestrictions(
+    [restaurantOption('Pork Bao', 'Pork shoulder, steamed')],
+    { dietPrefs: ['vegetarian'] }
+  );
+  const pork = r.violations.filter(v => v.ingredient === 'pork');
+  assert.equal(pork.length, 1);
+  assert.equal(pork[0].severity, 'error');
+});
+
+test('a meal whose only text is its description keeps erroring at full severity', () => {
+  // The pre-existing fallback: with no name and no dish, `description` WAS the
+  // name. That path must not be quietly demoted to a warning by the new pass.
+  const r = validateRestrictions(
+    [{ description: 'Pork belly rice bowl', day: 'monday', mealType: 'dinner' }],
+    { dietPrefs: ['vegetarian'] }
+  );
+  assert.equal(r.valid, false);
+  assert.ok(r.violations.some(v => v.ingredient === 'pork' && v.severity === 'error'));
+});
+
+test('an allergy in a restaurant description is still only a warning, and is labelled as one', () => {
+  // Uncomfortable but correct. An allergy in a *name* stays an error; in prose
+  // we cannot distinguish "contains peanuts" from "peanut-free". The violation
+  // is surfaced to the user either way — the severity governs whether the plan
+  // is thrown away, and a thrown-away plan helps nobody eat.
+  const r = validateRestrictions(
+    [restaurantOption('Pad Thai', 'Rice noodles with crushed peanuts')],
+    { foodAllergies: ['peanut'] }
+  );
+  assert.ok(r.violations.some(v => v.ingredient === 'peanut'));
+  assert.equal(r.valid, true);
+});
+
+test('a home recipe is unaffected — ingredients still carry their declared severity', () => {
+  const r = validateRestrictions(
+    [{ name: 'Pad thai', ingredients: ['crushed peanuts'], day: 'monday', mealType: 'dinner' }],
+    { foodAllergies: ['peanut'] }
+  );
+  assert.equal(r.valid, false);
+  assert.ok(r.violations.every(v => v.severity === 'error'));
+});

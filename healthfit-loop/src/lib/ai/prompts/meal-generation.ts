@@ -1108,6 +1108,7 @@ ${(surveyData.preferredFoods || []).length > 0
 11. Use ONLY restaurants and menu items from the data provided above
 12. ⚠️ DIET TYPE + ALLERGIES ARE ABSOLUTE - never select forbidden items; dislikes should be minimized
 13. ⚠️ PREFERRED FOODS: When available, prioritize dishes featuring user's preferred ingredients
+14. ⚠️ "description" IS THE DISH, NOT YOUR ARGUMENT FOR IT: describe what arrives on the plate — the components and how they are prepared. Never justify the pick, and never list what the dish does NOT contain. "Chickpea fritters in flatbread with tahini and pickles" is right; "no meat, poultry, fish or gelatin listed, so it fits the vegetarian requirement" is wrong. It is shown to the user as the dish description, and the restriction check reads it as a statement of ingredients — prose about absent ingredients reads there as their presence.
 
 Return ONLY this JSON structure:
 {
