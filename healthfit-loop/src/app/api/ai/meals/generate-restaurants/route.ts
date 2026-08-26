@@ -883,8 +883,9 @@ async function handleGenerate_restaurants(req: NextRequest) {
     // discovery 9.5s + this phase's 9s floor + selection 34.8s = 53.2s against
     // ROUTE_TOTAL_BUDGET_MS of 53s. No reserve value fixes that; there is
     // nothing left to take. It is survivable today only because link filtering
-    // leaves 2-4 restaurants rather than six — so fixing the restaurant pool
-    // size would surface this as total loss of the restaurant half.
+    // leaves far fewer than six (2 of 9 on the one observed run) — so fixing
+    // the restaurant pool size would surface this as total loss of the
+    // restaurant half.
     // See docs/superpowers/specs/2026-08-26-restaurant-remaining-defects-design.md.
     const menuExtractionStart = Date.now();
     const restaurantMenuData = await reservingBudget(MEAL_SELECTION_RESERVE_MS, () =>

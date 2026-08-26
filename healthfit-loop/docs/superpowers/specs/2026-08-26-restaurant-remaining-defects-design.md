@@ -251,8 +251,10 @@ selection p95   34,752 ms   (measured above)
 There is no reserve value that fixes this. Reserves divide the budget; they do
 not create it.
 
-**Why production has not collapsed:** link filtering leaves 2-4 restaurants
-rather than six, so the real prompt sits between the two fixtures. The
+**Why production has not collapsed:** link filtering leaves far fewer than six
+restaurants — 2 of 9 survived on the one run observed in the runtime logs (§
+Defect 1), which is a single observation rather than a measured range — so the
+real prompt today sits below the 6×8 fixture. The
 restaurant-pool defect is currently *masking* the latency defect. Fixing the
 pool — previously logged as "the next real defect" — would surface this as total
 loss of the restaurant half, because Phase 3 is all-or-nothing. **These two must
