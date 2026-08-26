@@ -123,3 +123,60 @@ export function canResetPollCounter(status: {
 }): boolean {
   return status.mealsGenerated && status.workoutsGenerated && status.restaurantMealsGenerated;
 }
+
+/**
+ * Status values a phase writes about itself before it knows the answer.
+ *
+ * `pending` is what a generator sets for a phase that has not reported yet. It
+ * is a statement about ignorance, so it must never replace a phase's own
+ * account of how it went.
+ */
+const PLACEHOLDER_STATUSES = new Set(['pending', 'unknown', '']);
+
+/**
+ * Fields in `userContext.metadata` that belong to one phase and no other.
+ *
+ * Every generator merges into the same JSON blob, so "spread mine over theirs"
+ * is only safe for keys I own. These are the ones I do not.
+ */
+const FOREIGN_STATUS_KEYS = ['restaurantsStatus', 'homeMealsStatus', 'workoutsStatus'] as const;
+
+/**
+ * Merge one generator's metadata into the plan's without overwriting another
+ * phase's verdict with a placeholder.
+ *
+ * `generate-home` built its metadata object with `restaurantsStatus: 'pending'`
+ * hardcoded — correct for the legacy path where it creates the plan itself, and
+ * wrong for the relay, where the restaurant phase has already run and written a
+ * real answer. Spread second, the placeholder won every time. This is not a
+ * race: home always runs after restaurants in the relay, so it clobbered the
+ * value on every run.
+ *
+ * Observed on plan cmta7lxql0003js040c5ta846 (2026-08-26): the same object held
+ * `generators.restaurants: "completed"` and `metadata.restaurantsStatus:
+ * "pending"`, because `generators` was spread-merged key by key and `metadata`
+ * was not. `DashboardContainer` reads `restaurantsStatus`, so it kept waiting
+ * for a phase that had already finished — and, since the restaurant phase now
+ * reports `failed` when it saves nothing, it would have erased that too.
+ *
+ * A real status still overwrites a real status: the phase that wrote most
+ * recently is the one that knows. Only placeholders lose.
+ */
+export function mergeGenerationMetadata(
+  existing: Record<string, unknown> | null | undefined,
+  incoming: Record<string, unknown> | null | undefined
+): Record<string, unknown> {
+  const merged: Record<string, unknown> = { ...(existing ?? {}), ...(incoming ?? {}) };
+
+  for (const key of FOREIGN_STATUS_KEYS) {
+    const before = (existing ?? {})[key];
+    const after = (incoming ?? {})[key];
+    const afterIsPlaceholder =
+      after === undefined || (typeof after === 'string' && PLACEHOLDER_STATUSES.has(after));
+    if (before !== undefined && afterIsPlaceholder) {
+      merged[key] = before;
+    }
+  }
+
+  return merged;
+}

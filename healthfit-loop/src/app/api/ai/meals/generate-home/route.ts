@@ -29,6 +29,7 @@ import { parseChoice } from '@/lib/ai/validate';
 import { runVerification, verifyGroceryCoverage } from '@/lib/verification';
 import { trace } from '@/lib/utils/run-trace';
 import { internalFetch } from '@/lib/utils/internal-fetch';
+import { mergeGenerationMetadata } from '@/lib/utils/generation-progress';
 
 export const runtime = 'nodejs';
 // 60s is the Hobby ceiling and is valid on every Vercel plan. Without this
@@ -1706,11 +1707,13 @@ async function handleGenerate_home(requestData: HomeGenerationRequest) {
                 ...existingContext.generators,
                 homeMeals: 'completed'
               },
-              // Preserve any existing metadata and merge with new
-              metadata: {
-                ...existingContext.metadata,
-                ...initialMealPlan.metadata
-              }
+              // Merge, but never let this route's `restaurantsStatus: 'pending'`
+              // placeholder overwrite what the restaurant phase actually
+              // reported. See mergeGenerationMetadata.
+              metadata: mergeGenerationMetadata(
+                existingContext.metadata,
+                initialMealPlan.metadata
+              )
             } as any,
             status: newStatus
           }

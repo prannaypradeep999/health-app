@@ -5,6 +5,7 @@ import {
   canResetPollCounter,
   hasGivenUpOnHomeMeals,
   hasGivenUpOnRestaurants,
+  mergeGenerationMetadata,
 } from './generation-progress';
 
 const NOW = 1_800_000_000_000;
@@ -181,4 +182,66 @@ test('a reported failure does not override meals that actually arrived', () => {
 test('no reported failure leaves the existing staleness rules untouched', () => {
   assert.equal(hasGivenUpOnRestaurants(input({ phaseReportedFailure: false })), false);
   assert.equal(hasGivenUpOnRestaurants(input({ phaseReportedFailure: undefined })), false);
+});
+
+test('home meals cannot reset a restaurant status the restaurant phase reported', () => {
+  // The exact shape observed on plan cmta7lxql0003js040c5ta846: the restaurant
+  // route wrote "completed", then generate-home spread its own metadata — which
+  // hardcodes "pending" for the legacy create path — over the top.
+  const merged = mergeGenerationMetadata(
+    { restaurantsStatus: 'completed', restaurantsWithLinks: 4 },
+    { type: 'home_meals_only', restaurantsStatus: 'pending', totalHomeMeals: 9 }
+  );
+  assert.equal(merged.restaurantsStatus, 'completed');
+  assert.equal(merged.totalHomeMeals, 9);
+  assert.equal(merged.restaurantsWithLinks, 4);
+});
+
+test('a reported failure survives the merge too', () => {
+  // Otherwise the honest "failed" the restaurant phase now writes when it saves
+  // nothing would be erased, and the dashboard would wait for it forever.
+  const merged = mergeGenerationMetadata(
+    { restaurantsStatus: 'failed' },
+    { restaurantsStatus: 'pending' }
+  );
+  assert.equal(merged.restaurantsStatus, 'failed');
+});
+
+test('a real status still overwrites a real status', () => {
+  // Only placeholders lose. The phase that wrote last is the one that knows.
+  const merged = mergeGenerationMetadata(
+    { restaurantsStatus: 'failed' },
+    { restaurantsStatus: 'completed' }
+  );
+  assert.equal(merged.restaurantsStatus, 'completed');
+});
+
+test('the placeholder wins when nothing was there before', () => {
+  // The legacy create path needs "pending" to mean "not started yet".
+  const merged = mergeGenerationMetadata({ type: 'x' }, { restaurantsStatus: 'pending' });
+  assert.equal(merged.restaurantsStatus, 'pending');
+});
+
+test('keys nobody else owns merge normally, incoming last', () => {
+  const merged = mergeGenerationMetadata(
+    { type: 'restaurant_meals_only', generationMethod: 'phase2' },
+    { type: 'home_meals_only' }
+  );
+  assert.equal(merged.type, 'home_meals_only');
+  assert.equal(merged.generationMethod, 'phase2');
+});
+
+test('null and undefined metadata merge without throwing', () => {
+  assert.deepEqual(mergeGenerationMetadata(null, null), {});
+  assert.deepEqual(mergeGenerationMetadata(undefined, { a: 1 }), { a: 1 });
+  assert.deepEqual(mergeGenerationMetadata({ a: 1 }, undefined), { a: 1 });
+});
+
+test('every phase status field is protected, not just restaurants', () => {
+  const merged = mergeGenerationMetadata(
+    { homeMealsStatus: 'completed', workoutsStatus: 'failed' },
+    { homeMealsStatus: 'pending', workoutsStatus: '' }
+  );
+  assert.equal(merged.homeMealsStatus, 'completed');
+  assert.equal(merged.workoutsStatus, 'failed');
 });
