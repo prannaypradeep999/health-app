@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse, after } from 'next/server';
-import { withRouteBudget, reservingBudget } from '@/lib/utils/route-budget';
+import { withRouteBudget, reservingBudget, MEAL_SELECTION_RESERVE_MS } from '@/lib/utils/route-budget';
 import { cookies } from 'next/headers';
 import { prisma } from '@/lib/db';
 import { googlePlacesClient, Restaurant } from '@/lib/external/places-client';
@@ -865,11 +865,14 @@ async function handleGenerate_restaurants(req: NextRequest) {
     // nothing chosen. Enrichment is worthless without the selection that
     // consumes it, so it gets "everything except what Phase 3 needs".
     //
-    // 22s for Phase 3: one DETAIL-model call with maxTokens 12000, whose prompt
-    // measured 9357 chars (~2340 tokens) on the same run. Fewer enriched menus
-    // is a smaller loss than no meals at all.
+    // How much Phase 3 is promised is MEAL_SELECTION_RESERVE_MS, which lives in
+    // route-budget.ts beside the measurement that justifies it. It was an
+    // inline 22_000 here, chosen when selection took ~18s; selection's p95 at
+    // seven eating-out slots is 22.8s, so the reserve had quietly fallen below
+    // the p95 of the phase it reserves for. Fewer enriched menus is a smaller
+    // loss than no meals at all.
     const menuExtractionStart = Date.now();
-    const restaurantMenuData = await reservingBudget(22_000, () =>
+    const restaurantMenuData = await reservingBudget(MEAL_SELECTION_RESERVE_MS, () =>
       extractMenuInformation(selectedRestaurants, surveyData)
     );
     const menuExtractionTime = Date.now() - menuExtractionStart;

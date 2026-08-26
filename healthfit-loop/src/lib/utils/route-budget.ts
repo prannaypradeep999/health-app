@@ -57,6 +57,49 @@ export const ROUTE_TOTAL_BUDGET_MS = 53_000;
 export const MENU_STRUCTURING_RESERVE_MS = 9_000;
 
 /**
+ * Time held back from restaurant menu extraction so the meal-selection call
+ * that consumes it can always finish. Passed to `reservingBudget` in
+ * generate-restaurants/route.ts.
+ *
+ * This constant is a promise — "Phase 3 will have at least this long" — and it
+ * was 22_000 while being wrong. Selection at seven eating-out slots, measured
+ * over ten bench runs on 2026-08-26:
+ *
+ *   p50  17,370ms
+ *   p95  22,800ms
+ *
+ * The reserve was below the p95 of the very thing it reserved for. The
+ * 2026-08-26 production failure survived to 26,694ms only because extraction
+ * happened to finish early and handed selection 26,705ms it had never been
+ * guaranteed — and was still cut off 11ms short, returning zero meals.
+ *
+ * 26_000 clears the measured p95 by 14%. The cost is ~4s of extraction's ~21.5s,
+ * and the trade is good in both directions: `mapWithLimit(toEnrich, 6, ...)`
+ * runs all six lookups in one wave, so extraction's wall time is roughly the
+ * slowest single lookup rather than the sum, and the loss costs the slowest one
+ * or two restaurants rather than all six. More importantly extraction DEGRADES
+ * — a restaurant whose lookup does not finish is dropped and the plan is built
+ * from the rest — while selection does not degrade at all. It is one call that
+ * either returns a week of meals or returns `[]`.
+ *
+ * Trading a phase that degrades for a phase that does not is the whole
+ * argument.
+ *
+ * The p95 above comes from a fixture of three restaurants at three dishes each;
+ * production shows the model up to six at eight. `route-budget.test.ts` pins
+ * the arithmetic so raising one constant cannot silently overcommit the route.
+ */
+export const MEAL_SELECTION_RESERVE_MS = 26_000;
+
+/**
+ * Restaurant discovery (Places + the selection call that ranks its results)
+ * measured 9,466ms on the 2026-08-26 run. Not a budget — nothing clamps to it —
+ * but the third term in the route's arithmetic, recorded here so the test that
+ * checks the reserves add up has a real number to check against.
+ */
+export const OBSERVED_RESTAURANT_DISCOVERY_MS = 9_466;
+
+/**
  * Run `fn` under a shared deadline. Wrap the whole body of a route handler.
  */
 export function withRouteBudget<T>(fn: () => Promise<T>, totalMs = ROUTE_TOTAL_BUDGET_MS): Promise<T> {
