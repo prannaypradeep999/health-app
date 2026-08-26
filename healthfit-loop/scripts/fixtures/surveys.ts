@@ -31,6 +31,27 @@ export const allHomeSchedule = Object.fromEntries(
   DAYS.map(d => [d, { breakfast: 'home', lunch: 'home', dinner: 'home' }])
 );
 
+/**
+ * The week that actually broke: seven eating-out slots.
+ *
+ * Every other schedule here yields three restaurant slots, so the restaurant
+ * benchmark had only ever measured three. Restaurant-selection output scales
+ * with the slot count — one primary and one alternative per slot — and the
+ * 2026-08-26 production failure was a seven-slot week whose selection call ran
+ * 26,694ms and was cut off 11ms short of the 53,000ms route budget, persisting
+ * zero meals. Benchmarking three slots and reasoning about seven is how that
+ * went unseen.
+ */
+export const restaurantHeavySchedule = {
+  monday: { breakfast: 'home', lunch: 'restaurant', dinner: 'home' },
+  tuesday: { breakfast: 'home', lunch: 'restaurant', dinner: 'restaurant' },
+  wednesday: { breakfast: 'home', lunch: 'home', dinner: 'restaurant' },
+  thursday: { breakfast: 'home', lunch: 'restaurant', dinner: 'home' },
+  friday: { breakfast: 'home', lunch: 'home', dinner: 'restaurant' },
+  saturday: { breakfast: 'home', lunch: 'restaurant', dinner: 'home' },
+  sunday: { breakfast: 'home', lunch: 'home', dinner: 'home' },
+};
+
 /** A realistic mixed week — some restaurant slots, some skipped meals. */
 export const mixedSchedule = {
   monday: { breakfast: 'home', lunch: 'home', dinner: 'home' },
@@ -135,6 +156,48 @@ export const fixtures: Fixture[] = [
       breakfast: { calories: 550, protein: 40, carbs: 55, fat: 18 },
       lunch: { calories: 750, protein: 55, carbs: 75, fat: 24 },
       dinner: { calories: 850, protein: 60, carbs: 85, fat: 28 },
+    } },
+  },
+  {
+    // Exists for one reason: seven eating-out slots, the load that failed in
+    // production on 2026-08-26. No dietary restrictions, so the compliant-dish
+    // pool is not the binding constraint and what this measures is the cost of
+    // the slot count alone. See restaurantHeavySchedule.
+    name: 'eats-out-often',
+    surveyData: {
+      ...base,
+      firstName: 'Dana', lastName: 'Okafor',
+      age: 36, sex: 'female', height: 67, weight: 158,
+      goal: 'GENERAL_WELLNESS', primaryGoal: 'maintain',
+      goalChallenge: 'client lunches most weekdays',
+      additionalGoalsNotes: 'eats out constantly and wants the ordering to be decided for her',
+      healthFocus: null, maintainFocus: 'energy',
+      activityLevel: 'moderately_active',
+      fitnessLevel: 'intermediate', fitnessTimeline: '6_months',
+      preferredActivities: ['running'], sportsInterests: 'tennis',
+      dietPrefs: [],
+      foodAllergies: [],
+      strictExclusions: null,
+      preferredCuisines: ['japanese', 'mediterranean', 'mexican'],
+      preferredFoods: ['salmon', 'chickpeas', 'rice'],
+      preferredNutrients: ['protein'],
+      customFoodInput: '',
+      monthlyFoodBudget: 700, monthlyFitnessBudget: 60,
+      eatingOutOccasions: '7', mealsOutPerWeek: 7,
+      distancePreference: 'medium',
+      weeklyMealSchedule: restaurantHeavySchedule,
+      workoutPreferencesJson: null,
+    },
+    workoutPrefs: {
+      fitnessExperience: 'intermediate', gymAccess: 'full_gym',
+      workoutTypes: ['cardio', 'strength'], availableDays: ['monday', 'wednesday', 'saturday'],
+      preferredDuration: 45, injuryConsiderations: [],
+      timePreferences: ['morning'],
+    },
+    nutritionTargets: { mealTargets: {
+      breakfast: { calories: 420, protein: 26, carbs: 45, fat: 14 },
+      lunch: { calories: 620, protein: 40, carbs: 65, fat: 20 },
+      dinner: { calories: 680, protein: 44, carbs: 70, fat: 22 },
     } },
   },
   {
