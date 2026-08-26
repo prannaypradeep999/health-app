@@ -69,40 +69,85 @@ export interface MacroTargets {
   fat: number; // grams
 }
 
+/**
+ * Protein need scales with the body being fed, not with the calorie target.
+ *
+ * This used to be a percentage of calories, which coupled protein to activity
+ * level and goal surplus. For a 170lb moderately-active man aiming at muscle
+ * gain that produced 244 g/day — 3.17 g/kg, well beyond any published
+ * recommendation, and unreachable from a vegetarian menu without stacking
+ * three dishes into one meal.
+ *
+ * The figures below are g per kg of bodyweight per day:
+ *
+ *   ISSN position stand (Jäger et al., JISSN 2017): 1.4-2.0 g/kg for building
+ *   and maintaining muscle mass in exercising individuals.
+ *
+ *   Morton et al. (BJSM 2018), meta-analysis of 49 RCTs: resistance-training
+ *   gains plateau around 1.62 g/kg, with the confidence interval reaching
+ *   ~2.2 — so there is no evidence of further benefit above that.
+ *
+ * MUSCLE_GAIN sits at 1.8, above Morton's plateau and inside its CI.
+ * WEIGHT_LOSS sits highest because protein spares lean mass in a deficit.
+ * ENDURANCE takes the ISSN floor, its extra energy belonging in carbohydrate.
+ * GENERAL_WELLNESS sits above the 0.8 g/kg RDA, which is a floor for avoiding
+ * deficiency rather than a target for an active adult.
+ */
+export const PROTEIN_G_PER_KG = {
+  WEIGHT_LOSS: 2.0,
+  MUSCLE_GAIN: 1.8,
+  ENDURANCE: 1.4,
+  GENERAL_WELLNESS: 1.2,
+} as const;
+
+/** Fat as a share of calories. Unchanged; only protein was miscomputed. */
+const FAT_RATIO: Record<string, number> = {
+  WEIGHT_LOSS: 0.25,
+  MUSCLE_GAIN: 0.25,
+  ENDURANCE: 0.25,
+  GENERAL_WELLNESS: 0.30,
+};
+
+/**
+ * Ceiling on protein as a share of calories.
+ *
+ * g/kg and a calorie deficit are set independently, so they can collide: a
+ * 380lb person cutting would be asked for 345 g/day against a target that
+ * cannot hold it alongside any fat and carbohydrate. Capping the share keeps
+ * the macro split solvable. It binds only in that corner — at ordinary
+ * bodyweights the g/kg figure is well under the cap.
+ */
+const MAX_PROTEIN_CALORIE_SHARE = 0.35;
+
+/** Floor on carbohydrate, so the split can never resolve to a negative target. */
+const MIN_CARB_CALORIE_SHARE = 0.05;
+
 export function calculateMacroTargets(profile: UserProfile): MacroTargets {
   const calories = calculateTargetCalories(profile);
   const weightKg = profile.weight * 0.453592;
 
-  let proteinRatio: number;
-  let fatRatio: number;
+  const gPerKg =
+    PROTEIN_G_PER_KG[profile.goal as keyof typeof PROTEIN_G_PER_KG] ??
+    PROTEIN_G_PER_KG.GENERAL_WELLNESS;
+  const fatRatio = FAT_RATIO[profile.goal] ?? FAT_RATIO.GENERAL_WELLNESS;
 
-  switch (profile.goal) {
-    case 'WEIGHT_LOSS':
-      proteinRatio = 0.35; // 35% protein for satiety and muscle preservation
-      fatRatio = 0.25; // 25% fat
-      break;
-    case 'MUSCLE_GAIN':
-      proteinRatio = 0.30; // 30% protein for muscle building
-      fatRatio = 0.25; // 25% fat
-      break;
-    case 'ENDURANCE':
-      proteinRatio = 0.20; // 20% protein
-      fatRatio = 0.25; // 25% fat
-      break;
-    case 'GENERAL_WELLNESS':
-    default:
-      proteinRatio = 0.25; // 25% protein
-      fatRatio = 0.30; // 30% fat
-      break;
-  }
+  const proteinCalories = Math.min(weightKg * gPerKg * 4, calories * MAX_PROTEIN_CALORIE_SHARE);
 
-  const carbRatio = 1 - proteinRatio - fatRatio;
+  // Fat yields whatever room protein and the carbohydrate floor leave it. In
+  // practice it gets its full ratio; the clamp only matters in the corner the
+  // protein cap already describes.
+  const fatCalories = Math.min(
+    calories * fatRatio,
+    Math.max(0, calories * (1 - MIN_CARB_CALORIE_SHARE) - proteinCalories)
+  );
+
+  const carbCalories = Math.max(0, calories - proteinCalories - fatCalories);
 
   return {
     calories,
-    protein: Math.round((calories * proteinRatio) / 4), // 4 cal/g protein
-    carbs: Math.round((calories * carbRatio) / 4), // 4 cal/g carbs
-    fat: Math.round((calories * fatRatio) / 9) // 9 cal/g fat
+    protein: Math.round(proteinCalories / 4), // 4 cal/g protein
+    carbs: Math.round(carbCalories / 4), // 4 cal/g carbs
+    fat: Math.round(fatCalories / 9) // 9 cal/g fat
   };
 }
 
