@@ -266,16 +266,38 @@ change.**
 Each remaining option changes generation behaviour or the route's shape, which
 is outside the containment this work was scoped to. Ranked by contained-ness:
 
-1. **Lower the dish cap** — `.slice(0, 8)` → 5 in `meal-generation.ts:979`. A
-   one-number change that directly attacks the +53%. Costs the model choice, so
-   fit and variety may worsen; wants a bench run, not a guess.
+1. ~~**Lower the dish cap**~~ — **measured and rejected.** `.slice(0, 8)` → 5 in
+   `meal-generation.ts:979`, benched the same way (`eats-out-often`, n=5):
+
+   | | cap 8 | cap 5 | available |
+   |---|---|---|---|
+   | p50 | 30,872 ms | 27,107 ms | 26,705 ms |
+   | p95 | 34,752 ms | 31,011 ms | 26,705 ms |
+   | worst adherence miss | 14% (warn) | **26% (error)** | 10% warn / 25% error |
+
+   It buys ~12% and still does not fit, so it fails at the thing it was for.
+   And it breaks what it was supposed to protect: with five dishes the model
+   sometimes has nothing near the target, and a 26%-off meal appeared — the
+   first adherence *error* any run has produced. Starving selection of choice
+   is not a latency fix, it is a quality regression that does not even pay for
+   itself. (n=5, so treat the warn counts as indicative; the error and the
+   latency floor are the load-bearing parts.)
+
+   Note also that `meal-generation.test.ts`'s "the bench fixture actually
+   reaches the model as a menu" asserts every fixture dish renders, so it fails
+   under any cap below the fixture's depth — by design. A future cap change
+   must update that guard deliberately rather than discover it.
+
 2. **Split selection into two parallel calls** — roughly halves wall time and
    keeps every dish. The largest change, and the one the original design named
-   as the fallback if this measurement came in above 26s. It did.
+   as the fallback if this measurement came in above 26s. It did, and option 1
+   is now eliminated, so this is the recommendation.
 3. **Raise `ROUTE_TOTAL_BUDGET_MS`** 53s → ~56s. Buys ~3s of a ~9s gap and eats
-   headroom against `maxDuration = 60`. Insufficient alone.
+   headroom against `maxDuration = 60`. Insufficient alone; possibly useful
+   alongside (2).
 
-The reserve change stays shipped. Nothing above was undertaken unilaterally.
+The reserve change stays shipped. Nothing above was undertaken unilaterally —
+option 1 was measured on a scratch edit and reverted, not committed.
 
 ---
 
