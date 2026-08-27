@@ -63,6 +63,17 @@ export interface RestaurantRecord {
   name?: string | null;
   address?: string | null;
   cuisine?: string | null;
+  /**
+   * Places calls it `phoneNumber` (mapped from `formatted_phone_number`, which
+   * places-client.ts already requests and pays for); the dashboard reads
+   * `phone`. Both spellings are accepted here because this join is the layer
+   * where a looked-up fact becomes a rendered one, and a record arrives with
+   * whichever name its source used.
+   */
+  phone?: string | null;
+  phoneNumber?: string | null;
+  /** From Places, via `extractCityAndZip`. */
+  city?: string | null;
   orderingLinks?: Record<string, unknown> | null;
 }
 
@@ -70,6 +81,13 @@ export interface RestaurantRecord {
 export interface JoinedRestaurantMeal extends RestaurantMealChoice {
   cuisine: string;
   address: string;
+  /**
+   * Null rather than '' so the UI's `restaurant.phone &&` gate reads false for a
+   * restaurant we have no number for, instead of rendering a `tel:` link to
+   * nothing.
+   */
+  phone: string | null;
+  city: string;
   orderingLinks: OrderingLinks;
   source: 'restaurant';
 }
@@ -163,6 +181,12 @@ export function joinRestaurantDetails(
       restaurant: record?.name || choice.restaurant,
       cuisine: record?.cuisine || '',
       address: record?.address || '',
+      // Looked-up facts, same as address and cuisine. Places already returns
+      // both; they were dropped here only because this list did not name them.
+      // The Call button is gated on `phone`, and it is the one actionable thing
+      // left on a card whose restaurant has no usable ordering link.
+      phone: record?.phone || record?.phoneNumber || null,
+      city: record?.city || '',
       orderingLinks: toOrderingLinks(record?.orderingLinks),
       source: 'restaurant',
     },

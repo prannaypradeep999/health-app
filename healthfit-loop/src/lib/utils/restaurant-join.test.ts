@@ -16,6 +16,8 @@ function record(over: Partial<RestaurantRecord> = {}): RestaurantRecord {
     name: 'EJ BBQ & Sushi',
     address: '168 W 25th St, New York, NY 10001, USA',
     cuisine: 'Japanese',
+    phone: '(212) 555-0143',
+    city: 'New York',
     orderingLinks: {
       direct: 'https://ejbbqsushi.com/',
       ubereats: 'https://postmates.com/store/ej-bbq-&-sushi/FPPBE4WET1aWozeKRyf1vg',
@@ -45,8 +47,9 @@ test('the joined meal has exactly the fields the dashboard already reads', () =>
   assert.deepEqual(
     Object.keys(meal).sort(),
     [
-      'address', 'carbs', 'cuisine', 'description', 'dish', 'estimatedCalories',
-      'fat', 'orderingLinks', 'price', 'protein', 'restaurant', 'source', 'tags',
+      'address', 'carbs', 'city', 'cuisine', 'description', 'dish',
+      'estimatedCalories', 'fat', 'orderingLinks', 'phone', 'price', 'protein',
+      'restaurant', 'source', 'tags',
     ]
   );
 });
@@ -170,4 +173,55 @@ test('normalization is stable for names that differ only in decoration', () => {
   assert.equal(normalizeRestaurantName('The Bite'), 'the bite');
   assert.equal(normalizeRestaurantName(null), '');
   assert.equal(normalizeRestaurantName(42), '');
+});
+
+/**
+ * Phone and city are looked-up facts, exactly like address and cuisine, and they
+ * were being dropped here for the same reason those were once retyped: this
+ * function builds its output from an explicit field list, so a field nobody
+ * added is a field nobody gets.
+ *
+ * Google Places already returns both — `formatted_phone_number` is in the
+ * `details` field list places-client.ts requests and pays for, and `city` comes
+ * out of `extractCityAndZip`. They survive the `{...restaurant}` spread in menu
+ * extraction and die here.
+ *
+ * What that cost: RestaurantListSection renders its Call button behind
+ * `restaurant.phone &&`, so no user has ever seen one — production plan
+ * cmtayzto2 had 0 of 14 options with a phone. That button matters most for
+ * exactly the restaurants this app struggles with: one with no usable ordering
+ * link renders a "Find it" Maps search, and the gate for that is
+ * `kind === 'locate' && !restaurant.phone` — a phone turns a dead card into a
+ * reservation. `city` is rendered as `{address}, {city}` and left a trailing
+ * comma on every card.
+ */
+test('the phone Places already fetched reaches the card', () => {
+  const { meal } = joinRestaurantDetails(choice(), [record()]);
+  assert.equal(meal.phone, '(212) 555-0143');
+});
+
+test('the city Places already parsed reaches the card', () => {
+  const { meal } = joinRestaurantDetails(choice(), [record()]);
+  assert.equal(meal.city, 'New York');
+});
+
+test('a record with no phone yields null, not the string "undefined"', () => {
+  const { meal } = joinRestaurantDetails(choice(), [record({ phone: undefined, city: undefined })]);
+  assert.equal(meal.phone, null);
+  assert.equal(meal.city, '');
+});
+
+test('an invented restaurant gets no phone to call', () => {
+  const { meal } = joinRestaurantDetails(choice({ restaurant: 'Nowhere Cafe' }), [record()]);
+  assert.equal(meal.phone, null);
+  assert.equal(meal.city, '');
+});
+
+test('a record that spells it the Places way still yields a phone', () => {
+  // This is the spelling that actually arrives: menu extraction returns
+  // `{...restaurant}` over the Places result, which carries `phoneNumber`.
+  const { meal } = joinRestaurantDetails(choice(), [
+    record({ phone: undefined, phoneNumber: '(212) 555-0199' }),
+  ]);
+  assert.equal(meal.phone, '(212) 555-0199');
 });

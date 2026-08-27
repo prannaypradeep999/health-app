@@ -13,7 +13,7 @@ import {
   ChefHat,
   Target
 } from '@phosphor-icons/react';
-import { orderOptionsFor } from '@/lib/utils/restaurant-links';
+import { orderOptionsFor, formatRestaurantLocation } from '@/lib/utils/restaurant-links';
 
 interface Restaurant {
   name: string;
@@ -182,7 +182,7 @@ export function RestaurantListSection({ restaurants, metadata }: RestaurantListS
                 <div className="px-4 py-2 bg-gray-50">
                   <p className="text-sm text-gray-600 flex items-center gap-2">
                     <MapPin className="w-4 h-4 text-gray-500" />
-                    {restaurant.address}, {restaurant.city}
+                    {formatRestaurantLocation(restaurant.address, restaurant.city)}
                   </p>
                 </div>
 

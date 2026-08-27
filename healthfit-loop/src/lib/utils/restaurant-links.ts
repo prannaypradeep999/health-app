@@ -155,3 +155,31 @@ export function orderOptionsFor(meal: unknown): OrderOption[] {
 export function isLocateOnly(options: OrderOption[]): boolean {
   return options.length > 0 && options.every(o => o.kind === 'locate');
 }
+
+/**
+ * The one-line location shown under a restaurant name.
+ *
+ * The card rendered `{address}, {city}` unconditionally. Both halves were
+ * wrong at once: nothing wrote `city` onto a joined meal, so every card in
+ * production plan cmtayzto2 ended in a bare trailing comma — and now that the
+ * join does carry `city`, appending it blindly would be worse, because Places
+ * returns `formatted_address` with the city already in it. That reads
+ * "3105 Shattuck Ave., Berkeley, CA 94705, USA, Berkeley".
+ *
+ * So: the address is the line whenever it already names the city, which for a
+ * Places-sourced restaurant is always. `city` is a supplement for the case the
+ * field exists to cover — a bare street address from a source that did not
+ * spell out the rest.
+ */
+export function formatRestaurantLocation(
+  address: unknown,
+  city: unknown
+): string {
+  const a = typeof address === 'string' ? address.trim() : '';
+  const c = typeof city === 'string' ? city.trim() : '';
+  if (!a) return c;
+  if (!c) return a;
+  // Case-insensitive so "berkeley" from one source and "Berkeley" from another
+  // are not treated as different places.
+  return a.toLowerCase().includes(c.toLowerCase()) ? a : `${a}, ${c}`;
+}

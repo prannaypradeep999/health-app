@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { orderOptionsFor, mapsSearchUrl, isLocateOnly } from './restaurant-links';
+import { orderOptionsFor, mapsSearchUrl, isLocateOnly, formatRestaurantLocation } from './restaurant-links';
 
 const links = (over: Record<string, string | null> = {}) => ({
   doordash: null, ubereats: null, grubhub: null, direct: null, ...over,
@@ -128,4 +128,36 @@ test('isLocateOnly distinguishes "we could not verify an order link" from "we co
     false
   );
   assert.equal(isLocateOnly([]), false, 'nothing on offer is not the same as directions on offer');
+});
+
+test('a Places address already naming the city is not given it twice', () => {
+  assert.equal(
+    formatRestaurantLocation('3105 Shattuck Ave., Berkeley, CA 94705, USA', 'Berkeley'),
+    '3105 Shattuck Ave., Berkeley, CA 94705, USA'
+  );
+});
+
+test('a bare street address is completed with the city', () => {
+  assert.equal(formatRestaurantLocation('2100 Ward St', 'Berkeley'), '2100 Ward St, Berkeley');
+});
+
+test('a missing city leaves no trailing comma', () => {
+  assert.equal(formatRestaurantLocation('2100 Ward St', undefined), '2100 Ward St');
+  assert.equal(formatRestaurantLocation('2100 Ward St', ''), '2100 Ward St');
+});
+
+test('a missing address does not produce a leading comma', () => {
+  assert.equal(formatRestaurantLocation('', 'Berkeley'), 'Berkeley');
+  assert.equal(formatRestaurantLocation(null, 'Berkeley'), 'Berkeley');
+});
+
+test('case differences between sources do not duplicate the city', () => {
+  assert.equal(
+    formatRestaurantLocation('1974 Shattuck Ave., berkeley, CA 94704', 'Berkeley'),
+    '1974 Shattuck Ave., berkeley, CA 94704'
+  );
+});
+
+test('neither address nor city yields an empty line, not punctuation', () => {
+  assert.equal(formatRestaurantLocation(null, null), '');
 });
