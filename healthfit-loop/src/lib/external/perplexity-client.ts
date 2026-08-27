@@ -15,7 +15,7 @@ import { logUsage } from '@/lib/ai/usage';
 import { createLimiter } from '@/lib/utils/concurrency';
 import { corroborate } from '@/lib/external/link-check';
 import { parseReceipt, sourceHostsFrom, type SearchItem } from '@/lib/verification/receipt';
-import { computeStoreTotals, planPriceChunks } from '@/lib/utils/store-totals';
+import { computeStoreTotals, planPriceChunks, snapStoreNames } from '@/lib/utils/store-totals';
 import { fillMissingPriceEstimates, unpricedReason } from '@/lib/utils/grocery-price-estimates';
 import { reservingBudget, MENU_STRUCTURING_RESERVE_MS } from '@/lib/utils/route-budget';
 
@@ -561,7 +561,20 @@ Return as JSON only, no other text:
     // Partial results are kept on purpose. Previously one timeout discarded
     // every item; two chunks out of three is a grocery list with most of its
     // prices, which is plainly worth more to the user than none of them.
-    const pricedItems = settled.flatMap(r => r.ok ? r.priced : []);
+    // Snapped back onto the store list we asked about before anything reads the
+    // names. Each chunk above names the stores independently, and on the
+    // 2026-08-27 production run 6 chunks produced FOUR names for three shops
+    // ("Target Berkeley" on some items, "Target in Berkeley" on others). That is
+    // not cosmetic: computeStoreTotals ranks over the intersection of items
+    // every store priced, no item was priced under both spellings, so the
+    // intersection was empty and all four totals rendered $0.00. The UI's
+    // per-store filter matches on this same string, so it matched nothing
+    // either. Snapping first means totals, estimates and the rows we persist
+    // all agree on what a store is called.
+    const pricedItems = snapStoreNames(
+      settled.flatMap(r => r.ok ? r.priced : []),
+      stores.map(s => s.name)
+    );
     const failures = settled.filter(r => !r.ok);
 
     if (pricedItems.length === 0) {

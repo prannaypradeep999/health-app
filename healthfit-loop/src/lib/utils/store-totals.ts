@@ -18,6 +18,68 @@ export function canonicalStoreKey(name: string): string {
     .trim();
 }
 
+/**
+ * Puts the model's spelling of a store back onto the name we asked about.
+ *
+ * Prices are fetched in parallel chunks, and each chunk names the stores
+ * independently. Measured on the 2026-08-27 production run: 79 items over 6
+ * chunks came back with FOUR store names for three shops — "Target Berkeley" on
+ * some items and "Target in Berkeley" on others. canonicalStoreKey collapses
+ * case and punctuation but not an inserted word, so those are two stores as far
+ * as everything downstream is concerned.
+ *
+ * That is not cosmetic. computeStoreTotals ranks over the intersection of items
+ * every comparable store priced, and no item was priced under both spellings —
+ * so the intersection was empty and all four totals rendered $0.00. The UI's
+ * per-store filter compares `option.store` against the canonical store list too,
+ * so filtering to "Target" matched nothing.
+ *
+ * The fix is the rule the grocery schema already applies to storeAddress:
+ * asking a model for a fact you already have is how you turn a correct value
+ * into a wrong one. findGroceryStores returned the store list; this snaps the
+ * answers back onto it.
+ *
+ * A name matching nothing is left ALONE. A wrong snap merges two real shops and
+ * quietly averages them into one total, which is worse than an extra row.
+ */
+export function snapStoreNames<T extends PricedItemLike>(items: T[], stores: string[]): T[] {
+  const known = stores
+    .map(name => ({ name, key: canonicalStoreKey(name) }))
+    .filter(s => s.key.length > 0);
+  if (known.length === 0) return items;
+
+  const resolve = (raw: string): string => {
+    const key = canonicalStoreKey(raw);
+    if (!key) return raw;
+
+    const exact = known.find(s => s.key === key);
+    if (exact) return exact.name;
+
+    // Containment either way: "target berkeley" vs "target", and
+    // "berkeley farmers market" vs "downtown berkeley farmers market".
+    const matches = known.filter(s => key.includes(s.key) || s.key.includes(key));
+    if (matches.length === 0) return raw;
+
+    // Longest known name wins, so "Whole Foods Market Telegraph" beats bare
+    // "Whole Foods" when both are in the list and both match.
+    let best = matches[0];
+    for (const m of matches) if (m.key.length > best.key.length) best = m;
+    return best.name;
+  };
+
+  return items.map(item => {
+    const options = item.storeOptions;
+    if (!Array.isArray(options)) return item;
+    return {
+      ...item,
+      storeOptions: options.map(option => {
+        const snapped = resolve(option.store);
+        return snapped === option.store ? option : { ...option, store: snapped };
+      }),
+    };
+  });
+}
+
 // A store priced for less than this share of the priced items is not being
 // compared, it is being sampled. Excluded from the ranking rather than allowed
 // to win it on a short basket.
