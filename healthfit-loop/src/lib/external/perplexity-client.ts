@@ -16,7 +16,7 @@ import { createLimiter } from '@/lib/utils/concurrency';
 import { corroborate } from '@/lib/external/link-check';
 import { parseReceipt, sourceHostsFrom, type SearchItem } from '@/lib/verification/receipt';
 import { computeStoreTotals, planPriceChunks, snapStoreNames } from '@/lib/utils/store-totals';
-import { fillMissingPriceEstimates, unpricedReason, meaningfulReason, chunkFoundNoPrices } from '@/lib/utils/grocery-price-estimates';
+import { fillMissingPriceEstimates, unpricedReason, meaningfulReason, chunkPriceCoverage } from '@/lib/utils/grocery-price-estimates';
 import { reservingBudget, MENU_STRUCTURING_RESERVE_MS } from '@/lib/utils/route-budget';
 
 /**
@@ -571,16 +571,34 @@ Return as JSON only, no other text:
     // original is kept unless the retry actually did better. If the route is out
     // of budget, outerSignal aborts the retry and the catch keeps the original
     // — a degraded list rather than a lost one.
-    const degenerate = settled.filter(r => r.ok && chunkFoundNoPrices(r.priced)).length;
-    if (degenerate > 0) {
+    // Widened from "priced nothing" to "priced less than half". The 2026-08-27
+    // vegetarian run had a chunk answer for part of its list and give up on the
+    // rest — 13 of 29 items ended with three store options and a null price in
+    // all three, almost all of them pantry staples. One priced item in that
+    // chunk was enough for chunkFoundNoPrices to call it healthy, so the retry
+    // never fired and the user saw "no price" on nearly half the list.
+    //
+    // Still bounded the same way: one extra attempt, all chunks retried in
+    // parallel so the cost is one round trip rather than one per chunk, the
+    // original kept unless the retry genuinely scored better, and outerSignal
+    // aborts into the catch if the route is out of budget.
+    const RETRY_COVERAGE_THRESHOLD = 0.5;
+    const weak = settled.filter(
+      r => r.ok && chunkPriceCoverage(r.priced) < RETRY_COVERAGE_THRESHOLD
+    ).length;
+    if (weak > 0) {
       console.warn(
-        `[PERPLEXITY-GROCERY] ⚠️ ${degenerate}/${chunks.length} chunk(s) returned rows but no prices at all — retrying those once`
+        `[PERPLEXITY-GROCERY] ⚠️ ${weak}/${chunks.length} chunk(s) priced under ${RETRY_COVERAGE_THRESHOLD * 100}% of their items — retrying those once`
       );
     }
     const resolved = await Promise.all(settled.map((result, index) => {
-      if (!result.ok || !chunkFoundNoPrices(result.priced)) return Promise.resolve(result);
+      if (!result.ok) return Promise.resolve(result);
+      const before = chunkPriceCoverage(result.priced);
+      if (before >= RETRY_COVERAGE_THRESHOLD) return Promise.resolve(result);
       return this.fetchPriceChunk(chunks[index], stores, city, userGoal, outerSignal)
-        .then(priced => (chunkFoundNoPrices(priced) ? result : { ok: true as const, priced }))
+        // Keep whichever attempt priced more of the chunk. A retry that comes
+        // back worse than the first answer must not replace it.
+        .then(priced => (chunkPriceCoverage(priced) > before ? { ok: true as const, priced } : result))
         .catch(() => result);
     }));
 
@@ -672,7 +690,13 @@ Return as JSON only, no other text:
       // two thirds unpriced, and it used to be indistinguishable from a
       // complete one.
       priceSearchSuccess: chunksFailed === 0,
-      pricedItemCount: pricedItems.length,
+      // Items that actually carry a price, NOT items the model returned a row
+      // for. `pricedItems.length` counted rows, so a run where thirteen of
+      // twenty-nine items came back with three store options and a null price
+      // in every one of them still reported "Priced 29 of 29 items" while the
+      // UI printed "no price" under thirteen of them. The count has to mean
+      // the same thing the card shows.
+      pricedItemCount: itemsForDisplay.length - stillUnpriced,
       requestedItemCount: items.length,
       chunksFailed,
       chunksTotal: chunks.length,

@@ -657,9 +657,23 @@ export function DashboardHome({ user, onNavigate, generationStatus, nutritionTar
       const count = restaurantMeals.length || mealData.mealPlan.restaurantMealsCount || 0;
 
       // Extract unique restaurant names (first 3)
+      //
+      // A restaurantMeals entry is `{ day, mealType, primary, alternative }`
+      // and the name lives at `primary.restaurant` as a plain string. The three
+      // paths tried before — `restaurant.name`, `restaurantName`, `name` —
+      // exist nowhere in that shape, so every lookup returned undefined,
+      // filter(Boolean) emptied the list, and a week across six restaurants
+      // previewed as no restaurants at all. Kept the legacy paths as trailing
+      // fallbacks in case an older stored plan uses them.
       const uniqueNames = [...new Set(
         restaurantMeals
-          .map((r: any) => r.restaurant?.name || r.restaurantName || r.name)
+          .map((r: any) =>
+            r.primary?.restaurant ||
+            r.restaurant?.name ||
+            r.restaurantName ||
+            (typeof r.restaurant === 'string' ? r.restaurant : null) ||
+            r.name
+          )
           .filter(Boolean)
       )].slice(0, 3);
 

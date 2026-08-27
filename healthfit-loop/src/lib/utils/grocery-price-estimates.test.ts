@@ -5,6 +5,7 @@ import {
   unpricedReason,
   meaningfulReason,
   chunkFoundNoPrices,
+  chunkPriceCoverage,
   type StoreOptionLike,
 } from './grocery-price-estimates';
 
@@ -201,4 +202,54 @@ test('an empty chunk is not reported as priceless', () => {
 
 test('items with no storeOptions at all still count as priceless', () => {
   assert.equal(chunkFoundNoPrices([{ item: 'Salt' }] as any), true);
+});
+
+/**
+ * `chunkFoundNoPrices` only catches the all-or-nothing case, and the 2026-08-27
+ * vegetarian production run showed the gap: 13 of 29 items came back with three
+ * store options each and a null price in every one. Those 13 were nearly all
+ * pantry staples — olive oil, honey, salsa, pesto, balsamic — i.e. one chunk
+ * that answered for part of its list and gave up on the rest. Because *some*
+ * item in that chunk got a price, the retry never fired.
+ *
+ * `chunkPriceCoverage` reports the fraction of items carrying at least one real
+ * price, so the caller can retry a chunk that mostly failed rather than only one
+ * that entirely failed. It stays a fraction rather than a boolean so the
+ * threshold lives at the call site with the budget it spends.
+ */
+test('coverage is the fraction of items carrying at least one real price', () => {
+  const half = [
+    { item: 'Olive oil', storeOptions: [{ store: 'Safeway', price: null }] },
+    { item: 'Honey', storeOptions: [{ store: 'Safeway', price: null }] },
+    { item: 'Oats', storeOptions: [{ store: 'Safeway', price: 4.99 }] },
+    { item: 'Bananas', storeOptions: [{ store: 'Safeway', price: 1.29 }] },
+  ];
+  assert.equal(chunkPriceCoverage(half as any), 0.5);
+});
+
+test('a chunk that priced everything reports full coverage', () => {
+  const full = [
+    { item: 'Oats', storeOptions: [{ store: 'Safeway', price: 4.99 }] },
+    { item: 'Bananas', storeOptions: [{ store: 'Safeway', price: 1.29 }] },
+  ];
+  assert.equal(chunkPriceCoverage(full as any), 1);
+});
+
+test('a priceless chunk reports zero coverage, agreeing with chunkFoundNoPrices', () => {
+  // The two helpers must not disagree about the same chunk: anything
+  // chunkFoundNoPrices calls priceless has to score 0 here, or a retry rule
+  // built on coverage would skip a chunk the older rule would have caught.
+  const priceless = [
+    { item: 'Olive oil', storeOptions: [{ store: 'Safeway', price: null }] },
+    { item: 'Honey', storeOptions: [] },
+    { item: 'Salt' },
+  ];
+  assert.equal(chunkPriceCoverage(priceless as any), 0);
+  assert.equal(chunkFoundNoPrices(priceless as any), true);
+});
+
+test('an empty chunk reports full coverage so it is never retried', () => {
+  // Nothing to price means nothing failed. Returning 0 here would make an empty
+  // chunk look like the worst possible result and retry it forever.
+  assert.equal(chunkPriceCoverage([]), 1);
 });

@@ -242,7 +242,18 @@ export function MealPlanPage({ onNavigate, generationStatus, nutritionTargets: n
   };
 
   // Get the meal to display for a given slot (handles both normal toggle and custom swaps)
-  const getMealForSlot = (day: string, mealType: string) => {
+  //
+  // `which` asks for one specific side regardless of what the toggle currently
+  // says. getCurrentMeals() needs BOTH sides at once to render the two choice
+  // cards, and it was already passing this argument — but the parameter did not
+  // exist, so JavaScript dropped it and both calls returned the same object.
+  // Every meal rendered its primary twice, which looked like the generator
+  // producing one option. Omit `which` to get the toggle-driven behaviour.
+  const getMealForSlot = (
+    day: string,
+    mealType: string,
+    which?: 'primary' | 'alternative'
+  ) => {
     const key = `${day}-${mealType}`;
     const selection = selectedMealOptions[key];
 
@@ -253,12 +264,18 @@ export function MealPlanPage({ onNavigate, generationStatus, nutritionTargets: n
         m.mealType === selection.sourceMealType &&
         m.option === selection.sourceOption
       );
-      return sourceMeal?.originalData;
+      // A custom swap replaces the primary only; the alternative is still
+      // whatever the plan generated for this slot.
+      if (which !== 'alternative') return sourceMeal?.originalData;
     }
 
-    // Default: use primary or alternative based on simple toggle
     const dayData = mealData?.mealPlan?.planData?.days?.find((d: any) => d.day === day);
     const mealSlot = dayData?.meals?.[mealType];
+
+    // Explicit request wins over the toggle. Fall back to primary when a slot
+    // genuinely has no alternative rather than rendering an empty card.
+    if (which === 'alternative') return mealSlot?.alternative ?? mealSlot?.primary;
+    if (which === 'primary') return mealSlot?.primary;
 
     if (selection === 'alternative' && mealSlot?.alternative) {
       return mealSlot.alternative;

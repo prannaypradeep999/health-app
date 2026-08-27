@@ -131,6 +131,30 @@ export function chunkFoundNoPrices(items: PricedItemLike[]): boolean {
 }
 
 /**
+ * The fraction of a chunk's items that carry at least one real price, 0 to 1.
+ *
+ * `chunkFoundNoPrices` above only catches the all-or-nothing case, and the
+ * partial case turns out to be the common one. On the 2026-08-27 vegetarian
+ * production run 13 of 29 items came back with three store options each and a
+ * null price in every one; they were nearly all pantry staples (olive oil,
+ * honey, salsa, pesto, balsamic), the signature of a single chunk answering for
+ * the front of its list and giving up on the rest. One item in that chunk did
+ * get a price, so the priceless check said the chunk was fine and no retry ran.
+ *
+ * Returns a fraction rather than a boolean on purpose: the threshold belongs at
+ * the call site, next to the time budget a retry spends. An empty chunk scores 1
+ * — nothing to price means nothing failed, and scoring it 0 would mark the least
+ * informative chunk as the most urgent to retry.
+ */
+export function chunkPriceCoverage(items: PricedItemLike[]): number {
+  if (!Array.isArray(items) || items.length === 0) return 1;
+  const priced = items.filter(item =>
+    Array.isArray(item.storeOptions) && item.storeOptions.some(o => isRealPrice(o.price))
+  ).length;
+  return priced / items.length;
+}
+
+/**
  * A reason the user can read, or null.
  *
  * The model is asked for a sentence and sometimes returns its own debris. On
