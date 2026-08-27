@@ -105,6 +105,32 @@ export function unpricedReason(item: PricedItemLike): string | null {
 }
 
 /**
+ * True when a price chunk came back with rows but not one real price in any of
+ * them.
+ *
+ * This is a failure the error path cannot see. `fetchPriceChunk` throws on an
+ * HTTP error or an unparseable body; a chunk that returns fifteen well-formed
+ * rows whose every price is null resolves, and `Promise.all` records it as a
+ * success. On the 2026-08-27 production run that is exactly what happened, and
+ * the user got a grocery list with 25 of 40 items priced and
+ * `priceSearchSuccess: true` above it.
+ *
+ * No downstream repair exists: `fillMissingPriceEstimates` derives a missing
+ * price from another store that priced the same item, and in a priceless chunk
+ * no store priced any item.
+ *
+ * The threshold is "nothing at all", not "less than we hoped" — partial results
+ * are kept on purpose, and retrying a chunk that mostly worked would spend the
+ * budget the price reserve exists to protect.
+ */
+export function chunkFoundNoPrices(items: PricedItemLike[]): boolean {
+  if (!Array.isArray(items) || items.length === 0) return false;
+  return !items.some(item =>
+    Array.isArray(item.storeOptions) && item.storeOptions.some(o => isRealPrice(o.price))
+  );
+}
+
+/**
  * A reason the user can read, or null.
  *
  * The model is asked for a sentence and sometimes returns its own debris. On

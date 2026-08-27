@@ -16,7 +16,7 @@ import { createLimiter } from '@/lib/utils/concurrency';
 import { corroborate } from '@/lib/external/link-check';
 import { parseReceipt, sourceHostsFrom, type SearchItem } from '@/lib/verification/receipt';
 import { computeStoreTotals, planPriceChunks, snapStoreNames } from '@/lib/utils/store-totals';
-import { fillMissingPriceEstimates, unpricedReason, meaningfulReason } from '@/lib/utils/grocery-price-estimates';
+import { fillMissingPriceEstimates, unpricedReason, meaningfulReason, chunkFoundNoPrices } from '@/lib/utils/grocery-price-estimates';
 import { reservingBudget, MENU_STRUCTURING_RESERVE_MS } from '@/lib/utils/route-budget';
 
 /**
@@ -558,6 +558,32 @@ Return as JSON only, no other text:
         .catch(error => ({ ok: false as const, error: error as Error }))
     ));
 
+    // One retry for a chunk that resolved without finding a single price.
+    //
+    // withPerplexityRetry cannot cover this: nothing threw. The 2026-08-27
+    // production run had one chunk of six return fifteen well-formed rows with
+    // every price null and displayName "Whole Foods Market chicken breast" —
+    // the model filling the strict schema with placeholders rather than
+    // admitting it searched and found nothing. 15 of 40 items showed no price
+    // and priceSearchSuccess was still true.
+    //
+    // Bounded deliberately: only chunks that found NOTHING, only once, and the
+    // original is kept unless the retry actually did better. If the route is out
+    // of budget, outerSignal aborts the retry and the catch keeps the original
+    // — a degraded list rather than a lost one.
+    const degenerate = settled.filter(r => r.ok && chunkFoundNoPrices(r.priced)).length;
+    if (degenerate > 0) {
+      console.warn(
+        `[PERPLEXITY-GROCERY] ⚠️ ${degenerate}/${chunks.length} chunk(s) returned rows but no prices at all — retrying those once`
+      );
+    }
+    const resolved = await Promise.all(settled.map((result, index) => {
+      if (!result.ok || !chunkFoundNoPrices(result.priced)) return Promise.resolve(result);
+      return this.fetchPriceChunk(chunks[index], stores, city, userGoal, outerSignal)
+        .then(priced => (chunkFoundNoPrices(priced) ? result : { ok: true as const, priced }))
+        .catch(() => result);
+    }));
+
     // Partial results are kept on purpose. Previously one timeout discarded
     // every item; two chunks out of three is a grocery list with most of its
     // prices, which is plainly worth more to the user than none of them.
@@ -572,10 +598,10 @@ Return as JSON only, no other text:
     // either. Snapping first means totals, estimates and the rows we persist
     // all agree on what a store is called.
     const pricedItems = snapStoreNames(
-      settled.flatMap(r => r.ok ? r.priced : []),
+      resolved.flatMap(r => r.ok ? r.priced : []),
       stores.map(s => s.name)
     );
-    const failures = settled.filter(r => !r.ok);
+    const failures = resolved.filter(r => !r.ok);
 
     if (pricedItems.length === 0) {
       const firstError = failures.find(f => !f.ok) as { ok: false; error: Error } | undefined;

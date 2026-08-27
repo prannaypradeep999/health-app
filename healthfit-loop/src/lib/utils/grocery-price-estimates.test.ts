@@ -4,6 +4,7 @@ import {
   fillMissingPriceEstimates,
   unpricedReason,
   meaningfulReason,
+  chunkFoundNoPrices,
   type StoreOptionLike,
 } from './grocery-price-estimates';
 
@@ -151,4 +152,53 @@ test('meaningfulReason keeps text and rejects debris', () => {
   assert.equal(meaningfulReason(null), null);
   assert.equal(meaningfulReason(undefined), null);
   assert.equal(meaningfulReason(42 as any), null);
+});
+
+/**
+ * The chunk that produced the ":null" reasons above did not fail. It returned
+ * fifteen well-formed rows in which every single price was null, so
+ * Promise.all recorded it as a success and the caller priced 25 of 40 items
+ * while reporting priceSearchSuccess: true.
+ *
+ * Strict JSON schema constrains the shape, not the content — the model filled
+ * the shape with placeholders (displayName "Whole Foods Market chicken breast")
+ * rather than admitting it found nothing. Nothing downstream can recover it
+ * either: fillMissingPriceEstimates derives a missing price from another store
+ * that priced the SAME item, and here no store priced any of them.
+ *
+ * So the caller has to notice. One chunk of many coming back completely
+ * priceless is the signature.
+ */
+test('a chunk where nothing at all got a price is a failed chunk', () => {
+  const priceless = [
+    { item: 'Chicken breast', storeOptions: [
+      { store: 'Safeway', price: null }, { store: 'Whole Foods Market', price: null }] },
+    { item: 'Beef sirloin', storeOptions: [
+      { store: 'Safeway', price: null }, { store: 'Whole Foods Market', price: null }] },
+  ];
+  assert.equal(chunkFoundNoPrices(priceless as any), true);
+});
+
+test('one real price anywhere in the chunk means the chunk worked', () => {
+  // Deliberately the LAST option of the LAST item: partial results are kept on
+  // purpose, so the threshold for a retry is "nothing at all", not "less than
+  // we hoped". Retrying a chunk that mostly worked spends the budget that the
+  // price reserve exists to protect.
+  const partial = [
+    { item: 'Chicken breast', storeOptions: [
+      { store: 'Safeway', price: null }, { store: 'Whole Foods Market', price: null }] },
+    { item: 'Beef sirloin', storeOptions: [
+      { store: 'Safeway', price: null }, { store: 'Whole Foods Market', price: 12.99 }] },
+  ];
+  assert.equal(chunkFoundNoPrices(partial as any), false);
+});
+
+test('an empty chunk is not reported as priceless', () => {
+  // Nothing to retry, and the existing throw/partial-result path already covers
+  // a chunk that came back with no rows.
+  assert.equal(chunkFoundNoPrices([]), false);
+});
+
+test('items with no storeOptions at all still count as priceless', () => {
+  assert.equal(chunkFoundNoPrices([{ item: 'Salt' }] as any), true);
 });
