@@ -6,8 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Progress } from "@/components/ui/progress";
 import { Badge } from "@/components/ui/badge";
-import { ImageWithFallback } from "@/components/ui/ImageWithFallback";
-import { mealImageUrl } from "@/lib/external/fallback-images";
+import { MealVisual } from "@/components/ui/MealVisual";
 import {
   ChartLineUp,
   Target,
@@ -399,10 +398,12 @@ export function DashboardHome({ user, onNavigate, generationStatus, nutritionTar
               {emptyStyles.iconElement}
             </div>
           ) : (
-            <ImageWithFallback
-              src={mealImageUrl(meal, mealType)}
+            <MealVisual
+              meal={meal}
+              mealType={mealType}
               alt={meal.name}
-              className="w-12 h-12 sm:w-14 sm:h-14 object-cover rounded-lg shadow-sm"
+              className="w-12 h-12 sm:w-14 sm:h-14 rounded-lg shadow-sm"
+              iconClassName="text-xl sm:text-2xl"
             />
           )}
         </div>
@@ -1786,10 +1787,12 @@ export function DashboardHome({ user, onNavigate, generationStatus, nutritionTar
                                 <X className="w-5 h-5 text-red-500" />
                               </div>
                             ) : (
-                              <ImageWithFallback
-                                src={mealImageUrl(currentOption, 'breakfast')}
+                              <MealVisual
+                                meal={currentOption}
+                                mealType="breakfast"
                                 alt={currentOption.name}
-                                className="w-16 h-16 object-cover rounded-xl shadow-md"
+                                className="w-16 h-16 rounded-xl shadow-md"
+                                iconClassName="text-3xl"
                               />
                             )}
                           </div>

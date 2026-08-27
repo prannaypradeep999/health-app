@@ -5,8 +5,7 @@ import { ChatSearchBar } from "@/components/chat/ChatSearchBar";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { ImageWithFallback } from "@/components/ui/ImageWithFallback";
-import { mealImageUrl } from "@/lib/external/fallback-images";
+import { MealVisual } from "@/components/ui/MealVisual";
 import {
   ArrowLeft,
   Clock,
@@ -1241,10 +1240,11 @@ export function MealPlanPage({ onNavigate, generationStatus, nutritionTargets: n
         <div className={`flex items-start space-x-4 p-4 bg-white border rounded-lg hover:shadow-sm transition-shadow ${isAlternative ? 'border-gray-200' : 'border-purple-200'}`}>
           {/* Image - Left aligned */}
           <div className="flex-shrink-0">
-            <ImageWithFallback
-              src={mealImageUrl(mealOption, type)}
+            <MealVisual
+              meal={mealOption}
+              mealType={type}
               alt={mealName || `${type} meal`}
-              className="w-16 h-16 object-cover rounded-lg"
+              className="w-16 h-16 rounded-lg"
             />
           </div>
 
@@ -1490,10 +1490,12 @@ export function MealPlanPage({ onNavigate, generationStatus, nutritionTargets: n
               <div className="flex flex-col sm:flex-row items-start space-y-4 sm:space-y-0 sm:space-x-4">
                 {/* Large Image */}
                 <div className="flex-shrink-0">
-                  <ImageWithFallback
-                    src={mealImageUrl(currentMeal, type)}
+                  <MealVisual
+                    meal={currentMeal}
+                    mealType={type}
                     alt={currentMeal.name || currentMeal.dish || `${type} meal`}
-                    className="w-full sm:w-24 h-48 sm:h-24 object-cover rounded-xl shadow-md"
+                    className="w-full sm:w-24 h-48 sm:h-24 rounded-xl shadow-md"
+                    iconClassName="text-5xl sm:text-3xl"
                   />
                 </div>
 
