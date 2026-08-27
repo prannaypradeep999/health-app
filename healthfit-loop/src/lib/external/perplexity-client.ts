@@ -16,7 +16,7 @@ import { createLimiter } from '@/lib/utils/concurrency';
 import { corroborate, mergeOrderingLinks, isNonEmptyLink, harvestOrderingLinksFromCitations } from '@/lib/external/link-check';
 import { parseReceipt, sourceHostsFrom, type SearchItem } from '@/lib/verification/receipt';
 import { computeStoreTotals, planPriceChunks, snapStoreNames } from '@/lib/utils/store-totals';
-import { fillMissingPriceEstimates, unpricedReason, meaningfulReason, chunkPriceCoverage } from '@/lib/utils/grocery-price-estimates';
+import { fillMissingPriceEstimates, fillTypicalPriceEstimates, itemHasAnyPrice, meaningfulReason, chunkPriceCoverage } from '@/lib/utils/grocery-price-estimates';
 import { reservingBudget, MENU_STRUCTURING_RESERVE_MS } from '@/lib/utils/route-budget';
 
 /**
@@ -146,6 +146,13 @@ export interface StoreOption {
   reason?: string;  // "Best value", "Lowest price", "Best quality"
   storeAddress: string;  // Street address only (e.g., "123 Main St")
   priceConfidence: 'exact' | 'estimate';  // Whether this is an exact price or estimate
+  // Filled after the totals are computed, never by the model. See the two
+  // estimate tiers in lib/utils/grocery-price-estimates. Kept out of `price` so
+  // computeStoreTotals and the cheapest-store ranking never see an inferred
+  // number.
+  estimatedPrice?: number;
+  estimatedFrom?: string;
+  estimateBasis?: 'other-store' | 'category-typical';
 }
 
 export interface GroceryItemWithPrices {
@@ -158,6 +165,11 @@ export interface GroceryItemWithPrices {
   // model output — it is deliberately absent from the Zod schema, because
   // asking a model for URLs is how the ordering links got invented.
   sources?: string[];
+  // A budget figure for an item no store priced at all, taken from the median of
+  // what comparable items in this same list cost. Item-level as well as
+  // per-option because some rows reach the UI with no store options.
+  typicalPriceEstimate?: number;
+  typicalPriceBasis?: string;
 }
 
 export interface GroceryPriceResponse {
@@ -696,12 +708,30 @@ Return as JSON only, no other text:
     // "no price" at the third, as though we knew nothing about it. Now it
     // renders "~$6.49", marked as an estimate, taken from the dearest store
     // that did answer.
-    const itemsForDisplay = fillMissingPriceEstimates(pricedItems);
-    const stillUnpriced = itemsForDisplay.filter(i => unpricedReason(i) !== null).length;
+    //
+    // Then a second pass for what tier one cannot reach. Tier one infers a
+    // store's price from another store's price for the SAME item, so an item no
+    // store priced is left with nothing — 13 of 29 items on the 2026-08-27
+    // vegetarian run, nearly all pantry staples, all reading "no price". That is
+    // not a list anyone can shop from. Tier two quotes those the median of what
+    // comparable items in this same list cost at these same stores: real prices,
+    // this run, this city, marked as typical rather than looked up. Order
+    // matters — tier one is the better evidence and runs first; tier two only
+    // touches rows it left empty.
+    const itemsForDisplay = fillTypicalPriceEstimates(fillMissingPriceEstimates(pricedItems));
+    const fromSibling = itemsForDisplay.filter(i =>
+      i.storeOptions?.some(o => o.estimateBasis === 'other-store')
+    ).length;
+    const fromTypical = itemsForDisplay.filter(i => typeof i.typicalPriceEstimate === 'number').length;
+    const stillUnpriced = itemsForDisplay.filter(i => !itemHasAnyPrice(i)).length;
+    console.log(
+      `[PERPLEXITY-GROCERY] 🏷️ Estimates: ${fromSibling} item(s) from another store, ${fromTypical} from category-typical, ${stillUnpriced}/${itemsForDisplay.length} still without any number`
+    );
     if (stillUnpriced > 0) {
-      // These are the ones no store priced at all. They keep a null price and
-      // carry a reason instead, which the UI shows in place of a number.
-      console.log(`[PERPLEXITY-GROCERY] 🏷️ ${stillUnpriced}/${itemsForDisplay.length} item(s) had no price at any store — showing the reason rather than a guess`);
+      // Only reachable when the whole run found almost no prices, in which case
+      // the banner above the list already says so. One guess stamped across
+      // forty rows would be worse than the honest blank.
+      console.warn(`[PERPLEXITY-GROCERY] ⚠️ ${stillUnpriced} item(s) have no price and too little data to estimate one — showing the reason instead`);
     }
 
     const chunksFailed = failures.length;

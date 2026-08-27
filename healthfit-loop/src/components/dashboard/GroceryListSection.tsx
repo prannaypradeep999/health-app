@@ -19,7 +19,7 @@ import {
   FileText,
   Warning
 } from '@phosphor-icons/react';
-import { unpricedReason } from '@/lib/utils/grocery-price-estimates';
+import { unpricedReason, itemHasAnyPrice } from '@/lib/utils/grocery-price-estimates';
 
 // Type definitions
 interface StoreOption {
@@ -36,6 +36,8 @@ interface StoreOption {
   // never see an inferred number.
   estimatedPrice?: number;
   estimatedFrom?: string;
+  /** Which of the two estimate tiers produced the number above. */
+  estimateBasis?: 'other-store' | 'category-typical';
 }
 
 interface GroceryItemWithPrices {
@@ -53,6 +55,11 @@ interface GroceryItemWithPrices {
   // price — Sonar cites per response, not per item.
   sources?: string[];
   pricedAs?: string;
+  // A budget figure for an item no store priced, taken from what comparable
+  // items in this same list cost. Item-level as well as per-option because some
+  // rows arrive with no store options at all.
+  typicalPriceEstimate?: number;
+  typicalPriceBasis?: string;
 }
 
 /**
@@ -88,21 +95,37 @@ function PriceConfidenceBadge({
   confidence,
   sourceCount,
   estimatedFrom,
+  estimateBasis,
   className = '',
 }: {
   confidence?: 'exact' | 'estimate';
   sourceCount: number;
   /** Set when the number shown was carried over from another store's real price. */
   estimatedFrom?: string;
+  /** Which estimate tier produced it. Absent for the model's own self-report. */
+  estimateBasis?: 'other-store' | 'category-typical';
   className?: string;
 }) {
   if (!confidence) return null;
 
   if (confidence !== 'exact') {
-    // Two different kinds of estimate reach this badge. The model's own
-    // "estimate" self-report, and our carry-over from the dearest real price the
-    // same item got elsewhere. The second one we can be specific about, and
-    // saying "worst case" matters: it tells the user which way to trust it.
+    // Three different kinds of estimate reach this badge, and they are not
+    // equally good. The model's own "estimate" self-report; our carry-over from
+    // the dearest real price this same item got at another store; and the
+    // median of what comparable items in this list cost. The user needs to know
+    // which one they are looking at — "this item, £6.49 down the road" and
+    // "roughly what pantry staples cost here" deserve different trust.
+    if (estimateBasis === 'category-typical') {
+      return (
+        <Badge
+          variant="outline"
+          title={`No store returned a price for this item. Showing the ${estimatedFrom ?? 'typical price in this list'} so you can still budget for it — treat it as a rough figure, not a quote.`}
+          className={`text-[9px] h-4 text-amber-600 border-amber-300 ${className}`}
+        >
+          est. typical
+        </Badge>
+      );
+    }
     return estimatedFrom ? (
       <Badge
         variant="outline"
@@ -668,11 +691,28 @@ export function GroceryListSection({
             // the response: generate-groceries carries those through unpriced
             // rather than dropping them, and until now they rendered as a row
             // with no prices and no explanation at all.
-            const noPriceReason = !hasRealPrices
+            //
+            // Now gated on the item having no number of any kind, not just no
+            // real price. Since an item nothing priced carries a typical
+            // estimate, showing "No price found" next to "~$6.00" would
+            // contradict itself. `showsPrice` also gates the price tables
+            // below: hasRealPrices is a whole-list flag, so an item with
+            // nothing at all used to render three columns reading "no price"
+            // AND this explanation underneath — four ways of saying nothing.
+            const showsPrice = itemHasAnyPrice(item);
+            const noPriceReason = !hasRealPrices || showsPrice
               ? null
               : storeOptions.length === 0
                 ? 'the price search came back without this item'
                 : unpricedReason(item);
+
+            // Why the number on this row is an estimate rather than a price.
+            // Only for the typical tier: the other-store tier is per option and
+            // its badge already explains itself next to the number.
+            const typicalEstimateNote =
+              hasRealPrices && typeof item.typicalPriceEstimate === 'number'
+                ? unpricedReason(item) ?? 'no shelf price was found for this item'
+                : null;
 
             const IconComponent = config?.icon || ShoppingCart;
 
@@ -734,7 +774,7 @@ export function GroceryListSection({
                 </div>
 
                 {/* Store Price Comparison - Desktop Table */}
-                {hasRealPrices && selectedStore === 'all' && storeOptions.length > 1 && (
+                {showsPrice && selectedStore === 'all' && storeOptions.length > 1 && (
                   <div className="hidden sm:block border-t border-gray-200 bg-white">
                     <div className="grid grid-cols-3 divide-x divide-gray-200">
                       {storeOptions.slice(0, 3).map((option, optIdx) => (
@@ -760,6 +800,7 @@ export function GroceryListSection({
                               confidence={option.priceConfidence}
                               sourceCount={item.sources?.length ?? 0}
                               estimatedFrom={option.estimatedFrom}
+                              estimateBasis={option.estimateBasis}
                             />
                             {option.reason && (
                               <Badge className="text-[10px] bg-green-100 text-green-700 border-0">
@@ -774,7 +815,7 @@ export function GroceryListSection({
                 )}
 
                 {/* Store Price Comparison - Mobile Stacked */}
-                {hasRealPrices && selectedStore === 'all' && storeOptions.length > 1 && (
+                {showsPrice && selectedStore === 'all' && storeOptions.length > 1 && (
                   <div className="sm:hidden border-t border-gray-200 bg-white p-3 space-y-2">
                     {storeOptions.slice(0, 3).map((option, optIdx) => (
                       <div
@@ -802,6 +843,7 @@ export function GroceryListSection({
                               confidence={option.priceConfidence}
                               sourceCount={item.sources?.length ?? 0}
                               estimatedFrom={option.estimatedFrom}
+                              estimateBasis={option.estimateBasis}
                               className="ml-1"
                             />
                           </div>
@@ -815,7 +857,7 @@ export function GroceryListSection({
                 )}
 
                 {/* Single store selected view */}
-                {hasRealPrices && selectedStore !== 'all' && displayOptions.length > 0 && (
+                {showsPrice && selectedStore !== 'all' && displayOptions.length > 0 && (
                   <div className="border-t border-gray-200 bg-white px-4 py-2 flex items-center justify-between">
                     <div className="flex-1 mr-2">
                       <p className="text-sm text-gray-600 truncate">{displayOptions[0].displayName}</p>
@@ -833,14 +875,35 @@ export function GroceryListSection({
                         confidence={displayOptions[0].priceConfidence}
                         sourceCount={item.sources?.length ?? 0}
                         estimatedFrom={displayOptions[0].estimatedFrom}
+                        estimateBasis={displayOptions[0].estimateBasis}
                       />
                     </div>
                   </div>
                 )}
 
-                {/* No store priced this one. Say why rather than printing a
-                    bare "no price", and do not invent a number — there is no
-                    real price on this row to infer one from. */}
+                {/* No store priced this one, but comparable items in this list
+                    did, so there is a budget figure to show. Says the number
+                    first — that is what the user came for — and then why it is
+                    approximate. For a row with no store options at all this is
+                    the only place the number appears. */}
+                {typicalEstimateNote && (
+                  <div className="border-t border-gray-200 bg-white px-4 py-2 flex items-start gap-2">
+                    <Warning className="w-4 h-4 text-amber-500 flex-shrink-0 mt-0.5" weight="regular" />
+                    <p className="text-xs text-gray-600">
+                      <span className="font-semibold text-gray-900">
+                        ~${item.typicalPriceEstimate!.toFixed(2)}
+                      </span>
+                      <span className="font-medium text-gray-700"> estimated</span>
+                      {' — '}
+                      {typicalEstimateNote}, so this is the{' '}
+                      {item.typicalPriceBasis ?? 'typical price in this list'}.
+                    </p>
+                  </div>
+                )}
+
+                {/* Nothing priced this item and the run found too little to
+                    estimate from either. Say why rather than printing a bare
+                    "no price", and do not invent a number. */}
                 {noPriceReason && (
                   <div className="border-t border-gray-200 bg-white px-4 py-2 flex items-start gap-2">
                     <Warning className="w-4 h-4 text-amber-500 flex-shrink-0 mt-0.5" weight="regular" />

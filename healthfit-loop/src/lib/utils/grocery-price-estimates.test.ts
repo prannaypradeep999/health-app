@@ -2,11 +2,14 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
   fillMissingPriceEstimates,
+  fillTypicalPriceEstimates,
+  itemHasAnyPrice,
   unpricedReason,
   meaningfulReason,
   chunkFoundNoPrices,
   chunkPriceCoverage,
   type StoreOptionLike,
+  type PricedItemLike,
 } from './grocery-price-estimates';
 
 /**
@@ -252,4 +255,226 @@ test('an empty chunk reports full coverage so it is never retried', () => {
   // Nothing to price means nothing failed. Returning 0 here would make an empty
   // chunk look like the worst possible result and retry it forever.
   assert.equal(chunkPriceCoverage([]), 1);
+});
+
+/**
+ * The second estimate tier. `fillMissingPriceEstimates` above deliberately
+ * leaves an item nothing priced anywhere alone, because it infers one store's
+ * price from another store's price for the SAME item and here there is none.
+ * Right call for that function, wrong outcome for the shopper: the 2026-08-27
+ * vegetarian run left 13 of 29 items reading "no price", which is not a list you
+ * can budget from.
+ *
+ * The number is neither invented nor a maintained table — it is the median of
+ * what comparable items in this same list cost at these same stores.
+ */
+// Annotated for the same reason as `item` above: these functions are generic in
+// the item type, so a narrowly-inferred literal would hide the fields the
+// estimator adds and the assertions below would not typecheck. storeOptions is
+// kept non-optional here so the tests can index it without a bang.
+type TypicalItem = PricedItemLike & { item: string; storeOptions: StoreOptionLike[] };
+
+const priced = (name: string, category: string, price: number | null): TypicalItem => ({
+  item: name,
+  category,
+  storeOptions: [
+    { store: 'Safeway', price },
+    { store: 'Whole Foods Market', price },
+  ],
+});
+
+test('an item no store priced is quoted the median of its category', () => {
+  const out = fillTypicalPriceEstimates([
+    priced('Olive oil', 'pantryStaples', null),
+    priced('Honey', 'pantryStaples', 6.0),
+    priced('Salsa', 'pantryStaples', 4.0),
+    priced('Balsamic', 'pantryStaples', 8.0),
+  ]);
+  // Median of 4, 6, 8.
+  assert.equal(out[0].typicalPriceEstimate, 6.0);
+  assert.equal(out[0].storeOptions[0].estimatedPrice, 6.0);
+  assert.equal(out[0].storeOptions[1].estimatedPrice, 6.0);
+});
+
+test('the typical estimate never leaks into price', () => {
+  // Same rule as the other tier, and it matters more here: computeStoreTotals
+  // ranks stores on `price` and skips nulls precisely so a store that failed to
+  // price an item cannot win the cheapest-store comparison.
+  const out = fillTypicalPriceEstimates([
+    priced('Olive oil', 'pantryStaples', null),
+    priced('Honey', 'pantryStaples', 6.0),
+    priced('Salsa', 'pantryStaples', 4.0),
+    priced('Balsamic', 'pantryStaples', 8.0),
+  ]);
+  assert.equal(out[0].storeOptions[0].price, null);
+  assert.equal(out[0].storeOptions[1].price, null);
+});
+
+test('a category estimate is drawn from that category, not the whole list', () => {
+  // The point of bucketing: a steak must not set the price of a lemon.
+  const out = fillTypicalPriceEstimates([
+    priced('Lemons', 'vegetables', null),
+    priced('Carrots', 'vegetables', 2.0),
+    priced('Kale', 'vegetables', 3.0),
+    priced('Onions', 'vegetables', 2.5),
+    priced('Ribeye', 'proteins', 40.0),
+    priced('Salmon', 'proteins', 30.0),
+    priced('Prawns', 'proteins', 35.0),
+  ]);
+  assert.equal(out[0].typicalPriceEstimate, 2.5);
+});
+
+test('a category with too few real prices falls back to the whole list', () => {
+  // One $34 jar of saffron alone in its category must not become the typical
+  // price for that category.
+  const out = fillTypicalPriceEstimates([
+    priced('Vanilla pods', 'spices', null),
+    priced('Saffron', 'spices', 34.0),
+    priced('Carrots', 'vegetables', 2.0),
+    priced('Kale', 'vegetables', 3.0),
+    priced('Onions', 'vegetables', 4.0),
+  ]);
+  // Median of 34, 2, 3, 4 taking the upper middle: 4.
+  assert.equal(out[0].typicalPriceEstimate, 4.0);
+  assert.match(String(out[0].typicalPriceBasis), /across this list/);
+});
+
+test('a list with almost no prices gets no estimates at all', () => {
+  // At that point the run failed and the banner above the list says so, which is
+  // more honest than stamping one guess across forty items.
+  const out = fillTypicalPriceEstimates([
+    priced('Olive oil', 'pantryStaples', null),
+    priced('Honey', 'pantryStaples', null),
+    priced('Salsa', 'pantryStaples', 6.0),
+  ]);
+  assert.equal(out[0].typicalPriceEstimate, undefined);
+  assert.equal(out[0].storeOptions[0].estimatedPrice, undefined);
+});
+
+test('an item that already has a real price is left completely alone', () => {
+  const out = fillTypicalPriceEstimates([
+    priced('Honey', 'pantryStaples', 6.0),
+    priced('Salsa', 'pantryStaples', 4.0),
+    priced('Balsamic', 'pantryStaples', 8.0),
+  ]);
+  assert.equal(out[0].typicalPriceEstimate, undefined);
+  assert.equal(out[0].storeOptions[0].price, 6.0);
+  assert.equal(out[0].storeOptions[0].estimatedPrice, undefined);
+});
+
+test('an item the price search never returned still gets a budget figure', () => {
+  // These arrive with no storeOptions at all — generate-groceries carries them
+  // through rather than dropping them. There is no option to hang a number on,
+  // which is why the estimate is also recorded on the item.
+  const out = fillTypicalPriceEstimates<PricedItemLike>([
+    { item: 'Salt', category: 'pantryStaples' },
+    priced('Honey', 'pantryStaples', 6.0),
+    priced('Salsa', 'pantryStaples', 4.0),
+    priced('Balsamic', 'pantryStaples', 8.0),
+  ]);
+  assert.equal(out[0].typicalPriceEstimate, 6.0);
+});
+
+test('estimates are marked as typical, not as this item priced elsewhere', () => {
+  // The two tiers are not equally trustworthy and the UI has to be able to tell
+  // them apart: one is this exact item at another branch, the other is what
+  // similar things cost.
+  const out = fillTypicalPriceEstimates([
+    priced('Olive oil', 'pantryStaples', null),
+    priced('Honey', 'pantryStaples', 6.0),
+    priced('Salsa', 'pantryStaples', 4.0),
+    priced('Balsamic', 'pantryStaples', 8.0),
+  ]);
+  assert.equal(out[0].storeOptions[0].estimateBasis, 'category-typical');
+  assert.equal(out[0].storeOptions[0].priceConfidence, 'estimate');
+
+  const [tier1] = fillMissingPriceEstimates([item([4.99, null])]);
+  assert.equal(tier1.storeOptions[1].estimateBasis, 'other-store');
+});
+
+test('category matching survives the casing the model happens to use', () => {
+  const out = fillTypicalPriceEstimates<PricedItemLike>([
+    { item: 'Olive oil', category: 'Pantry Staples', storeOptions: [{ store: 'Safeway', price: null }] },
+    { item: 'Honey', category: 'pantry staples', storeOptions: [{ store: 'Safeway', price: 6.0 }] },
+    { item: 'Salsa', category: 'PANTRY STAPLES', storeOptions: [{ store: 'Safeway', price: 4.0 }] },
+    { item: 'Balsamic', category: ' pantry staples ', storeOptions: [{ store: 'Safeway', price: 8.0 }] },
+  ]);
+  assert.equal(out[0].typicalPriceEstimate, 6.0);
+});
+
+test('estimating typical prices does not change the shape of the list', () => {
+  const input = [
+    priced('Olive oil', 'pantryStaples', null),
+    priced('Honey', 'pantryStaples', 6.0),
+    priced('Salsa', 'pantryStaples', 4.0),
+    priced('Balsamic', 'pantryStaples', 8.0),
+  ];
+  const out = fillTypicalPriceEstimates(input);
+  assert.equal(out.length, 4);
+  for (const row of out) assert.equal(row.storeOptions?.length, 2);
+});
+
+test('never throws on the malformed rows a model can produce', () => {
+  for (const bad of [undefined, null, 42, {}, [], '']) {
+    assert.doesNotThrow(() => fillTypicalPriceEstimates([bad as any]));
+    assert.doesNotThrow(() => itemHasAnyPrice(bad as any));
+    assert.equal(itemHasAnyPrice(bad as any), false);
+  }
+  assert.doesNotThrow(() => fillTypicalPriceEstimates([] as any));
+});
+
+/**
+ * The per-item flag the UI was missing. `hasRealPrices` there is a whole-list
+ * boolean, so an item nothing priced still rendered a three-column table reading
+ * "no price", "no price", "no price" — and then the explanation underneath.
+ * Four ways of saying nothing where one belonged.
+ */
+test('itemHasAnyPrice counts a real price, either estimate, or nothing', () => {
+  assert.equal(itemHasAnyPrice({ storeOptions: [{ store: 'A', price: 4.99 }] }), true);
+  assert.equal(
+    itemHasAnyPrice({ storeOptions: [{ store: 'A', price: null, estimatedPrice: 4.99 }] }),
+    true
+  );
+  assert.equal(itemHasAnyPrice({ item: 'Salt', typicalPriceEstimate: 3.5 }), true);
+  assert.equal(itemHasAnyPrice({ storeOptions: [{ store: 'A', price: null }] }), false);
+  assert.equal(itemHasAnyPrice({ item: 'Salt' }), false);
+});
+
+test('itemHasAnyPrice treats zero as the missing price it is', () => {
+  // The 2026-08-25 measurement again: with a non-nullable price Sonar returned 0
+  // for everything. A row reading "$0.00" is not a row with a price.
+  assert.equal(itemHasAnyPrice({ storeOptions: [{ store: 'A', price: 0 }] }), false);
+  assert.equal(
+    itemHasAnyPrice({ storeOptions: [{ store: 'A', price: null, estimatedPrice: 0 }] }),
+    false
+  );
+});
+
+test('the two tiers compose: same-item first, typical only for what is left', () => {
+  // The order matters. A real price at a sibling store is better evidence than
+  // the category median, so tier 1 has to run first and tier 2 must not
+  // overwrite what it wrote.
+  const partial = {
+    item: 'Chicken breast',
+    category: 'proteins',
+    storeOptions: [{ store: 'A', price: 9.99 }, { store: 'B', price: null }] as StoreOptionLike[],
+  };
+  const nothing = {
+    item: 'Tempeh',
+    category: 'proteins',
+    storeOptions: [{ store: 'A', price: null }, { store: 'B', price: null }] as StoreOptionLike[],
+  };
+  const others = [
+    priced('Salmon', 'proteins', 12.0),
+    priced('Tofu', 'proteins', 3.0),
+  ];
+  const out = fillTypicalPriceEstimates(
+    fillMissingPriceEstimates([partial, nothing, ...others] as any)
+  );
+  assert.equal(out[0].storeOptions![1].estimatedPrice, 9.99, 'tier 2 overwrote a sibling price');
+  assert.equal(out[0].storeOptions![1].estimateBasis, 'other-store');
+  // Medians over 9.99, 12, 3 → 9.99.
+  assert.equal(out[1].typicalPriceEstimate, 9.99);
+  assert.equal(out[1].storeOptions![0].estimateBasis, 'category-typical');
+  assert.equal(itemHasAnyPrice(out[1]), true);
 });

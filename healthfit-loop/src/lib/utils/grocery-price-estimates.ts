@@ -30,11 +30,29 @@ export interface StoreOptionLike {
   estimatedPrice?: number;
   /** Which store's real price the estimate was taken from. */
   estimatedFrom?: string;
+  /**
+   * How the estimate was arrived at. The two are not equally good and the UI
+   * says so differently: one is this exact item's real price at another branch,
+   * the other is what comparable items in this same list cost.
+   */
+  estimateBasis?: 'other-store' | 'category-typical';
 }
 
 export interface PricedItemLike {
   item?: string;
+  category?: string;
   storeOptions?: StoreOptionLike[];
+  /**
+   * A budget figure for an item no store priced, derived from what comparable
+   * items in this same list actually cost. Set by `fillTypicalPriceEstimates`.
+   *
+   * Item-level as well as per-option because some items reach the UI with no
+   * store options at all — the price search never returned a row for them — and
+   * there is no option to hang a number on.
+   */
+  typicalPriceEstimate?: number;
+  /** What the typical estimate was drawn from, for the UI to name. */
+  typicalPriceBasis?: string;
 }
 
 /** A price we actually got back, as opposed to null, 0 or a negative. */
@@ -78,11 +96,147 @@ export function fillMissingPriceEstimates<T extends PricedItemLike>(items: T[]):
           // `price` stays exactly as it was. See the header.
           estimatedPrice: worst!.price,
           estimatedFrom: worst!.store,
+          estimateBasis: 'other-store' as const,
           priceConfidence: 'estimate' as const,
         };
       }),
     };
   });
+}
+
+/**
+ * The dearest real price this item got at any store, or null if no store priced
+ * it. Dearest rather than cheapest for the reason in `fillMissingPriceEstimates`
+ * — a grocery list is useful as an upper bound.
+ */
+function dearestRealPrice(item: PricedItemLike): number | null {
+  const options = item?.storeOptions;
+  if (!Array.isArray(options)) return null;
+  let worst: number | null = null;
+  for (const option of options) {
+    if (!isRealPrice(option.price)) continue;
+    if (worst === null || option.price > worst) worst = option.price;
+  }
+  return worst;
+}
+
+/**
+ * The upper of the two middle values for an even-length sample, the middle one
+ * for an odd. Upper on purpose: same upper-bound argument as everywhere else in
+ * this module, and it costs at most one sample's worth of pessimism.
+ */
+function upperMedian(values: number[]): number {
+  const sorted = [...values].sort((a, b) => a - b);
+  return sorted[Math.floor(sorted.length / 2)];
+}
+
+/**
+ * How many real prices a bucket needs before its median is worth quoting. Below
+ * this a single odd item — a $34 bottle of saffron sitting alone in "pantry
+ * staples" — becomes the typical price for the category.
+ */
+const MIN_TYPICAL_SAMPLES = 3;
+
+/**
+ * A budget figure for the items no store priced at all.
+ *
+ * `fillMissingPriceEstimates` above deliberately leaves these alone: it infers
+ * one store's price from another store's price for the *same item*, and here no
+ * store priced the item. That was the right call for that function and the wrong
+ * outcome for the user, who saw "no price" on a third of the list and could not
+ * budget from it. Measured on the 2026-08-27 vegetarian run: 13 of 29 items,
+ * nearly all pantry staples.
+ *
+ * The number is not invented and it is not a lookup table anyone has to
+ * maintain. It is the median of what comparable items in *this same list*
+ * actually cost at *these same stores* — real prices, from this run, for this
+ * user's city. An unpriced pantry staple is quoted the median pantry staple.
+ * Where a category has too few real prices to have a median worth the name, the
+ * whole list's median is used instead, and where the list has almost no prices
+ * at all nothing is written: at that point the run has failed and the banner
+ * above the list says so, which is more honest than 40 identical guesses.
+ *
+ * As everywhere else in this module, `price` is never written. The estimate goes
+ * in `estimatedPrice` and `typicalPriceEstimate`, neither of which
+ * `computeStoreTotals` reads, so the cheapest-store ranking still sees only
+ * prices someone actually looked up.
+ */
+export function fillTypicalPriceEstimates<T extends PricedItemLike>(items: T[]): T[] {
+  if (!Array.isArray(items) || items.length === 0) return items;
+
+  const byCategory = new Map<string, number[]>();
+  const wholeList: number[] = [];
+  for (const item of items) {
+    const price = dearestRealPrice(item);
+    if (price === null) continue;
+    wholeList.push(price);
+    const key = normalizeCategory(item.category);
+    if (!key) continue;
+    const bucket = byCategory.get(key);
+    if (bucket) bucket.push(price);
+    else byCategory.set(key, [price]);
+  }
+
+  return items.map(item => {
+    // Anything with a real price anywhere is already answered.
+    if (dearestRealPrice(item) !== null) return item;
+
+    const key = normalizeCategory(item?.category);
+    const categorySamples = key ? byCategory.get(key) ?? [] : [];
+
+    let samples: number[];
+    let basis: string;
+    if (categorySamples.length >= MIN_TYPICAL_SAMPLES) {
+      samples = categorySamples;
+      basis = `typical ${key} price in this list`;
+    } else if (wholeList.length >= MIN_TYPICAL_SAMPLES) {
+      samples = wholeList;
+      basis = 'typical price across this list';
+    } else {
+      return item;
+    }
+
+    const estimate = Math.round(upperMedian(samples) * 100) / 100;
+    const options = item.storeOptions;
+
+    return {
+      ...item,
+      typicalPriceEstimate: estimate,
+      typicalPriceBasis: basis,
+      storeOptions: Array.isArray(options)
+        ? options.map(option => ({
+            ...option,
+            // `price` stays exactly as it was. See the header.
+            estimatedPrice: estimate,
+            estimatedFrom: basis,
+            estimateBasis: 'category-typical' as const,
+            priceConfidence: 'estimate' as const,
+          }))
+        : options,
+    };
+  });
+}
+
+/** Categories arrive from the model in whatever casing and plurality it likes. */
+function normalizeCategory(category: unknown): string {
+  if (typeof category !== 'string') return '';
+  return category.trim().toLowerCase();
+}
+
+/**
+ * Whether this row has any number to show — a looked-up price or an estimate of
+ * either kind.
+ *
+ * The UI needs this per item. `hasRealPrices` there is a whole-list flag, so an
+ * item nothing priced still rendered a three-column table reading "no price",
+ * "no price", "no price" with an explanation underneath. Four ways of saying
+ * nothing where one belonged.
+ */
+export function itemHasAnyPrice(item: PricedItemLike): boolean {
+  if (isRealPrice(item?.typicalPriceEstimate)) return true;
+  const options = item?.storeOptions;
+  if (!Array.isArray(options)) return false;
+  return options.some(o => isRealPrice(o.price) || isRealPrice(o.estimatedPrice));
 }
 
 /**
