@@ -67,34 +67,98 @@ test('the restaurant route budget still adds up', () => {
  */
 const MENU_LOOKUP_WAVE_SIZE = 6;
 const PERPLEXITY_MIN_INTERVAL_MS = 1200;
-// Observed range of a completed Perplexity menu search, 2026-08-25 production run.
-const OBSERVED_SEARCH_MIN_MS = 6_466;
 
-test('the last restaurant in the extraction wave still has time to search', () => {
+/**
+ * What a Perplexity menu search actually costs, from the 2026-08-27 production
+ * run (deployment 37aa9aa, meal plan cmtavzc620001ic04k0arbt0x). This is the
+ * number the earlier version of this file got wrong, and the error mattered.
+ *
+ * The one search that completed took 6971ms. But two others were cut off at
+ * 7314ms and 8516ms — that is, they were still running when their clamp
+ * expired. So 6971ms is what a search can cost, not what it does cost, and a
+ * window has to clear the observed cut-offs to be worth opening at all.
+ */
+const OBSERVED_SEARCH_COMPLETED_MS = 6_971;
+const OBSERVED_SEARCH_CUTOFF_MS = 8_516;
+
+/** The window the Nth restaurant of the wave gets for its Perplexity search. */
+function searchWindowForPosition(position: number): number {
   const extractionMs =
     ROUTE_TOTAL_BUDGET_MS - OBSERVED_RESTAURANT_DISCOVERY_MS - MEAL_SELECTION_RESERVE_MS;
-  const lastOpensAtMs = (MENU_LOOKUP_WAVE_SIZE - 1) * PERPLEXITY_MIN_INTERVAL_MS;
-  const lastSearchWindowMs = extractionMs - lastOpensAtMs - MENU_STRUCTURING_RESERVE_MS;
+  return extractionMs - position * PERPLEXITY_MIN_INTERVAL_MS - MENU_STRUCTURING_RESERVE_MS;
+}
+
+test('at least one restaurant in the extraction wave can finish a search', () => {
+  // The floor under the whole restaurant feature. Menu extraction is what turns
+  // a discovered restaurant into an orderable one; a restaurant with no menu is
+  // dropped. If no position in the wave clears the cost of a search, the route
+  // returns zero restaurants with links and the restaurant half of the week is
+  // empty regardless of how well selection is doing.
+  const viable = Array.from({ length: MENU_LOOKUP_WAVE_SIZE }, (_, i) =>
+    searchWindowForPosition(i)
+  ).filter(ms => ms >= OBSERVED_SEARCH_CUTOFF_MS);
 
   assert.ok(
-    lastSearchWindowMs > 0,
-    `restaurant ${MENU_LOOKUP_WAVE_SIZE} of the wave opens ${lastOpensAtMs}ms in with ` +
-      `${lastSearchWindowMs}ms for its search — it is dropped before it starts, so ` +
-      `the wave size is a lie and MAX_MENU_LOOKUPS should come down instead`
+    viable.length >= 1,
+    `no position in the ${MENU_LOOKUP_WAVE_SIZE}-wide wave gets the ${OBSERVED_SEARCH_CUTOFF_MS}ms ` +
+      `a search has been observed needing — every restaurant would be dropped and the ` +
+      `feature returns nothing`
   );
 
-  // Not an assertion, a record. At MEAL_SELECTION_RESERVE_MS = 26_000 this
-  // window is ~2.5s against a search that has never been observed finishing in
-  // under 6.5s, so the last one or two restaurants of the wave are expected to
-  // be dropped. That is the known, accepted price of guaranteeing selection its
-  // p95: extraction degrades one restaurant at a time, selection fails whole.
-  // If this ever needs to stop being true, the lever is MAX_MENU_LOOKUPS or a
-  // second selection call — not a quiet trim of the reserve.
+  // How close that is: the head of the wave clears the cut-off by 18ms at the
+  // current constants. Adding 2s to MEAL_SELECTION_RESERVE_MS takes this count
+  // to zero. The restaurant feature is one small budget change away from
+  // returning nothing at all, which is why the reserve cannot be raised again
+  // without first lowering what selection actually needs.
   assert.ok(
-    lastSearchWindowMs < OBSERVED_SEARCH_MIN_MS,
-    `the last restaurant now gets ${lastSearchWindowMs}ms, above the ${OBSERVED_SEARCH_MIN_MS}ms ` +
-      `floor — the wave tail is no longer expected to be dropped, which is good news ` +
-      `and means this test should be rewritten to assert the stronger property`
+    viable[0] - OBSERVED_SEARCH_CUTOFF_MS < 1_000,
+    `the head of the wave now clears the cut-off by ${viable[0] - OBSERVED_SEARCH_CUTOFF_MS}ms ` +
+      `rather than the 18ms measured on 2026-08-27 — the margin has genuinely improved and ` +
+      `this guard should be retightened around the new value`
+  );
+});
+
+/**
+ * The measured cost of the current constants, recorded rather than asserted so
+ * that it is visible and so that improving it is visible too.
+ *
+ * On 2026-08-27 the wave issued six searches with clamps descending in exact
+ * 1200ms steps — 9716, 8516, 7314, 6116, 4916, 3716 — and exactly ONE returned
+ * a menu. Nine restaurants were discovered, one survived with ordering links,
+ * and all 14 meals came from it. The variety check then passed vacuously:
+ * "1 of 1 available restaurant(s) across 14 meals, max 14/14 ✓".
+ *
+ * An earlier version of this file called that "the last one or two restaurants
+ * of the wave are expected to be dropped" and filed it as the accepted price of
+ * guaranteeing selection its p95. That was wrong by a factor of three, and
+ * because it read as accepted it sent the investigation at the link prober
+ * instead of at the budget. The starvation is the primary cause of
+ * no-usable-link; DoorDash/UberEats 403ing datacenter IPs is real but secondary.
+ *
+ * The lever is not a quiet trim of MEAL_SELECTION_RESERVE_MS — extraction
+ * degrades one restaurant at a time but selection fails whole, so a reserve
+ * below selection's true p95 trades a partial loss for a total one. The reserve
+ * can only come down if selection's actual demand comes down with it.
+ */
+test('the measured survivor count of the extraction wave has not silently changed', () => {
+  const windows = Array.from({ length: MENU_LOOKUP_WAVE_SIZE }, (_, i) =>
+    searchWindowForPosition(i)
+  );
+  const clearsCutoff = windows.filter(ms => ms >= OBSERVED_SEARCH_CUTOFF_MS).length;
+  const clearsBestCase = windows.filter(ms => ms >= OBSERVED_SEARCH_COMPLETED_MS).length;
+
+  assert.equal(
+    clearsCutoff,
+    1,
+    `${clearsCutoff} of ${MENU_LOOKUP_WAVE_SIZE} positions now clear the ${OBSERVED_SEARCH_CUTOFF_MS}ms ` +
+      `cut-off (was 1). If this went up the budget work is paying off and the number here ` +
+      `should be raised; if it went down the restaurant half is about to return nothing`
+  );
+  assert.equal(
+    clearsBestCase,
+    2,
+    `${clearsBestCase} of ${MENU_LOOKUP_WAVE_SIZE} positions clear even the best observed ` +
+      `search cost of ${OBSERVED_SEARCH_COMPLETED_MS}ms (was 2)`
   );
 });
 

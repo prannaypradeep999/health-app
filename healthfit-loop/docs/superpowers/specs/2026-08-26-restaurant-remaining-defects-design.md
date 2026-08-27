@@ -33,6 +33,40 @@ reverted on its own.
 is worse: on the observed run, 2 of 9 discovered restaurants survived menu
 extraction still holding a link.
 
+> **Corrected 2026-08-27 — the primary cause is below, not in this section.**
+>
+> A second production run (deployment `37aa9aa`, meal plan
+> `cmtavzc620001ic04k0arbt0x`) was worse still: **1 of 9** restaurants survived,
+> and all 14 meals came from it. The variety check then passed vacuously —
+> `1 of 1 available restaurant(s) across 14 meals, max 14/14 ✓`.
+>
+> That run also showed *why*, and it is not the link filtering this section
+> analyses. Menu extraction issues its six searches through a limiter that
+> spaces them 1200ms apart, and each clamps to the route's **remaining** budget
+> at the moment it opens. The clamps therefore descend in exact 1200ms steps:
+>
+> | Restaurant | Clamp | Outcome |
+> |---|---|---|
+> | Milos Taverna | 9716ms | ✅ menu returned (search took 6971ms) |
+> | Golden Mediterranean | 8516ms | ❌ cut off at 8516ms |
+> | SF Grill | 7314ms | ❌ cut off at 7314ms |
+> | North Beach Gyros | 6116ms | ❌ cut off at 6116ms |
+> | Collina | 4916ms | ❌ no budget for an attempt |
+> | Marcella's Lasagneria | 3716ms | ❌ no budget for an attempt |
+>
+> Only the head of the wave gets a viable window. The three filters below are
+> still doing what this section says they do, but they are operating on one
+> surviving restaurant rather than on nine — so the link residue is a **second-order**
+> effect. The first-order defect is that extraction is starved by the budget
+> arithmetic in Defect 4, which means Defect 1 and Defect 4 are the same defect
+> seen from two ends.
+>
+> Guarded by `at least one restaurant in the extraction wave can finish a search`
+> and `the measured survivor count of the extraction wave has not silently changed`
+> in `src/lib/utils/route-budget.test.ts`. The head of the wave currently clears
+> the observed cut-off by **18ms**; adding 2s to `MEAL_SELECTION_RESERVE_MS`
+> takes the survivor count to zero.
+
 ### Why it happens, and why most of it is correct behaviour
 
 Three filters stand between a restaurant and a rendered Order button, and two of
@@ -288,16 +322,46 @@ is outside the containment this work was scoped to. Ranked by contained-ness:
    under any cap below the fixture's depth — by design. A future cap change
    must update that guard deliberately rather than discover it.
 
-2. **Split selection into two parallel calls** — roughly halves wall time and
-   keeps every dish. The largest change, and the one the original design named
-   as the fallback if this measurement came in above 26s. It did, and option 1
-   is now eliminated, so this is the recommendation.
-3. **Raise `ROUTE_TOTAL_BUDGET_MS`** 53s → ~56s. Buys ~3s of a ~9s gap and eats
-   headroom against `maxDuration = 60`. Insufficient alone; possibly useful
-   alongside (2).
+2. ~~**Split selection into two parallel calls**~~ — **recommended, then
+   withdrawn before implementation.** The claim was "roughly halves wall time."
+   That rests on latency scaling with slot count, and it does not: latency here
+   is decode-bound at ~11ms per output token, and per-slot verbosity moves
+   *inversely* with slot count (850 tok/slot at 3 slots vs 407 at 7). Two calls
+   of half the slots would each emit more per slot, so the split could buy far
+   less than half — and might buy nothing. It was withdrawn on that reasoning
+   before any production code was written.
+
+3. **Trim the selection schema to a pick** — **measured, and the new
+   recommendation.** Seven of the nine fields in `RestaurantMealChoice`
+   (`description`, `price`, `estimatedCalories`, `protein`, `carbs`, `fat`, and
+   the restaurant's own attributes) are *already in the menu data handed to the
+   model*. Asking it to echo them back costs decode time and invites numeric
+   hallucination. Trimming to `{restaurant, dish, tags}` and joining the rest
+   from `menuData` in the route measured (`eats-out-often`, n=5, `--no-links`):
+
+   | | full schema | pick-only | available |
+   |---|---|---|---|
+   | p50 | 30,872 ms | **22,001 ms** | 26,705 ms |
+   | output tokens | 2,849 | **2,104** | — |
+
+   A 29% reduction that lands *under* budget, with no loss of choice and with
+   whole classes of arithmetic error eliminated by construction rather than
+   validated after the fact. Measured on a scratch edit and reverted; not
+   committed. **Not yet implemented** — it changes the data contract feeding the
+   validators, so it needs its own plan.
+
+4. **Raise `ROUTE_TOTAL_BUDGET_MS`** 53s → ~56s. Buys ~3s of a ~9s gap and eats
+   headroom against `maxDuration = 60`. Insufficient alone.
 
 The reserve change stays shipped. Nothing above was undertaken unilaterally —
-option 1 was measured on a scratch edit and reverted, not committed.
+options 1 and 3 were measured on scratch edits and reverted, not committed.
+
+**Scheduling note.** Option 3 is now doing double duty. It was scoped as a
+latency fix, but because selection's reserve is what starves the extraction wave
+(§ Defect 1, corrected), lowering selection's *actual demand* is also the only
+honest way to give extraction more room. That makes it the single change that
+addresses Defect 1 and Defect 4 together, which is what the paragraph above
+demanded when it said the two must be scheduled together.
 
 ---
 
