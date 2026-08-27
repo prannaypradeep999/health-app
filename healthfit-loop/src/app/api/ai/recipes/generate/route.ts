@@ -200,7 +200,27 @@ export async function POST(req: NextRequest) {
       }
 
       return response.json();
-    }, `Recipe generation: ${dishName}`);
+    }, `Recipe generation: ${dishName}`, {
+      // The shared gpt preset allows 45s per attempt out of a 52s budget,
+      // which is shaped for routes that chain several model calls. This route
+      // makes exactly one, so that split was the worst of both: measured
+      // 2026-08-27, a healthy recipe takes 33-37s (out=4329-4844, of which
+      // ~2800 are reasoning), so a 25% slowdown crosses 45s — and then attempt
+      // 2 inherits the ~6s left and fails by construction. Two dishes died
+      // that way during a live demo.
+      //
+      // One attempt with nearly the whole budget instead. 50s covers the same
+      // recipe running 35% slower than measured, and the retry that remains is
+      // for fast failures — a 500 that returns in a second still gets a second
+      // go, because the guard in withRetry only forbids retrying a timeout with
+      // less time than the attempt that just timed out.
+      //
+      // Lowering RECIPE_MAX_TOKENS was the tempting alternative and is wrong:
+      // at 3500 the model spent all 3500 on reasoning and emitted visible=0,
+      // finish=length — the exact truncation documented at the top of this file.
+      timeoutMs: 50_000,
+      maxAttempts: 2
+    });
 
     if (!gptResult.success) {
       throw new Error(`Recipe generation failed: ${gptResult.error}`);

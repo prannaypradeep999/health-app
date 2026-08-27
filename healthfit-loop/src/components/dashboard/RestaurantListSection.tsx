@@ -13,7 +13,7 @@ import {
   ChefHat,
   Target
 } from '@phosphor-icons/react';
-import { orderOptionsFor, formatRestaurantLocation } from '@/lib/utils/restaurant-links';
+import { orderOptionsFor, formatRestaurantLocation, sortByOrderability } from '@/lib/utils/restaurant-links';
 
 interface Restaurant {
   name: string;
@@ -106,6 +106,14 @@ export function RestaurantListSection({ restaurants, metadata }: RestaurantListS
 
   const totalOrderingLinks = restaurants.reduce((total, restaurant) => total + restaurant.linksFound, 0);
 
+  // Restaurants you can actually order from, first. DoorDash and Uber Eats are
+  // suppressed before probing because they 403 datacenter IPs, so GrubHub is
+  // the platform that survives into a working Order button; a card without one
+  // offers a menu and an address, which is worth showing but not worth showing
+  // at the top. Stable within each tier, so the generator's own ordering
+  // survives inside a group.
+  const orderedRestaurants = sortByOrderability(restaurants);
+
   return (
     <div className="bg-white border border-gray-200 rounded-2xl shadow-md overflow-hidden">
       {/* Header */}
@@ -157,7 +165,7 @@ export function RestaurantListSection({ restaurants, metadata }: RestaurantListS
       <div className="p-4 sm:p-6">
         <div className="overflow-x-auto">
           <div className="flex space-x-4 pb-2" style={{ minWidth: 'max-content' }}>
-            {restaurants.map((restaurant, index) => (
+            {orderedRestaurants.map((restaurant, index) => (
               <div
                 key={index}
                 className="w-72 sm:w-80 flex-shrink-0 bg-gradient-to-br from-gray-50 to-white border-2 border-gray-200 rounded-xl overflow-hidden hover:shadow-lg hover:border-[#c1272d]/20 transition-all duration-300 group"

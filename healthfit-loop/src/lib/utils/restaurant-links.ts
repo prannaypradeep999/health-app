@@ -157,6 +157,43 @@ export function isLocateOnly(options: OrderOption[]): boolean {
 }
 
 /**
+ * How far down the list a restaurant belongs.
+ *
+ *   0 — orderable through GrubHub.
+ *   1 — orderable, but only through the restaurant's own site.
+ *   2 — nothing to order through: a menu and directions.
+ *
+ * The tiers exist because the card's usefulness varies so much. DoorDash and
+ * Uber Eats are suppressed before probing — they 403 datacenter IPs, so their
+ * links cannot be verified and are not shown — which leaves GrubHub as the one
+ * platform that reliably survives into a working Order button. A restaurant is
+ * selected on the strength of its menu, not its links, so a perfectly good
+ * match can arrive with nothing but an address. Those are worth showing; they
+ * are not worth showing first.
+ */
+export function orderabilityRank(meal: unknown): number {
+  const options = orderOptionsFor(meal);
+  if (options.some(o => o.kind === 'order' && o.key === 'grubhub')) return 0;
+  if (options.some(o => o.kind === 'order')) return 1;
+  return 2;
+}
+
+/**
+ * Group restaurants by how you can actually order from them, best first.
+ *
+ * Stable within a tier: the incoming order carries meaning the ranking knows
+ * nothing about — relevance, cuisine spread, which day a meal was matched to —
+ * and reordering inside a tier would discard it for no gain. The explicit index
+ * tiebreak says so rather than relying on the engine's sort being stable.
+ */
+export function sortByOrderability<T>(restaurants: readonly T[]): T[] {
+  return restaurants
+    .map((restaurant, index) => ({ restaurant, index, rank: orderabilityRank(restaurant) }))
+    .sort((a, b) => a.rank - b.rank || a.index - b.index)
+    .map(({ restaurant }) => restaurant);
+}
+
+/**
  * The one-line location shown under a restaurant name.
  *
  * The card rendered `{address}, {city}` unconditionally. Both halves were

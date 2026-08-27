@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { orderOptionsFor, mapsSearchUrl, isLocateOnly, formatRestaurantLocation } from './restaurant-links';
+import { orderOptionsFor, mapsSearchUrl, isLocateOnly, formatRestaurantLocation, orderabilityRank, sortByOrderability } from './restaurant-links';
 
 const links = (over: Record<string, string | null> = {}) => ({
   doordash: null, ubereats: null, grubhub: null, direct: null, ...over,
@@ -160,4 +160,73 @@ test('case differences between sources do not duplicate the city', () => {
 
 test('neither address nor city yields an empty line, not punctuation', () => {
   assert.equal(formatRestaurantLocation(null, null), '');
+});
+
+// ---------------------------------------------------------------------------
+// Ordering the list: GrubHub-orderable first, menu-only last.
+// ---------------------------------------------------------------------------
+
+const withLinks = (name: string, orderingLinks: Record<string, string | null>) => ({
+  name,
+  restaurant: name,
+  address: '1 Main St, Berkeley, CA',
+  orderingLinks
+});
+
+test('a GrubHub link ranks ahead of a direct-only one, which ranks ahead of menu-only', () => {
+  assert.equal(orderabilityRank(withLinks('G', { grubhub: 'https://grubhub.com/x' })), 0);
+  assert.equal(orderabilityRank(withLinks('D', { direct: 'https://taqueria.example/order' })), 1);
+  assert.equal(orderabilityRank(withLinks('M', { grubhub: null, direct: null })), 2);
+});
+
+test('a restaurant with both GrubHub and direct still ranks as GrubHub', () => {
+  const r = withLinks('Both', { grubhub: 'https://grubhub.com/x', direct: 'https://x.example' });
+  assert.equal(orderabilityRank(r), 0);
+});
+
+test('a restaurant with no name at all ranks last rather than throwing', () => {
+  assert.equal(orderabilityRank({ orderingLinks: {} }), 2);
+  assert.equal(orderabilityRank(null), 2);
+});
+
+test('sorting stacks every GrubHub restaurant before the menu-only ones', () => {
+  const sorted = sortByOrderability([
+    withLinks('menu-only-1', { grubhub: null }),
+    withLinks('grubhub-1', { grubhub: 'https://grubhub.com/a' }),
+    withLinks('direct-1', { direct: 'https://a.example/order' }),
+    withLinks('menu-only-2', { grubhub: null }),
+    withLinks('grubhub-2', { grubhub: 'https://grubhub.com/b' })
+  ]);
+
+  assert.deepEqual(sorted.map(r => r.name), [
+    'grubhub-1',
+    'grubhub-2',
+    'direct-1',
+    'menu-only-1',
+    'menu-only-2'
+  ]);
+});
+
+test('sorting preserves the incoming order within a tier', () => {
+  const sorted = sortByOrderability([
+    withLinks('g-first', { grubhub: 'https://grubhub.com/1' }),
+    withLinks('g-second', { grubhub: 'https://grubhub.com/2' }),
+    withLinks('g-third', { grubhub: 'https://grubhub.com/3' })
+  ]);
+
+  assert.deepEqual(sorted.map(r => r.name), ['g-first', 'g-second', 'g-third']);
+});
+
+test('sorting does not mutate the array it was given', () => {
+  const input = [
+    withLinks('menu-only', { grubhub: null }),
+    withLinks('grubhub', { grubhub: 'https://grubhub.com/a' })
+  ];
+  const before = input.map(r => r.name);
+  sortByOrderability(input);
+  assert.deepEqual(input.map(r => r.name), before);
+});
+
+test('an empty list sorts to an empty list', () => {
+  assert.deepEqual(sortByOrderability([]), []);
 });

@@ -481,8 +481,10 @@ export function MealPlanPage({ onNavigate, generationStatus, nutritionTargets: n
     const planId = mealData?.mealPlan?.id;
     if (!planData?.days || !planId) return;
 
-    // Once per plan per tab. The server cache makes a repeat cheap, but not
-    // free, and re-running on every render of every visit is a lot of nothing.
+    // Claim the run so a re-render cannot start a second copy. The marker is
+    // released again below if any dish failed, so refreshing the page retries
+    // the ones that did not make it — a recipe that timed out cached nothing,
+    // and skipping it forever would leave that meal permanently slow.
     const prewarmKey = `recipePrewarm:${planId}`;
     try {
       if (sessionStorage.getItem(prewarmKey)) return;
@@ -492,6 +494,13 @@ export function MealPlanPage({ onNavigate, generationStatus, nutritionTargets: n
       // rather than let a storage error break the page.
       return;
     }
+    const releasePrewarmClaim = () => {
+      try {
+        sessionStorage.removeItem(prewarmKey);
+      } catch {
+        // Nothing to do; the next full page load gets a fresh store anyway.
+      }
+    };
 
     const targets = collectPrewarmTargets(planData);
     if (targets.length === 0) return;
@@ -537,11 +546,17 @@ export function MealPlanPage({ onNavigate, generationStatus, nutritionTargets: n
 
     console.log(`🍳 [Prewarm] Warming ${targets.length} recipe(s) in the background`);
     Promise.all(Array.from({ length: CONCURRENCY }, worker)).then(() => {
-      if (abortController.signal.aborted) return;
+      if (abortController.signal.aborted) {
+        // Navigated away mid-run. The dishes not yet reached are still cold, so
+        // let the next load pick up where this one stopped.
+        releasePrewarmClaim();
+        return;
+      }
+      const failed = targets.length - warmed - alreadyCached;
       console.log(
-        `🍳 [Prewarm] Done — ${warmed} generated, ${alreadyCached} already cached, ` +
-        `${targets.length - warmed - alreadyCached} failed`
+        `🍳 [Prewarm] Done — ${warmed} generated, ${alreadyCached} already cached, ${failed} failed`
       );
+      if (failed > 0) releasePrewarmClaim();
     });
 
     return () => abortController.abort();

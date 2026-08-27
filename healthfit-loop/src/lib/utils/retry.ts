@@ -97,6 +97,27 @@ function isRetryableError(error: unknown): boolean {
 }
 
 /**
+ * A deadline we imposed ourselves, carrying how long the attempt was given.
+ *
+ * The distinction matters when deciding whether to retry. A 503 says the server
+ * was unwell a moment ago and may be well now; our own timeout says the work
+ * did not fit in the time allowed, and the retry gets *less* time than the
+ * attempt that just failed. Retrying that is a guaranteed second failure, paid
+ * for out of the user's remaining wait.
+ *
+ * The message is unchanged from the plain Error it replaces, so anything
+ * matching on the text keeps working.
+ */
+export class TimeoutError extends Error {
+  readonly timeoutMs: number;
+  constructor(timeoutMs: number) {
+    super(`Operation timed out after ${timeoutMs}ms`);
+    this.name = 'TimeoutError';
+    this.timeoutMs = timeoutMs;
+  }
+}
+
+/**
  * Wraps a function with a timeout
  */
 async function withTimeout<T>(fn: (signal: AbortSignal) => Promise<T>, timeoutMs: number): Promise<T> {
@@ -121,7 +142,7 @@ async function withTimeout<T>(fn: (signal: AbortSignal) => Promise<T>, timeoutMs
   const timeout = new Promise<never>((_, reject) => {
     timeoutId = setTimeout(() => {
       controller.abort();
-      reject(new Error(`Operation timed out after ${timeoutMs}ms`));
+      reject(new TimeoutError(timeoutMs));
     }, timeoutMs);
   });
 
@@ -131,7 +152,7 @@ async function withTimeout<T>(fn: (signal: AbortSignal) => Promise<T>, timeoutMs
     return await Promise.race([fn(controller.signal), timeout]);
   } catch (error) {
     if (controller.signal.aborted) {
-      throw new Error(`Operation timed out after ${timeoutMs}ms`);
+      throw new TimeoutError(timeoutMs);
     }
     throw error;
   } finally {
@@ -228,6 +249,28 @@ export async function withRetry<T>(
       }
 
       if (attempt < opts.maxAttempts) {
+        // The work did not fit in the time it was given, and the next attempt
+        // would get less. `MIN_USEFUL_ATTEMPT_MS` is not the right bar here: 6s
+        // clears it, but 6s cannot finish what 45s could not start. Measured on
+        // the recipe route, where attempt 1 timed out at 45s of a 52s budget and
+        // attempt 2 was handed the remaining 6s and failed by construction —
+        // spending 6s of the user's wait to re-learn the previous answer.
+        if (lastError instanceof TimeoutError && deadline !== null) {
+          const nextAttemptMs = deadline - Date.now() - currentDelay;
+          if (nextAttemptMs < lastError.timeoutMs) {
+            console.log(
+              `[RETRY] ⌛ ${context} - timed out at ${lastError.timeoutMs}ms and only ` +
+              `${Math.max(0, nextAttemptMs)}ms would remain; a shorter attempt cannot succeed, stopping`
+            );
+            return {
+              success: false,
+              error: lastError.message,
+              attempts: attempt,
+              totalTimeMs: Date.now() - startTime
+            };
+          }
+        }
+
         // Sleeping out the backoff only to find there is no time left for the
         // attempt it precedes wastes the very budget we are trying to protect.
         if (deadline !== null && Date.now() + currentDelay + MIN_USEFUL_ATTEMPT_MS > deadline) {
@@ -339,9 +382,20 @@ export const RetryPresets = {
 
 /**
  * Helper for GPT API calls
+ *
+ * `overrides` exists because the gpt preset is shaped for routes that make
+ * several model calls in sequence and must leave room for the ones after. A
+ * route whose whole job is a single call has the opposite problem: three
+ * attempts of 45s cannot fit in a 52s budget, so attempt 1 takes 45s and
+ * attempt 2 inherits the ~6s left and times out by construction. Such a caller
+ * should spend the budget on one attempt that can actually finish.
  */
-export function withGPTRetry<T>(fn: (signal: AbortSignal) => Promise<T>, context: string): Promise<RetryResult<T>> {
-  return withRetry(fn, { ...RetryPresets.gpt, context: `GPT: ${context}` });
+export function withGPTRetry<T>(
+  fn: (signal: AbortSignal) => Promise<T>,
+  context: string,
+  overrides?: Partial<RetryOptions>
+): Promise<RetryResult<T>> {
+  return withRetry(fn, { ...RetryPresets.gpt, context: `GPT: ${context}`, ...overrides });
 }
 
 /**
