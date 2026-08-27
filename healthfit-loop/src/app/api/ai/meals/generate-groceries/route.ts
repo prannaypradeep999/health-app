@@ -5,6 +5,7 @@ import { prisma } from '@/lib/db';
 import { perplexityClient } from '@/lib/external/perplexity-client';
 import { normalizeGroceryKey } from '@/lib/utils/grocery-list';
 import { mergePricedItem } from '@/lib/utils/grocery-merge';
+import { consolidateGroceryList } from '@/lib/ai/grocery-consolidation';
 
 export const runtime = 'nodejs';
 export const maxDuration = 60; // Allow up to 60 seconds for price lookups
@@ -110,9 +111,9 @@ async function handleGenerate_groceries(requestData: GroceryGenerationRequest) {
 
     // Get grocery list from userContext
     const userContext = mealPlan.userContext as any;
-    const groceryList = userContext?.groceryList;
+    const placeholderList = userContext?.groceryList;
 
-    if (!groceryList) {
+    if (!placeholderList) {
       console.error('[GROCERY-PRICES] ❌ No grocery list in meal plan');
       return NextResponse.json({ error: 'No grocery list in meal plan' }, { status: 404 });
     }
@@ -141,9 +142,47 @@ async function handleGenerate_groceries(requestData: GroceryGenerationRequest) {
     // categories in one prompt, against a store search that is a single
     // location query. If the search cannot finish in the remaining ~25s it was
     // not going to finish in 53s either.
-    const storeResponse = await reservingBudget(28_000, () =>
-      perplexityClient.getLocalGroceryStores(streetAddress, city, state, zipcode)
+    // Consolidation rides alongside the store search rather than after it.
+    //
+    // It used to run at the end of generate-home, on whatever budget the meal
+    // phases left — 1208ms on the 2026-08-27 run against a p95 cost of ~17.7s,
+    // so it never fired and this route priced raw ingredient lines ("ground
+    // turkey oz sauted in a nonstick pan") instead of shopping items. That is
+    // an over-subscribed route, not a scheduling accident: no reserve fixes it
+    // without starving the meals instead.
+    //
+    // The two calls below are independent — stores depend only on the address,
+    // consolidation only on the meals — so running them together costs the
+    // slower of the two rather than the sum, and consolidation's ~17.7s fits
+    // inside the ~25s the store search already had. Prices keep the same 28s
+    // guarantee they had before, so nothing downstream is squeezed to pay for
+    // this.
+    const allMeals: any[] = Array.isArray(userContext?.homeMeals) ? userContext.homeMeals : [];
+
+    const [storeResponse, consolidated] = await reservingBudget(28_000, () =>
+      Promise.all([
+        perplexityClient.getLocalGroceryStores(streetAddress, city, state, zipcode),
+        consolidateGroceryList(allMeals, surveyData, '[GROCERY-PRICES]').catch(e => {
+          // Never fatal: the placeholder list from generate-home is worse, not
+          // absent, so a consolidation failure costs quality and not the run.
+          console.error('[GROCERY-PRICES] ❌ Consolidation threw:', e);
+          return null;
+        }),
+      ])
     );
+
+    // Keep the categories the consolidation produced, but keep every other
+    // field the placeholder carried (stores, location, and anything a previous
+    // pricing run left behind).
+    const groceryList = consolidated
+      ? { ...placeholderList, ...consolidated }
+      : placeholderList;
+
+    if (consolidated) {
+      console.log('[GROCERY-PRICES] ✅ Using consolidated list; the placeholder from generate-home is replaced');
+    } else {
+      console.warn('[GROCERY-PRICES] ⚠️ Consolidation unavailable — pricing the ingredient-backfill placeholder instead');
+    }
 
     if (!storeResponse.stores?.length) {
       console.error('[GROCERY-PRICES] ❌ Could not find stores after retries');

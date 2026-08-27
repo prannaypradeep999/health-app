@@ -11,7 +11,7 @@ import { buildFallbackGroceryList, enhanceGroceryListWithUsage } from '@/lib/uti
 import { isUsableMeal, isUsableOption } from '@/lib/utils/meal-usability';
 import { summarizeCompleteness } from '@/lib/utils/completeness';
 import { adjustTargetsForRestaurantBudget } from '@/lib/utils/restaurant-budget';
-import { createHomeMealGenerationPrompt, createPlanningPrompt, createDetailPrompt, createGroceryPrompt, HOME_MEAL_NUTRITION_METHOD, type MealFeedbackContext } from '@/lib/ai/prompts';
+import { createHomeMealGenerationPrompt, createPlanningPrompt, createDetailPrompt, HOME_MEAL_NUTRITION_METHOD, type MealFeedbackContext } from '@/lib/ai/prompts';
 import { pexelsClient } from '@/lib/external/pexels-client';
 import { withGPTRetry, HttpError } from '@/lib/utils/retry';
 import { getStartOfWeek } from '@/lib/utils/date-utils';
@@ -19,7 +19,6 @@ import { getAuthUserId } from '@/lib/auth';
 import { MODELS, tuning } from '@/lib/ai/models';
 import { logUsage } from '@/lib/ai/usage';
 import {
-  GroceryListSchema,
   pinnedMealPlan,
   pinnedMealDetail,
   pinnedHomeMealsLegacy,
@@ -1039,73 +1038,6 @@ async function generateMealDetails(
 }
 
 /**
- * Phase 3: Generate grocery list from all meals
- */
-async function generateGroceryList(allMeals: any[], surveyData: any): Promise<any> {
-  console.log(`[HOME-MEALS-7DAY] 📋 Phase 3: Consolidating grocery list from ${allMeals.length} meals...`);
-  const startTime = Date.now();
-
-  // Create grocery prompt
-  const groceryPrompt = createGroceryPrompt(allMeals, surveyData);
-
-  const gptResult = await withGPTRetry(async (signal) => {
-    const response = await fetch('https://api.openai.com/v1/chat/completions', {
-      method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${process.env.GPT_KEY}`,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        model: MODELS.DETAIL,
-        messages: [{ role: 'system', content: groceryPrompt }],
-        ...tuning(MODELS.DETAIL, { maxTokens: 4000, temperature: 0.3 }),
-        response_format: toStrictJsonSchema('grocery_list', GroceryListSchema)
-      }),
-      signal: signal
-    });
-
-    if (!response.ok) {
-      const errorText = await response.text().catch(() => 'Unknown error');
-      throw new HttpError(response.status, `GPT API error ${response.status}: ${errorText.substring(0, 100)}`);
-    }
-
-    return response.json();
-  }, 'Grocery list generation');
-
-  // The caller already backfills a null list from the meals' own ingredients,
-  // so a grocery failure costs polish, not the meal plan.
-  if (!gptResult.success) {
-    console.error(`[HOME-MEALS-7DAY] ❌ Grocery generation failed: ${gptResult.error} — backfilling from ingredients`);
-    return { groceryList: null };
-  }
-
-  const data = gptResult.data;
-  logUsage('home-meals-grocery', 4000, data);
-
-  const groceryTime = Date.now() - startTime;
-  const tokenUsage = data.usage;
-
-  if (tokenUsage) {
-    console.log(`[HOME-MEALS-7DAY] ✅ Grocery list complete in ${groceryTime}ms (prompt: ${tokenUsage.prompt_tokens} tokens, response: ${tokenUsage.completion_tokens} tokens)`);
-  } else {
-    console.log(`[HOME-MEALS-7DAY] ✅ Grocery list complete in ${groceryTime}ms`);
-  }
-
-  const parsed = parseChoice(GroceryListSchema, data.choices?.[0], 'home-meals-grocery');
-  if (!parsed.ok) {
-    console.error(`[HOME-MEALS-7DAY] ❌ Grocery ${parsed.reason}: ${parsed.detail} — backfilling from ingredients`);
-    return { groceryList: null };
-  }
-
-  const list = parsed.data.groceryList as Record<string, unknown[]>;
-  const categories = Object.keys(list);
-  const totalItems = categories.reduce((sum, cat) => sum + (list[cat]?.length || 0), 0);
-  console.log(`[HOME-MEALS-7DAY] ✅ Grocery list: ${totalItems} items across ${categories.length} categories (${categories.join(', ')})`);
-
-  return parsed.data;
-}
-
-/**
  * Main Plan+Parallel Generation Function
  */
 async function generateHomeMealsParallel(
@@ -1340,30 +1272,30 @@ async function generateHomeMealsParallel(
     );
     ingredientErrors.forEach((e) => console.error(`[HOME-MEALS-7DAY] ❌ ${e}`));
 
-    // Phase 3: Generate grocery list
-    console.log(`[HOME-MEALS-7DAY] 📋 Phase 4: Grocery consolidation...`);
-    const groceryResult = await generateGroceryList(allMeals, surveyData);
-
-    // Post-parse guard: ensure all 6 required categories are present
-    const requiredCategories = ['proteins', 'vegetables', 'grains', 'dairy', 'pantryStaples', 'snacks'];
-    let groceryList = groceryResult.groceryList || null;
-    if (groceryList) {
-      const missingCategories = requiredCategories.filter(cat => !groceryList[cat] || groceryList[cat].length === 0);
-      if (missingCategories.length > 0) {
-        console.warn(`[HOME-MEALS-7DAY] ⚠️ Grocery list missing categories: ${missingCategories.join(', ')} — backfilling from ingredients`);
-        const fallback = buildFallbackGroceryList(allMeals);
-        missingCategories.forEach(cat => {
-          if (fallback[cat] && fallback[cat].length > 0) {
-            groceryList[cat] = fallback[cat];
-          } else {
-            groceryList[cat] = [];
-          }
-        });
-      }
-    } else {
-      console.warn(`[HOME-MEALS-7DAY] ⚠️ No grocery list from GPT — using fallback`);
-      groceryList = buildFallbackGroceryList(allMeals);
-    }
+    // Phase 4: a placeholder grocery list, built from the meals we already hold.
+    //
+    // This used to be a GPT consolidation call, and it ran last on whatever
+    // budget the meal phases left it. Measured on the 2026-08-27 production run
+    // that was 1208ms against a p95 cost of ~17.7s (see
+    // GROCERY_CONSOLIDATION_P95_MS), so it never fired: every run fell through
+    // to this same fallback, and the user got shelf-useless rows like "ground
+    // turkey oz sauted in a nonstick pan" which generate-groceries then priced
+    // verbatim.
+    //
+    // No reserve could fix that. Planning plus the detail chunks plus the top-up
+    // passes genuinely need most of the 53s, so ~52s of meal work and ~17s of
+    // consolidation is ~69s of work in a 53s budget — an over-subscription, not
+    // a scheduling accident. Reserving time for consolidation would only move
+    // the starvation onto the meals, which are the deliverable.
+    //
+    // So consolidation moved to generate-groceries, which already runs in its
+    // own invocation with a full budget of its own and already has to load this
+    // plan to price it. What stays here is the fallback: it is pure, needs no
+    // network, cannot fail, and guarantees the plan is never written without a
+    // grocery list at all. generate-groceries replaces it with the consolidated
+    // version moments later.
+    console.log(`[HOME-MEALS-7DAY] 📋 Phase 4: Placeholder grocery list (consolidation runs in generate-groceries)...`);
+    const groceryList: Record<string, any> = buildFallbackGroceryList(allMeals);
 
     // Does the list cover the recipes it was built from? Both sides are already
     // in memory, so this costs no network time and cannot extend the deadline.
