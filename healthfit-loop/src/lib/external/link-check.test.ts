@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
   parseHttpUrl, isUsableLink, hostMatchesPlatform, isHomepageRedirect, verifyLinks,
-  corroborate, DISPLAYED_PLATFORMS, suppressUndisplayablePlatforms,
+  corroborate, DISPLAYED_PLATFORMS, suppressUndisplayablePlatforms, isUnverifiable, verifyLinksDetailed, mergeOrderingLinks,
   type LinkVerdict,
 } from './link-check';
 
@@ -179,4 +179,142 @@ test('suppression leaves an already-empty object alone', () => {
 
 test('DISPLAYED_PLATFORMS is the single switch for this policy', () => {
   assert.deepEqual([...DISPLAYED_PLATFORMS].sort(), ['direct', 'grubhub']);
+});
+
+// --- Unverifiable vs dead -------------------------------------------------
+//
+// The distinction that keeps a real restaurant's real website from being
+// deleted because a bot wall refused a datacenter IP.
+
+test('isUnverifiable treats a refusal as inconclusive, not negative', () => {
+  for (const status of [401, 403, 429, 451, 503]) {
+    assert.equal(
+      isUnverifiable(verdict('https://x.example/a', { alive: false, status, reason: `HTTP ${status}` })),
+      true,
+      `HTTP ${status} should be inconclusive`
+    );
+  }
+});
+
+test('isUnverifiable treats a timeout or network error as inconclusive', () => {
+  assert.equal(isUnverifiable(verdict('https://x.example/a', {
+    alive: false, status: null, finalUrl: null, reason: 'timed out after 6000ms',
+  })), true);
+});
+
+test('isUnverifiable keeps 404 and 410 fatal — those are real answers', () => {
+  assert.equal(isUnverifiable(verdict('https://x.example/a', { alive: false, status: 404, reason: 'HTTP 404' })), false);
+  assert.equal(isUnverifiable(verdict('https://x.example/a', { alive: false, status: 410, reason: 'HTTP 410' })), false);
+});
+
+test('isUnverifiable is false for a link that answered', () => {
+  assert.equal(isUnverifiable(verdict('https://x.example/a')), false);
+});
+
+test('a lenient platform survives a bot wall', async () => {
+  const url = 'https://laoaxaquena.example/menu';
+  const out = await verifyLinks({ direct: url }, {
+    lenientPlatforms: ['direct'],
+    prober: async (u) => verdict(u, { alive: false, status: 403, finalUrl: null, reason: 'HTTP 403' }),
+  });
+  assert.deepEqual(out, { direct: url });
+});
+
+test('a lenient platform is still dropped by a real 404', async () => {
+  const out = await verifyLinks({ direct: 'https://gone.example/menu' }, {
+    lenientPlatforms: ['direct'],
+    prober: async (u) => verdict(u, { alive: false, status: 404, finalUrl: null, reason: 'HTTP 404' }),
+  });
+  assert.deepEqual(out, {});
+});
+
+test('leniency does not leak to platforms that were not named', async () => {
+  const out = await verifyLinks(
+    { direct: 'https://site.example/menu', grubhub: 'https://www.grubhub.com/restaurant/x' },
+    {
+      lenientPlatforms: ['direct'],
+      prober: async (u) => verdict(u, { alive: false, status: 403, finalUrl: null, reason: 'HTTP 403' }),
+    }
+  );
+  assert.deepEqual(out, { direct: 'https://site.example/menu' });
+});
+
+test('a lenient platform is allowed to redirect to its own homepage', async () => {
+  const url = 'https://restaurant.example/home';
+  const out = await verifyLinks({ direct: url }, {
+    lenientPlatforms: ['direct'],
+    prober: async (u) => verdict(u, { finalUrl: 'https://restaurant.example/' }),
+  });
+  assert.deepEqual(out, { direct: url });
+});
+
+test('a non-lenient platform is still dropped for a homepage redirect', async () => {
+  const out = await verifyLinks({ grubhub: 'https://www.grubhub.com/restaurant/invented' }, {
+    prober: async (u) => verdict(u, { finalUrl: 'https://www.grubhub.com/' }),
+  });
+  assert.deepEqual(out, {});
+});
+
+test('verifyLinksDetailed reports why each link was kept or dropped', async () => {
+  const { links, outcomes } = await verifyLinksDetailed(
+    {
+      grubhub: 'https://www.grubhub.com/restaurant/ok',
+      direct: 'https://walled.example/menu',
+      doordash: 'https://not-doordash.example/x',
+    },
+    {
+      lenientPlatforms: ['direct'],
+      prober: async (u) => u.includes('grubhub')
+        ? verdict(u)
+        : verdict(u, { alive: false, status: 403, finalUrl: null, reason: 'HTTP 403' }),
+    }
+  );
+
+  assert.deepEqual(Object.keys(links).sort(), ['direct', 'grubhub']);
+  assert.equal(outcomes.grubhub.kept, true);
+  assert.equal(outcomes.direct.kept, true);
+  assert.match(outcomes.direct.reason, /unverified .*kept on provenance/);
+  assert.equal(outcomes.doordash.kept, false);
+  assert.equal(outcomes.doordash.reason, 'wrong host for platform');
+});
+
+// --- Merging the two hops' views of the same links ------------------------
+
+test('mergeOrderingLinks prefers the first source and fills gaps from the second', () => {
+  const merged = mergeOrderingLinks(
+    { grubhub: 'https://www.grubhub.com/a', direct: null },
+    { grubhub: 'https://www.grubhub.com/stale', direct: 'https://site.example' }
+  );
+  assert.deepEqual(merged, {
+    grubhub: 'https://www.grubhub.com/a',
+    direct: 'https://site.example',
+  });
+});
+
+test('mergeOrderingLinks recovers everything when the preferred source is empty', () => {
+  // The production failure: hop 2 timed out and returned {}, taking a good
+  // GrubHub link with it.
+  assert.deepEqual(
+    mergeOrderingLinks({}, { grubhub: 'https://www.grubhub.com/a' }),
+    { grubhub: 'https://www.grubhub.com/a' }
+  );
+});
+
+test('mergeOrderingLinks tolerates null and undefined sources', () => {
+  assert.deepEqual(mergeOrderingLinks(null, undefined), {});
+  assert.deepEqual(mergeOrderingLinks(undefined, { direct: 'https://a.example' }), { direct: 'https://a.example' });
+});
+
+test('mergeOrderingLinks drops junk rather than passing it through', () => {
+  assert.deepEqual(
+    mergeOrderingLinks({ grubhub: 'not a url', direct: '' }, { direct: 'javascript:alert(1)' }),
+    {}
+  );
+});
+
+test('mergeOrderingLinks trims whitespace', () => {
+  assert.deepEqual(
+    mergeOrderingLinks({ direct: '  https://a.example  ' }, {}),
+    { direct: 'https://a.example' }
+  );
 });

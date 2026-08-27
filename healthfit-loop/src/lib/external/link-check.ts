@@ -21,6 +21,31 @@ export interface LinkVerdict {
 }
 
 /**
+ * Statuses that mean "we were not allowed to look", as distinct from "there is
+ * nothing here".
+ *
+ * 403 and 429 are what a bot wall answers a datacenter IP, and a great many
+ * small restaurant sites sit behind one. A timeout is the same class of
+ * non-answer. None of them is evidence the page is dead, and treating them as
+ * such is how a real restaurant's real website gets deleted — measured in
+ * production, where La Oaxaqueña's only link was dropped as "unreachable" and
+ * the restaurant was then served to the user three times with no way to order.
+ */
+const UNVERIFIABLE_STATUSES: readonly number[] = [401, 403, 405, 429, 451, 503];
+
+/**
+ * Did the probe fail to reach a conclusion, rather than reach a negative one?
+ *
+ * A 404 or 410 is a real answer and stays fatal. Only refusals and non-answers
+ * count as unverifiable.
+ */
+export function isUnverifiable(verdict: LinkVerdict): boolean {
+  if (verdict.alive) return false;
+  if (verdict.status === null) return true; // timeout or network error
+  return UNVERIFIABLE_STATUSES.includes(verdict.status);
+}
+
+/**
  * Anchored with (^|\.) so that `doordash.com.evil.example` does not match — a
  * bare `endsWith('doordash.com')` would accept it, and so would a substring
  * test against `mydoordash.com`.
@@ -88,6 +113,29 @@ export function parseHttpUrl(url: string): URL | null {
 export const isUsableLink = (v: unknown): v is string =>
   typeof v === 'string' && /^https?:\/\/\S+$/i.test(v.trim());
 
+/** Alias used where the intent is "did this source supply a link at all". */
+export const isNonEmptyLink = isUsableLink;
+
+/**
+ * Combine two independently-derived views of the same restaurant's ordering
+ * links, preferring the first and letting the second fill gaps.
+ *
+ * Only usable values are kept, and only platforms we would display, so a
+ * merge can never widen what reaches the user beyond what the sources said.
+ */
+export function mergeOrderingLinks(
+  preferred: Record<string, string | null | undefined> | null | undefined,
+  fallback: Record<string, string | null | undefined> | null | undefined
+): Record<string, string> {
+  const out: Record<string, string> = {};
+  for (const source of [fallback, preferred]) {
+    for (const [platform, url] of Object.entries(source ?? {})) {
+      if (isUsableLink(url)) out[platform] = url.trim();
+    }
+  }
+  return out;
+}
+
 /**
  * HEAD first because it is cheap, then GET on any status that smells like
  * "this server does not implement HEAD" — 405 and 501 are the standard ones,
@@ -107,7 +155,16 @@ export async function probe(url: string, timeoutMs = 8000): Promise<LinkVerdict>
         method,
         redirect: 'follow',
         signal: controller.signal,
-        headers: { 'User-Agent': 'healthfit-loop/1.0' },
+        // A browser-shaped UA, because the question being asked is "would this
+        // work if the user clicked it", and the user clicks from a browser.
+        // `healthfit-loop/1.0` was being refused by bot walls that serve the
+        // same page happily to Chrome, which made the probe answer a different
+        // question from the one we care about.
+        headers: {
+          'User-Agent':
+            'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0 Safari/537.36',
+          'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+        },
       });
     } finally {
       clearTimeout(timer);
@@ -195,26 +252,84 @@ export function corroborate(
  * `prober` is injectable so the unit tests never touch the network. Production
  * always uses the default.
  */
-export async function verifyLinks(
+export interface VerifyLinksOptions {
+  prober?: (url: string) => Promise<LinkVerdict>;
+  timeoutMs?: number;
+  /**
+   * Platforms whose links survive an inconclusive probe.
+   *
+   * Use this only where the link has provenance independent of the probe. The
+   * caller passes `['direct']` when `direct` came from the Google Places
+   * `website` field: Places looked the business up, so a bot wall refusing us
+   * says nothing about whether the address is right. A model-guessed URL has no
+   * such backing and must still prove itself.
+   *
+   * Leniency also skips the homepage-redirect test, which exists to catch
+   * invented deep links. A restaurant's own site redirecting `/home` to `/` is
+   * ordinary and not evidence of anything.
+   */
+  lenientPlatforms?: readonly string[];
+}
+
+export interface LinkResolution {
+  links: Record<string, string>;
+  /** Per-platform outcome, for logging. Keys match the input's usable entries. */
+  outcomes: Record<string, { kept: boolean; reason: string }>;
+}
+
+export async function verifyLinksDetailed(
   links: Record<string, string | null | undefined>,
-  opts: { prober?: (url: string) => Promise<LinkVerdict>; timeoutMs?: number } = {}
-): Promise<Record<string, string>> {
+  opts: VerifyLinksOptions = {}
+): Promise<LinkResolution> {
   const prober = opts.prober ?? ((u: string) => probe(u, opts.timeoutMs));
+  const lenient = new Set(opts.lenientPlatforms ?? []);
+
+  const usable = Object.entries(links ?? {})
+    .filter(([, v]) => isUsableLink(v))
+    .map(([platform, v]) => [platform, (v as string).trim()] as const);
 
   // Host is checked first because it is free. Spending an HTTP request to
   // reject a link we can already prove is on the wrong domain is waste inside
   // a route that shares a 52-second budget with everything else.
-  const candidates = Object.entries(links ?? {})
-    .filter(([, v]) => isUsableLink(v))
-    .map(([platform, v]) => [platform, (v as string).trim()] as const)
-    .filter(([platform, url]) => hostMatchesPlatform(platform, url));
+  const outcomes: Record<string, { kept: boolean; reason: string }> = {};
+  const candidates = usable.filter(([platform, url]) => {
+    const ok = hostMatchesPlatform(platform, url);
+    if (!ok) outcomes[platform] = { kept: false, reason: 'wrong host for platform' };
+    return ok;
+  });
 
   const verdicts = await Promise.all(candidates.map(([, url]) => prober(url)));
 
   const out: Record<string, string> = {};
   candidates.forEach(([platform, url], i) => {
     const v = verdicts[i];
-    if (v.alive && !isHomepageRedirect(v)) out[platform] = url;
+    const isLenient = lenient.has(platform);
+
+    if (v.alive) {
+      if (!isLenient && isHomepageRedirect(v)) {
+        outcomes[platform] = { kept: false, reason: 'redirected to homepage' };
+        return;
+      }
+      out[platform] = url;
+      outcomes[platform] = { kept: true, reason: 'ok' };
+      return;
+    }
+
+    if (isLenient && isUnverifiable(v)) {
+      out[platform] = url;
+      outcomes[platform] = { kept: true, reason: `unverified (${v.reason}), kept on provenance` };
+      return;
+    }
+
+    outcomes[platform] = { kept: false, reason: v.reason };
   });
-  return out;
+
+  return { links: out, outcomes };
+}
+
+export async function verifyLinks(
+  links: Record<string, string | null | undefined>,
+  opts: VerifyLinksOptions = {}
+): Promise<Record<string, string>> {
+  return (await verifyLinksDetailed(links, opts)).links;
 }

@@ -7,7 +7,7 @@ import { cookies } from 'next/headers';
 import { prisma } from '@/lib/db';
 import { googlePlacesClient, Restaurant } from '@/lib/external/places-client';
 import { perplexityClient } from '@/lib/external/perplexity-client';
-import { verifyLinks, isUsableLink, suppressUndisplayablePlatforms } from '@/lib/external/link-check';
+import { verifyLinks, verifyLinksDetailed, isUsableLink, suppressUndisplayablePlatforms } from '@/lib/external/link-check';
 import { radiusMilesFor, milesBetween } from '@/lib/utils/distance';
 import { buildRestaurantFacts, uniqueSelectedCuisines } from '@/lib/utils/restaurant-facts';
 import { runVerification, verifyRestaurantPayload } from '@/lib/verification';
@@ -396,12 +396,13 @@ async function extractMenuInformation(restaurants: Restaurant[], surveyData: any
       // the only source here that looked the business up rather than recalled
       // it. The model's value survives only as the fallback.
       const placesWebsite = (restaurant as { website?: string }).website;
+      const directFromPlaces = isUsableLink(placesWebsite);
       // Suppressed before probing, not after: a platform we will not display is
       // not worth an HTTP request from inside the tightest phase of the route
       // budget. This removes two probes per restaurant.
       const candidateLinks = suppressUndisplayablePlatforms({
         ...orderingLinks,
-        direct: isUsableLink(placesWebsite) ? placesWebsite : orderingLinks.direct ?? null,
+        direct: directFromPlaces ? placesWebsite : orderingLinks.direct ?? null,
       });
 
       // B1. Nothing had ever requested one of these URLs. A 404 doordash link
@@ -409,12 +410,26 @@ async function extractMenuInformation(restaurants: Restaurant[], surveyData: any
       // button — the user drives somewhere on the strength of it. 6s rather
       // than the 8s default: this phase owns ~22s of the route budget and a
       // link check must not be what spends it.
-      const resolvedLinks = await verifyLinks(candidateLinks, { timeoutMs: 6000 });
-      const rejected = Object.keys(candidateLinks).filter(
-        (k) => isUsableLink((candidateLinks as Record<string, unknown>)[k]) && !(k in resolvedLinks)
-      );
+      //
+      // `direct` is probed leniently *only* when Google Places supplied it. A
+      // 403 from a small restaurant's bot wall is not evidence that the
+      // restaurant's website is wrong — Places looked the business up. In the
+      // observed run this exact case deleted La Oaxaqueña's only link, after
+      // which the plan still sent the user there three times with no way to
+      // order. A model-guessed `direct` gets no such benefit of the doubt.
+      const { links: resolvedLinks, outcomes } = await verifyLinksDetailed(candidateLinks, {
+        timeoutMs: 6000,
+        lenientPlatforms: directFromPlaces ? ['direct'] : [],
+      });
+      const rejected = Object.entries(outcomes).filter(([, o]) => !o.kept);
       if (rejected.length > 0) {
-        console.log(`[MENU-EXTRACTION] ${restaurant.name}: dropped unreachable links: ${rejected.join(', ')}`);
+        // The reason is logged because the old line said only "unreachable",
+        // which conflated a 404 with a bot wall and made the two impossible to
+        // tell apart from production logs.
+        console.log(
+          `[MENU-EXTRACTION] ${restaurant.name}: dropped links: ` +
+          rejected.map(([platform, o]) => `${platform} (${o.reason})`).join(', ')
+        );
       }
 
       const linksFound = Object.values(resolvedLinks).filter(isUsableLink).length;
@@ -462,8 +477,21 @@ async function extractMenuInformation(restaurants: Restaurant[], surveyData: any
   // A restaurant with a menu but no link is still a real recommendation: the
   // user can walk in or call, and the schema already allows all four link
   // values to be null. A restaurant with no menu cannot fill a slot at all.
-  const usable = results.filter(r => (r.menuData?.length ?? 0) > 0);
+  const withMenu = results.filter(r => (r.menuData?.length ?? 0) > 0);
   const noMenu = results.filter(r => (r.menuData?.length ?? 0) === 0);
+
+  // Orderable restaurants go first.
+  //
+  // Selection ranks on nutrition and cuisine and is told nothing about links —
+  // deliberately, since a link-less restaurant is still a real recommendation.
+  // But the model reads this list in order, and in the observed run that let it
+  // pick La Oaxaqueña (0 links) three times while never once choosing
+  // Falafelland, which had both a GrubHub link and a working website. Ordering
+  // the candidates costs nothing, adds no prompt tokens, and removes no option:
+  // a restaurant with no link is still in the list, just further down.
+  //
+  // Sort is stable, so the upstream ranking survives within each group.
+  const usable = [...withMenu].sort((a, b) => (b.linksFound ?? 0) - (a.linksFound ?? 0));
   const failed = noMenu.filter(r => r.lookupFailed);
   const genuinelyEmpty = noMenu.filter(r => !r.lookupFailed);
 

@@ -13,7 +13,7 @@ import { createMenuSearchPrompt, createMenuStructuringPrompt } from '@/lib/ai/pr
 import { parseChoice } from '@/lib/ai/validate';
 import { logUsage } from '@/lib/ai/usage';
 import { createLimiter } from '@/lib/utils/concurrency';
-import { corroborate } from '@/lib/external/link-check';
+import { corroborate, mergeOrderingLinks, isNonEmptyLink } from '@/lib/external/link-check';
 import { parseReceipt, sourceHostsFrom, type SearchItem } from '@/lib/verification/receipt';
 import { computeStoreTotals, planPriceChunks, snapStoreNames } from '@/lib/utils/store-totals';
 import { fillMissingPriceEstimates, unpricedReason, meaningfulReason, chunkPriceCoverage } from '@/lib/utils/grocery-price-estimates';
@@ -344,11 +344,29 @@ export class PerplexityClient {
       // Process the Perplexity response with GPT-4 for structured extraction
       const structuredData = await this.processWithGPT4(content, citations, restaurant, surveyData);
 
-      // Count actual links found (non-empty strings only)
-      const orderingLinks = structuredData.orderingLinks || {};
-      const linksFound = Object.values(orderingLinks).filter(
-        (link): link is string => typeof link === 'string' && link.trim() !== ''
-      ).length;
+      // Hop 1 is the hop that searched the web, and its answer is
+      // grammar-constrained to MenuSearchSchema — `receipt.orderingLinks` is a
+      // structured field, already parsed. Hop 2 then re-reads the same links
+      // out of hop 1's prose and retypes them, which can only lose information:
+      // a truncated or timed-out hop 2 returns `{menuItems: [], orderingLinks:
+      // {}}` and takes a perfectly good GrubHub URL down with it.
+      //
+      // So hop 2 wins where it produced something, and hop 1's receipt fills
+      // the gaps. Both came from the same search, so this adds no claim that
+      // was not already made — it just stops discarding half of it.
+      const orderingLinks = mergeOrderingLinks(
+        structuredData.orderingLinks,
+        receipt?.orderingLinks
+      );
+      const hop2Links = (structuredData.orderingLinks ?? {}) as Record<string, unknown>;
+      const recoveredFromReceipt = Object.keys(orderingLinks).filter(
+        (platform) => !isNonEmptyLink(hop2Links[platform])
+      );
+      if (recoveredFromReceipt.length > 0) {
+        console.log(`[PERPLEXITY] 🔁 Recovered from hop-1 receipt: ${recoveredFromReceipt.join(', ')}`);
+      }
+
+      const linksFound = Object.values(orderingLinks).filter(isNonEmptyLink).length;
 
       console.log(`[PERPLEXITY] 🎯 Extracted ${structuredData.menuItems?.length || 0} menu items`);
       console.log(`[PERPLEXITY] 🔗 Ordering links found: ${linksFound}`);
