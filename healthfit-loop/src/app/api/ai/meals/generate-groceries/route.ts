@@ -357,6 +357,30 @@ async function handleGenerate_groceries(requestData: GroceryGenerationRequest) {
       console.warn(`[GROCERY-PRICES] ⚠️ ${unpricedCount} of ${allItems.length} items came back without prices — kept them unpriced rather than dropping them`);
     }
 
+    // What the week's shop costs, and how much of the budget that is.
+    //
+    // Both fields existed and both were dead. `totalEstimatedCost` was only ever
+    // written as the literal 0 and `weeklyBudgetUsed` as the literal "0%", so
+    // the dashboard reported a week of groceries as free and used none of the
+    // budget. The number now comes from estimatedBasketTotal, which sums the
+    // whole list at the recommended store — deliberately NOT storeTotals, which
+    // sums only the items every store priced and is a comparison figure rather
+    // than a bill.
+    //
+    // The budget is monthly in the survey and this list is one week, so it is
+    // quartered — the same conversion the meal prompts already do. Reported as
+    // a percentage of a quarter-month rather than of the month, because a week's
+    // shop against a monthly budget always looks affordable and tells the user
+    // nothing.
+    const weeklyBudget = Math.round((surveyData.monthlyFoodBudget || 200) / 4);
+    const basketTotal = priceResponse.basketTotal ?? 0;
+    const weeklyBudgetUsed =
+      weeklyBudget > 0 ? `${Math.round((basketTotal / weeklyBudget) * 100)}%` : '0%';
+    console.log(
+      `[GROCERY-PRICES] 🧾 Basket $${basketTotal.toFixed(2)} vs $${weeklyBudget}/week budget = ${weeklyBudgetUsed}` +
+        (priceResponse.basketItemsUnknown ? ` (${priceResponse.basketItemsUnknown} item(s) had no number and are not in the total)` : '')
+    );
+
     // Step 5: Build enriched grocery list
     const enrichedGroceryList = {
       ...groceryListWithPrices,
@@ -368,7 +392,14 @@ async function handleGenerate_groceries(requestData: GroceryGenerationRequest) {
       pricesUpdatedAt: new Date().toISOString(),
       priceSearchSuccess: priceResponse.priceSearchSuccess,
       pricedItemCount: priceResponse.pricedItemCount,
-      requestedItemCount: priceResponse.requestedItemCount
+      requestedItemCount: priceResponse.requestedItemCount,
+      totalEstimatedCost: basketTotal,
+      weeklyBudgetUsed,
+      weeklyBudget,
+      // How many items the total actually covers. A total over 38 of 40 items is
+      // a different claim from a total over 40, and the card can say so.
+      totalCoversItemCount: priceResponse.basketItemsCounted ?? 0,
+      totalMissingItemCount: priceResponse.basketItemsUnknown ?? 0
     };
 
     // Step 6: Update the meal plan with enriched grocery data
@@ -378,7 +409,13 @@ async function handleGenerate_groceries(requestData: GroceryGenerationRequest) {
       data: {
         userContext: {
           ...(userContext || {}),
-          groceryList: enrichedGroceryList
+          groceryList: enrichedGroceryList,
+          // Also at the top level because /api/ai/meals/current reads
+          // `userContext.totalEstimatedCost` for the dashboard's grocery
+          // preview, and nothing has ever written it — which is why that
+          // preview has always said "Ready to shop" instead of a number.
+          totalEstimatedCost: basketTotal,
+          weeklyBudgetUsed
         }
       }
     });

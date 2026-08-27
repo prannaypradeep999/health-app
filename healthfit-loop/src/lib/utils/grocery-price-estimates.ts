@@ -21,6 +21,8 @@
  * totals reads.
  */
 
+import { canonicalStoreKey } from './store-totals';
+
 export interface StoreOptionLike {
   store: string;
   price?: number | null;
@@ -221,6 +223,79 @@ export function fillTypicalPriceEstimates<T extends PricedItemLike>(items: T[]):
 function normalizeCategory(category: unknown): string {
   if (typeof category !== 'string') return '';
   return category.trim().toLowerCase();
+}
+
+/**
+ * What this whole list will actually cost, as opposed to what it costs to
+ * compare stores.
+ *
+ * `computeStoreTotals` deliberately sums only the items EVERY comparable store
+ * priced, because a store priced for 12 of 40 items would otherwise win the
+ * cheapest-store ranking on a short basket. That makes it exactly the wrong
+ * number to show a shopper: on the 2026-08-27 run it was the only total we had,
+ * and `totalEstimatedCost` reached the dashboard as 0 with `weeklyBudgetUsed`
+ * at "0%" — a week of groceries reported as free.
+ *
+ * This one sums every item, at one store, using the best figure available for
+ * each: that store's real price, then its estimate, then the item's typical
+ * estimate. Items with nothing at all are counted and reported rather than
+ * silently treated as free, so the caller can say "about $Nnn across 38 of 40
+ * items" instead of implying the list is complete.
+ *
+ * Store names are matched canonically because the pricing chunks each spell the
+ * store however they like — see `snapStoreNames`.
+ */
+export function estimatedBasketTotal(
+  items: PricedItemLike[],
+  store?: string
+): { total: number; itemsCounted: number; itemsUnknown: number } {
+  if (!Array.isArray(items) || items.length === 0) {
+    return { total: 0, itemsCounted: 0, itemsUnknown: 0 };
+  }
+
+  const wanted = canonicalStoreKey(store ?? '');
+  let total = 0;
+  let itemsCounted = 0;
+  let itemsUnknown = 0;
+
+  for (const item of items) {
+    const figure = bestFigureFor(item, wanted);
+    if (figure === null) {
+      itemsUnknown += 1;
+      continue;
+    }
+    total += figure;
+    itemsCounted += 1;
+  }
+
+  return { total: Math.round(total * 100) / 100, itemsCounted, itemsUnknown };
+}
+
+/** The best number we have for one item at one store, or null if we have none. */
+function bestFigureFor(item: PricedItemLike, wantedStoreKey: string): number | null {
+  const options = Array.isArray(item?.storeOptions) ? item.storeOptions : [];
+
+  const atStore = wantedStoreKey
+    ? options.find(o => canonicalStoreKey(o.store ?? '') === wantedStoreKey)
+    : undefined;
+  if (atStore) {
+    if (isRealPrice(atStore.price)) return atStore.price;
+    if (isRealPrice(atStore.estimatedPrice)) return atStore.estimatedPrice;
+  }
+
+  // No option for the requested store — the chunk that held this item may not
+  // have answered for it. Fall back to the dearest real price anywhere, keeping
+  // the upper-bound convention the rest of this module uses.
+  const dearest = dearestRealPrice(item);
+  if (dearest !== null) return dearest;
+
+  if (isRealPrice(item?.typicalPriceEstimate)) return item.typicalPriceEstimate;
+
+  const anyEstimate = options
+    .map(o => o.estimatedPrice)
+    .filter(isRealPrice)
+    .sort((a, b) => b - a)[0];
+  return anyEstimate ?? null;
 }
 
 /**

@@ -188,8 +188,15 @@ interface GroceryList {
   pricedItemCount?: number;
   requestedItemCount?: number;
   priceError?: string;
-  totalEstimatedCost?: number;   // Legacy
-  weeklyBudgetUsed?: string;     // Legacy
+  // What the whole basket costs at the recommended store. Unlike storeTotals,
+  // which deliberately sums only the items every comparable store priced (so a
+  // thinly-priced store cannot win the ranking), this covers every item, using
+  // estimates where no shelf price was found. A comparison total is not a bill.
+  totalEstimatedCost?: number;
+  weeklyBudgetUsed?: string;
+  weeklyBudget?: number;
+  totalCoversItemCount?: number;
+  totalMissingItemCount?: number;
   error?: string;
 }
 
@@ -390,10 +397,22 @@ export function GroceryListSection({
     return items;
   }, [allItems, selectedCategory, viewMode, sortBy, next3Days]);
 
-  // Get recommended store total
-  const recommendedTotal = hasRealPrices && groceryList.storeTotals
+  // What the shop actually costs. Prefer the whole-basket figure, which covers
+  // every item (estimating where no shelf price was found). Fall back to the
+  // storeTotals figure only when the basket total is absent — that one sums the
+  // intersection of items every store priced, so it under-reports the bill.
+  const basketTotal =
+    typeof groceryList.totalEstimatedCost === 'number' && groceryList.totalEstimatedCost > 0
+      ? groceryList.totalEstimatedCost
+      : undefined;
+  const intersectionTotal = groceryList.storeTotals
     ? groceryList.storeTotals.find(s => s.store === groceryList.recommendedStore)?.total
     : undefined;
+  const recommendedTotal = hasRealPrices
+    ? basketTotal ?? intersectionTotal
+    : undefined;
+  // Only claim "estimated" when the number leans on estimates.
+  const totalIsEstimated = basketTotal !== undefined;
 
   // Copy list to clipboard
   const copyList = () => {
@@ -417,7 +436,9 @@ export function GroceryListSection({
     });
 
     if (recommendedTotal) {
-      text += `\nTotal: $${recommendedTotal.toFixed(2)}`;
+      text += totalIsEstimated
+        ? `\nEstimated total: $${recommendedTotal.toFixed(2)}`
+        : `\nTotal: $${recommendedTotal.toFixed(2)}`;
     }
 
     navigator.clipboard.writeText(text);
@@ -474,8 +495,26 @@ export function GroceryListSection({
               </div>
               <div className="flex items-center gap-1 text-sm text-gray-600">
                 <Star className="w-4 h-4 text-yellow-500" weight="fill" />
-                <span>at {groceryList.recommendedStore}</span>
+                <span>
+                  {totalIsEstimated ? 'est. whole list at ' : 'at '}
+                  {groceryList.recommendedStore}
+                </span>
               </div>
+              {totalIsEstimated && groceryList.weeklyBudgetUsed && (
+                <div className="text-xs text-gray-500 mt-0.5">
+                  {groceryList.weeklyBudgetUsed} of your
+                  {typeof groceryList.weeklyBudget === 'number'
+                    ? ` $${groceryList.weeklyBudget}`
+                    : ''}{' '}
+                  weekly budget
+                </div>
+              )}
+              {totalIsEstimated && (groceryList.totalMissingItemCount ?? 0) > 0 && (
+                <div className="text-xs text-gray-500 mt-0.5">
+                  {groceryList.totalMissingItemCount} item
+                  {groceryList.totalMissingItemCount === 1 ? '' : 's'} not included — no price found
+                </div>
+              )}
               {groceryList.savings && (
                 <Badge className="bg-green-100 text-green-700 border border-green-300 text-xs font-medium mt-1">
                   {groceryList.savings}
@@ -529,10 +568,13 @@ export function GroceryListSection({
             <div>
               <p className="text-sm text-amber-800">
                 <span className="font-medium">Partial price comparison.</span>{' '}
-                Priced {groceryList.pricedItemCount ?? 0} of {groceryList.requestedItemCount ?? 0} items.
+                Some price searches came back empty, so {groceryList.pricedItemCount ?? 0} of{' '}
+                {groceryList.requestedItemCount ?? 0} items carry a figure.
               </p>
               <p className="text-xs text-amber-600 mt-1">
-                The rest are listed below without prices, and the store totals cover only the priced ones.
+                Items marked &ldquo;est.&rdquo; are estimated from what comparable items in this list
+                cost at these stores, not quoted from a shelf. Store-by-store comparison covers only
+                the items every store priced.
               </p>
             </div>
           </div>

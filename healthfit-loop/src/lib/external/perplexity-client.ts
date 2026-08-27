@@ -16,7 +16,7 @@ import { createLimiter } from '@/lib/utils/concurrency';
 import { corroborate, mergeOrderingLinks, isNonEmptyLink, harvestOrderingLinksFromCitations } from '@/lib/external/link-check';
 import { parseReceipt, sourceHostsFrom, type SearchItem } from '@/lib/verification/receipt';
 import { computeStoreTotals, planPriceChunks, snapStoreNames } from '@/lib/utils/store-totals';
-import { fillMissingPriceEstimates, fillTypicalPriceEstimates, itemHasAnyPrice, meaningfulReason, chunkPriceCoverage } from '@/lib/utils/grocery-price-estimates';
+import { fillMissingPriceEstimates, fillTypicalPriceEstimates, itemHasAnyPrice, estimatedBasketTotal, meaningfulReason, chunkPriceCoverage } from '@/lib/utils/grocery-price-estimates';
 import { reservingBudget, MENU_STRUCTURING_RESERVE_MS } from '@/lib/utils/route-budget';
 
 /**
@@ -177,6 +177,12 @@ export interface GroceryPriceResponse {
   stores: GroceryStore[];
   storeTotals: { store: string; total: number; itemCount: number; comparable: boolean }[];
   comparableItemCount?: number;
+  // What the whole list costs at the recommended store, as opposed to the
+  // intersection storeTotals compares over. See estimatedBasketTotal — the two
+  // are different questions and the shopper wants this one.
+  basketTotal?: number;
+  basketItemsCounted?: number;
+  basketItemsUnknown?: number;
   recommendedStore: string;
   savings: string;  // "Save $16.50 on 24 shared items vs Store X"
   priceSearchSuccess: boolean;
@@ -734,12 +740,27 @@ Return as JSON only, no other text:
       console.warn(`[PERPLEXITY-GROCERY] ⚠️ ${stillUnpriced} item(s) have no price and too little data to estimate one — showing the reason instead`);
     }
 
+    // What the shopper actually pays, which is not what storeTotals reports.
+    // storeTotals deliberately sums only the items every comparable store
+    // priced, so that a store priced for 12 of 40 items cannot win the ranking
+    // on a short basket — the right rule for comparing and the wrong number for
+    // a bill. This sums the whole list at the recommended store, using each
+    // item's real price where there is one and its estimate where there is not.
+    const basket = estimatedBasketTotal(itemsForDisplay, cheapest?.store);
+    console.log(
+      `[PERPLEXITY-GROCERY] 🧾 Basket at ${cheapest?.store || 'no store'}: $${basket.total.toFixed(2)} over ${basket.itemsCounted} item(s)` +
+        (basket.itemsUnknown > 0 ? `, ${basket.itemsUnknown} with no number at all` : '')
+    );
+
     const chunksFailed = failures.length;
     return {
       items: itemsForDisplay,
       stores,
       storeTotals,
       comparableItemCount,
+      basketTotal: basket.total,
+      basketItemsCounted: basket.itemsCounted,
+      basketItemsUnknown: basket.itemsUnknown,
       recommendedStore: cheapest?.store || '',
       savings,
       // True only when nothing failed. A run that lost two of three chunks is

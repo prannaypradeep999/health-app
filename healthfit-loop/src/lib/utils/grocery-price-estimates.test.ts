@@ -4,6 +4,7 @@ import {
   fillMissingPriceEstimates,
   fillTypicalPriceEstimates,
   itemHasAnyPrice,
+  estimatedBasketTotal,
   unpricedReason,
   meaningfulReason,
   chunkFoundNoPrices,
@@ -448,6 +449,94 @@ test('itemHasAnyPrice treats zero as the missing price it is', () => {
     itemHasAnyPrice({ storeOptions: [{ store: 'A', price: null, estimatedPrice: 0 }] }),
     false
   );
+});
+
+/**
+ * What the list costs, as opposed to what it costs to compare stores.
+ *
+ * computeStoreTotals sums only the items EVERY comparable store priced — right
+ * for ranking, wrong for a shopper. On the 2026-08-27 run it was the only total
+ * we had, and totalEstimatedCost reached the dashboard as 0 next to
+ * weeklyBudgetUsed "0%": a week of groceries reported as free.
+ */
+const atStores = (prices: Record<string, number | null>): TypicalItem => ({
+  item: 'thing',
+  storeOptions: Object.entries(prices).map(([store, price]) => ({ store, price })),
+});
+
+test('the basket total sums every item at one store', () => {
+  const out = estimatedBasketTotal(
+    [atStores({ Safeway: 4.0, Target: 9.0 }), atStores({ Safeway: 6.0, Target: 1.0 })],
+    'Safeway'
+  );
+  assert.equal(out.total, 10.0);
+  assert.equal(out.itemsCounted, 2);
+  assert.equal(out.itemsUnknown, 0);
+});
+
+test('the basket total includes items the comparison total leaves out', () => {
+  // The whole point. Target priced only one of these two, so it is not in the
+  // intersection computeStoreTotals ranks over — but the shopper still buys it.
+  const items = [atStores({ Safeway: 4.0, Target: 9.0 }), atStores({ Safeway: 6.0, Target: null })];
+  assert.equal(estimatedBasketTotal(items, 'Target').itemsCounted, 2);
+  assert.equal(estimatedBasketTotal(items, 'Target').total, 15.0);
+});
+
+test('the basket total prefers the chosen store over a cheaper one elsewhere', () => {
+  // You shop at one store. Taking each item's cheapest price across three shops
+  // is a total nobody can actually pay.
+  const items = [atStores({ Safeway: 10.0, Target: 2.0 })];
+  assert.equal(estimatedBasketTotal(items, 'Safeway').total, 10.0);
+});
+
+test('the basket total falls back through estimates before giving up', () => {
+  const withEstimate: TypicalItem = {
+    item: 'Olive oil',
+    storeOptions: [{ store: 'Safeway', price: null, estimatedPrice: 7.5 }],
+  };
+  assert.equal(estimatedBasketTotal([withEstimate], 'Safeway').total, 7.5);
+
+  const onlyTypical: TypicalItem = {
+    item: 'Salt',
+    storeOptions: [],
+    typicalPriceEstimate: 3.25,
+  };
+  assert.equal(estimatedBasketTotal([onlyTypical], 'Safeway').total, 3.25);
+});
+
+test('an item with no number anywhere is reported, not counted as free', () => {
+  // Counting it as zero is how a 40-item list reports as costing less than a
+  // 25-item one, and the user has no way to see that it happened.
+  const out = estimatedBasketTotal(
+    [atStores({ Safeway: 4.0 }), atStores({ Safeway: null })],
+    'Safeway'
+  );
+  assert.equal(out.total, 4.0);
+  assert.equal(out.itemsCounted, 1);
+  assert.equal(out.itemsUnknown, 1);
+});
+
+test('the basket total matches store names the way everything else does', () => {
+  // The pricing chunks each name the stores independently: "Target Berkeley" on
+  // some items, "Target in Berkeley" on others.
+  const items = [atStores({ "Trader Joe's Berkeley": 5.0 }), atStores({ 'trader joes berkeley': 6.0 })];
+  assert.equal(estimatedBasketTotal(items, "Trader Joe's Berkeley").total, 11.0);
+});
+
+test('an empty list totals zero rather than throwing', () => {
+  assert.deepEqual(estimatedBasketTotal([], 'Safeway'), {
+    total: 0,
+    itemsCounted: 0,
+    itemsUnknown: 0,
+  });
+  assert.doesNotThrow(() => estimatedBasketTotal([undefined as any], 'Safeway'));
+  assert.doesNotThrow(() => estimatedBasketTotal(undefined as any, 'Safeway'));
+});
+
+test('with no store named, the basket falls back to the dearest price per item', () => {
+  // Upper bound, same convention as everywhere else in this module.
+  const out = estimatedBasketTotal([atStores({ Safeway: 4.0, Target: 9.0 })]);
+  assert.equal(out.total, 9.0);
 });
 
 test('the two tiers compose: same-item first, typical only for what is left', () => {
