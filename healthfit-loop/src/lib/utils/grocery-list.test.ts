@@ -1,6 +1,8 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { buildFallbackGroceryList, categorizeGroceryItem } from './grocery-list';
+import { readFileSync } from 'node:fs';
+import path from 'node:path';
+import { buildFallbackGroceryList, categorizeGroceryItem, enhanceGroceryListWithUsage } from './grocery-list';
 
 const meals = [
   {
@@ -61,4 +63,66 @@ test('an item used twice reports the combined count', () => {
 
 test('an item field the category table has never seen does not throw', () => {
   assert.doesNotThrow(() => categorizeGroceryItem(''));
+});
+
+/**
+ * Consolidation happens in generate-groceries now (2026-08-27, commit b7a4efb),
+ * and it returns bare category arrays: name, quantity, uses. The route merges
+ * them over the placeholder with `{...placeholderList, ...consolidated}`, which
+ * replaces the six category arrays wholesale — so the usage fields the
+ * placeholder carried are dropped with them.
+ *
+ * Nothing throws. The list renders. But `usedInMeals` is empty for every item,
+ * `firstUseDay` is undefined, and GroceryListSection's "Next 3 days" tab filters
+ * on exactly that field — so it showed an empty list to every user, and sorting
+ * by day or perishability did nothing. Production plan cmtayzto2 had 0 of 40
+ * items with a usage entry.
+ *
+ * These tests pin the enhancement against a consolidated-shaped list, where the
+ * item names are the shopping names ("Chicken breast") rather than the recipe's
+ * ingredient lines ("4 oz chicken breast").
+ */
+const consolidatedShape = {
+  proteins: [{ name: 'Chicken breast', quantity: '1 lb' }],
+  grains: [{ name: 'Brown rice', quantity: '2 cups' }],
+  vegetables: [{ name: 'Spinach', quantity: '1 bag' }],
+  pantryStaples: [{ name: 'Olive oil', quantity: '1 bottle' }],
+  dairy: [],
+  snacks: [],
+};
+
+test('a consolidated item learns which meals it is used in', () => {
+  const enhanced = enhanceGroceryListWithUsage(consolidatedShape, meals);
+  assert.deepEqual(enhanced.proteins[0].usedInMeals, [
+    { day: 'monday', meal: 'dinner', dishName: 'Chicken and Rice' },
+  ]);
+});
+
+test('a consolidated item learns the day it is first needed', () => {
+  const enhanced = enhanceGroceryListWithUsage(consolidatedShape, meals);
+  assert.equal(enhanced.grains[0].firstUseDay, 'monday');
+  assert.equal(enhanced.vegetables[0].firstUseDay, 'monday');
+});
+
+test('a consolidated item gets a perishability so the filter has something to read', () => {
+  const enhanced = enhanceGroceryListWithUsage(consolidatedShape, meals);
+  assert.equal(enhanced.proteins[0].perishability, 'high');
+  assert.equal(enhanced.grains[0].perishability, 'low');
+});
+
+test('enhancement keeps the fields consolidation produced', () => {
+  const enhanced = enhanceGroceryListWithUsage(consolidatedShape, meals);
+  assert.equal(enhanced.proteins[0].name, 'Chicken breast');
+  assert.equal(enhanced.proteins[0].quantity, '1 lb');
+});
+
+test('the groceries route enhances the consolidated list before pricing it', () => {
+  const src = readFileSync(
+    path.join(process.cwd(), 'src/app/api/ai/meals/generate-groceries/route.ts'),
+    'utf8'
+  );
+  // Consolidation replaces the placeholder's categories, so the usage fields
+  // have to be put back on the merged list — not on the placeholder.
+  assert.match(src, /enhanceGroceryListWithUsage/);
+  assert.match(src, /const groceryList = enhanceGroceryListWithUsage\(/);
 });

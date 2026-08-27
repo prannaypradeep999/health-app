@@ -3,7 +3,7 @@ import { withRouteBudget, reservingBudget } from '@/lib/utils/route-budget';
 import { cookies } from 'next/headers';
 import { prisma } from '@/lib/db';
 import { perplexityClient } from '@/lib/external/perplexity-client';
-import { normalizeGroceryKey } from '@/lib/utils/grocery-list';
+import { normalizeGroceryKey, enhanceGroceryListWithUsage } from '@/lib/utils/grocery-list';
 import { mergePricedItem } from '@/lib/utils/grocery-merge';
 import { consolidateGroceryList } from '@/lib/ai/grocery-consolidation';
 
@@ -174,9 +174,23 @@ async function handleGenerate_groceries(requestData: GroceryGenerationRequest) {
     // Keep the categories the consolidation produced, but keep every other
     // field the placeholder carried (stores, location, and anything a previous
     // pricing run left behind).
-    const groceryList = consolidated
-      ? { ...placeholderList, ...consolidated }
-      : placeholderList;
+    //
+    // Then put the usage fields back. The spread above replaces the six category
+    // arrays wholesale, and `consolidateGroceryList` returns bare rows — name,
+    // quantity, uses — so `usedInMeals`, `firstUseDay` and `perishability` left
+    // with the placeholder's arrays. Nothing threw and the list still rendered,
+    // which is why this survived a deploy: production plan cmtayzto2 had 0 of 40
+    // items with a usage entry, GroceryListSection's "Next 3 days" tab filters on
+    // `firstUseDay` and so showed nothing to anyone, and sorting by day or by
+    // perishability was a no-op.
+    //
+    // Pure and local — no model call, no network, no budget. It matches shopping
+    // names back to recipe ingredient lines by substring, which is why it runs
+    // on the merged list rather than on the placeholder it replaced.
+    const groceryList = enhanceGroceryListWithUsage(
+      consolidated ? { ...placeholderList, ...consolidated } : placeholderList,
+      allMeals
+    );
 
     if (consolidated) {
       console.log('[GROCERY-PRICES] ✅ Using consolidated list; the placeholder from generate-home is replaced');
