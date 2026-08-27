@@ -2,7 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import path from 'node:path';
-import { buildFallbackGroceryList, categorizeGroceryItem, enhanceGroceryListWithUsage } from './grocery-list';
+import { buildFallbackGroceryList, categorizeGroceryItem, enhanceGroceryListWithUsage, flattenGroceryItemNames } from './grocery-list';
 
 const meals = [
   {
@@ -125,4 +125,59 @@ test('the groceries route enhances the consolidated list before pricing it', () 
   // have to be put back on the merged list — not on the placeholder.
   assert.match(src, /enhanceGroceryListWithUsage/);
   assert.match(src, /const groceryList = enhanceGroceryListWithUsage\(/);
+});
+
+/**
+ * MealPlanPage's handleRecipeClick read `groceryList?.items`. No such key has
+ * ever existed — the persisted list is six category arrays plus pricing
+ * metadata (production plan cmtayzto2 top level: dairy, grains, snacks, stores,
+ * savings, location, proteins, vegetables, storeTotals, pantryStaples,
+ * pricedItemCount, pricesUpdatedAt, recommendedStore, priceSearchSuccess,
+ * requestedItemCount).
+ *
+ * Optional chaining made that silent: `existingGroceryItems` was always [], so
+ * recipe-creation.ts always took its `: 'Provide a comprehensive grocery list'`
+ * branch and the "Prioritize ingredients from the user's existing grocery list"
+ * instruction never once reached the model.
+ */
+test('the flat name list reads the categories, which is where items actually live', () => {
+  const names = flattenGroceryItemNames({
+    proteins: [{ name: 'Chicken breast' }],
+    grains: [{ name: 'Brown rice' }],
+    vegetables: [{ item: 'Spinach' }],
+    dairy: [], pantryStaples: [], snacks: [],
+  });
+  assert.deepEqual(names.sort(), ['Brown rice', 'Chicken breast', 'Spinach']);
+});
+
+test('pricing metadata sitting beside the categories is not mistaken for an item', () => {
+  const names = flattenGroceryItemNames({
+    proteins: [{ name: 'Chicken breast' }],
+    stores: [{ name: 'Safeway' }],
+    storeTotals: [{ name: 'Safeway', total: 40 }],
+    recommendedStore: 'Safeway',
+    pricedItemCount: 40,
+  });
+  assert.deepEqual(names, ['Chicken breast']);
+});
+
+test('a nameless row does not become an empty bullet in the prompt', () => {
+  const names = flattenGroceryItemNames({
+    proteins: [{ name: 'Chicken breast' }, { name: '' }, { quantity: '1 lb' }, null],
+  });
+  assert.deepEqual(names, ['Chicken breast']);
+});
+
+test('the same item in two categories is listed once', () => {
+  const names = flattenGroceryItemNames({
+    proteins: [{ name: 'Olive oil' }],
+    pantryStaples: [{ name: 'olive oil' }],
+  });
+  assert.deepEqual(names, ['Olive oil']);
+});
+
+test('a missing or malformed list yields no items rather than throwing', () => {
+  assert.deepEqual(flattenGroceryItemNames(undefined), []);
+  assert.deepEqual(flattenGroceryItemNames(null), []);
+  assert.deepEqual(flattenGroceryItemNames({ proteins: 'not an array' }), []);
 });

@@ -224,6 +224,16 @@ export function enhanceGroceryListWithUsage(
   return enhanced;
 }
 
+/**
+ * The six keys that hold shopping items. Duplicated from
+ * `grocery-consolidation.ts` rather than imported: that module reaches OpenAI at
+ * import time via its prompt/model imports, and this one is pure and is imported
+ * by React components.
+ */
+const GROCERY_CATEGORY_KEYS = [
+  'proteins', 'vegetables', 'grains', 'dairy', 'pantryStaples', 'snacks',
+] as const;
+
 export type GroceryCategory =
   | 'proteins' | 'vegetables' | 'grains' | 'dairy' | 'pantryStaples' | 'snacks';
 
@@ -278,4 +288,41 @@ export function buildFallbackGroceryList(homeMeals: any[]): Record<string, any> 
   });
 
   return categorized;
+}
+
+/**
+ * The grocery list as a flat list of shopping names.
+ *
+ * The recipe modal wanted this and asked for `groceryList.items`, a key the
+ * persisted list has never had — items live under the six category arrays, and
+ * `stores` / `storeTotals` sit beside them holding objects with a `name` too.
+ * So this reads the categories by name rather than every array it finds, which
+ * is what stops "Safeway" being offered to the model as an ingredient.
+ *
+ * Deduplicated case-insensitively, first spelling kept: "Olive oil" in
+ * pantryStaples and "olive oil" in proteins is one thing to buy, and the prompt
+ * that receives this renders one bullet per entry.
+ */
+export function flattenGroceryItemNames(groceryList: unknown): string[] {
+  if (!groceryList || typeof groceryList !== 'object') return [];
+  const list = groceryList as Record<string, unknown>;
+  const seen = new Set<string>();
+  const names: string[] = [];
+
+  for (const category of GROCERY_CATEGORY_KEYS) {
+    const items = list[category];
+    if (!Array.isArray(items)) continue;
+    for (const item of items) {
+      if (!item || typeof item !== 'object') continue;
+      const raw = (item as Record<string, unknown>).name ?? (item as Record<string, unknown>).item;
+      const name = typeof raw === 'string' ? raw.trim() : '';
+      if (!name) continue;
+      const key = name.toLowerCase();
+      if (seen.has(key)) continue;
+      seen.add(key);
+      names.push(name);
+    }
+  }
+
+  return names;
 }

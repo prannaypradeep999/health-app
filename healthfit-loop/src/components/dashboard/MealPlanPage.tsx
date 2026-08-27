@@ -32,6 +32,7 @@ import { RestaurantListSection } from './RestaurantListSection';
 import { MealSwapDialog } from './MealSwapDialog';
 import { collectAllMeals, CollectedMeal } from '@/lib/utils/meal-utils';
 import { orderOptionsFor } from '@/lib/utils/restaurant-links';
+import { flattenGroceryItemNames } from '@/lib/utils/grocery-list';
 import Logo from '@/components/logo';
 import { getPlanDayIndex, getCurrentMealPeriod, getPlanDays, getDayStatus, isPlanExpired, getBrowserTimezone, type MealPeriod } from '@/lib/utils/date-utils';
 
@@ -1205,7 +1206,12 @@ export function MealPlanPage({ onNavigate, generationStatus, nutritionTargets: n
       try {
         // Get grocery list from mealData (available in parent scope)
         const groceryList = mealData?.mealPlan?.groceryList || mealData?.mealPlan?.planData?.groceryList;
-        const groceryItems = groceryList?.items?.map((item: any) => item.name || item.ingredient).filter(Boolean) || [];
+        // `groceryList.items` was read here for a long time and never existed:
+        // the persisted list is six category arrays. Optional chaining meant
+        // this was always [], so recipe-creation.ts always took its "provide a
+        // comprehensive grocery list" branch and never the one that prioritises
+        // what the user is already buying.
+        const groceryItems = flattenGroceryItemNames(groceryList);
 
         const response = await fetch('/api/ai/recipes/generate', {
           method: 'POST',
