@@ -333,3 +333,65 @@ export async function verifyLinks(
 ): Promise<Record<string, string>> {
   return (await verifyLinksDetailed(links, opts)).links;
 }
+
+/**
+ * A GrubHub restaurant ordering page, as distinct from a city or cuisine index.
+ *
+ * Measured 2026-08-27 against live grubhub.com: a real restaurant page, a
+ * fabricated slug, and a fabricated numeric id ALL answer 200 with a
+ * byte-identical 13,631-byte SPA shell and no redirect. Fetching a GrubHub URL
+ * therefore proves nothing — `verifyLinks` cannot separate a real page from an
+ * invented one, and never could.
+ *
+ * What does separate them is provenance. A URL that appears in the search
+ * engine's own citation list was returned by a search, not composed by a model.
+ * That is the same reasoning `corroborate` already applies, tightened to a
+ * specific URL rather than a host.
+ *
+ * The shape test matters too. Asked for Piccolo Forno — genuinely not on
+ * GrubHub — the model answered with `/delivery/ca_san_francisco/piccolo-forno`,
+ * a city listing. That renders as an Order button that dumps the user on an
+ * index page, which is worse than no button.
+ */
+const GRUBHUB_RESTAURANT_PAGE = /^https?:\/\/(?:www\.)?grubhub\.com\/restaurant\/[^/?#]+/i;
+
+/**
+ * Mine hop 1's citation list for ordering links the extraction hops missed.
+ *
+ * This is the weakest of the three link sources, so callers must pass it as the
+ * fallback argument to `mergeOrderingLinks` — it fills gaps and never overrides
+ * a link the search actually reported. Costs nothing: the citations are already
+ * in memory by the time this runs, so no request is added to a route whose
+ * budget is fully allocated.
+ */
+export function harvestOrderingLinksFromCitations(
+  citationUrls: readonly string[]
+): Record<string, string> {
+  const out: Record<string, string> = {};
+  for (const raw of citationUrls ?? []) {
+    if (typeof raw !== 'string') continue;
+    const url = raw.trim();
+    if (!out.grubhub && GRUBHUB_RESTAURANT_PAGE.test(url) && parseHttpUrl(url)) {
+      out.grubhub = url;
+    }
+  }
+  return out;
+}
+
+/**
+ * How orderable a restaurant is, for ranking candidates before selection.
+ *
+ * A GrubHub page outranks any number of other links because it is the one
+ * surface that actually takes an order. `direct` is often only a homepage with
+ * a phone number, which is real but weaker. Selection itself still ranks on
+ * nutrition and cuisine and is told nothing about links — this only decides the
+ * order the model reads the list in, so a link-less restaurant is never
+ * removed, only pushed down.
+ */
+export function orderabilityScore(
+  links: Record<string, string | null | undefined> | null | undefined
+): number {
+  const usable = Object.entries(links ?? {}).filter(([, url]) => isUsableLink(url));
+  const hasGrubhub = usable.some(([platform]) => platform === 'grubhub');
+  return (hasGrubhub ? 100 : 0) + usable.length;
+}

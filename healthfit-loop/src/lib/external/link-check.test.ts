@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import {
   parseHttpUrl, isUsableLink, hostMatchesPlatform, isHomepageRedirect, verifyLinks,
   corroborate, DISPLAYED_PLATFORMS, suppressUndisplayablePlatforms, isUnverifiable, verifyLinksDetailed, mergeOrderingLinks,
+  harvestOrderingLinksFromCitations, orderabilityScore,
   type LinkVerdict,
 } from './link-check';
 
@@ -317,4 +318,99 @@ test('mergeOrderingLinks trims whitespace', () => {
     mergeOrderingLinks({ direct: '  https://a.example  ' }, {}),
     { direct: 'https://a.example' }
   );
+});
+
+// --- harvestOrderingLinksFromCitations -------------------------------------
+// Measured 2026-08-27 against production restaurants: grubhub.com answers 200
+// with a byte-identical SPA shell for EVERY /restaurant/ path, including
+// fabricated ones. So fetching a GrubHub URL cannot tell a real page from an
+// invented one, and citation provenance is the only signal we actually have.
+
+test('harvests a grubhub restaurant url out of hop-1 citations', () => {
+  const links = harvestOrderingLinksFromCitations([
+    'https://www.laoaxaquenaca.com/',
+    'https://www.grubhub.com/restaurant/la-oaxaquena-2128-mission-st-san-francisco/5595968'
+  ]);
+  assert.equal(
+    links.grubhub,
+    'https://www.grubhub.com/restaurant/la-oaxaquena-2128-mission-st-san-francisco/5595968'
+  );
+});
+
+test('a /delivery/ city listing is not the restaurant page', () => {
+  // Measured: this is exactly what the model returned for Piccolo Forno, which
+  // is genuinely not on GrubHub. Accepting it would show an Order button that
+  // dumps the user on a city index.
+  const links = harvestOrderingLinksFromCitations([
+    'https://www.grubhub.com/delivery/ca-san_francisco/mexican',
+    'https://www.grubhub.com/delivery/ca_san_francisco/piccolo-forno',
+    'https://www.grubhub.com/'
+  ]);
+  assert.equal(links.grubhub, undefined);
+});
+
+test('harvest returns nothing when no citation is a grubhub page', () => {
+  assert.deepEqual(harvestOrderingLinksFromCitations(['https://example.com']), {});
+  assert.deepEqual(harvestOrderingLinksFromCitations([]), {});
+});
+
+test('harvest tolerates junk in the citation list', () => {
+  const links = harvestOrderingLinksFromCitations([
+    '', 'not-a-url', 'https://www.grubhub.com/restaurant/falafelland-265-g/12345'
+  ] as string[]);
+  assert.equal(links.grubhub, 'https://www.grubhub.com/restaurant/falafelland-265-g/12345');
+});
+
+test('harvest prefers the first grubhub restaurant page it sees', () => {
+  const links = harvestOrderingLinksFromCitations([
+    'https://www.grubhub.com/restaurant/first-place/111',
+    'https://www.grubhub.com/restaurant/second-place/222'
+  ]);
+  assert.equal(links.grubhub, 'https://www.grubhub.com/restaurant/first-place/111');
+});
+
+test('harvested links never override links the search already produced', () => {
+  // mergeOrderingLinks is the composition point: harvest is the weakest source,
+  // so it goes in the fallback slot and can only fill a gap.
+  const merged = mergeOrderingLinks(
+    { grubhub: 'https://www.grubhub.com/restaurant/from-hop-2/999' },
+    harvestOrderingLinksFromCitations(['https://www.grubhub.com/restaurant/from-citation/111'])
+  );
+  assert.equal(merged.grubhub, 'https://www.grubhub.com/restaurant/from-hop-2/999');
+});
+
+// --- orderabilityScore ------------------------------------------------------
+
+test('a grubhub link outranks any number of non-grubhub links', () => {
+  const withGrubhub = orderabilityScore({ grubhub: 'https://www.grubhub.com/restaurant/a/1' });
+  const withoutGrubhub = orderabilityScore({ direct: 'https://a.com', doordash: 'https://b.com' });
+  assert.ok(withGrubhub > withoutGrubhub);
+});
+
+test('orderability breaks ties on the number of usable links', () => {
+  assert.ok(
+    orderabilityScore({ grubhub: 'https://www.grubhub.com/restaurant/a/1', direct: 'https://a.com' }) >
+    orderabilityScore({ grubhub: 'https://www.grubhub.com/restaurant/a/1' })
+  );
+});
+
+test('a link-less restaurant scores zero rather than being excluded', () => {
+  assert.equal(orderabilityScore({ grubhub: null, direct: '' }), 0);
+  assert.equal(orderabilityScore(null), 0);
+  assert.equal(orderabilityScore({}), 0);
+});
+
+test('ranking puts the grubhub restaurant first without dropping anyone', () => {
+  // The observed failure: La Oaxaqueña (0 links) was picked repeatedly while
+  // Falafelland, which had a GrubHub link, was never chosen.
+  const candidates = [
+    { name: 'La Oaxaqueña', orderingLinks: {} },
+    { name: 'Piccolo Forno', orderingLinks: { direct: 'https://piccolo-forno-sf.com/' } },
+    { name: 'Falafelland', orderingLinks: { grubhub: 'https://www.grubhub.com/restaurant/falafelland-265-g/1' } }
+  ];
+  const ranked = [...candidates].sort(
+    (a, b) => orderabilityScore(b.orderingLinks) - orderabilityScore(a.orderingLinks)
+  );
+  assert.deepEqual(ranked.map(r => r.name), ['Falafelland', 'Piccolo Forno', 'La Oaxaqueña']);
+  assert.equal(ranked.length, candidates.length);
 });

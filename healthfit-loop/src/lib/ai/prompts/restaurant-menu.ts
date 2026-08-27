@@ -90,24 +90,27 @@ RESTAURANT DETAILS:
 - Cuisine Type: ${restaurantCuisine}
 
 CRITICAL - ORDERING LINKS SEARCH:
-Search ALL FOUR of these independently. They are equally important — finding a
-restaurant on one platform tells you NOTHING about whether it is on the others,
-and most restaurants are listed on several at once.
-1. DoorDash - Search doordash.com for "${restaurantName}" in ${restaurantCity}
-2. Uber Eats - Search ubereats.com for "${restaurantName}" in ${restaurantCity}
-3. GrubHub - Search grubhub.com for "${restaurantName}" in ${restaurantCity}
-4. Restaurant's own website for direct ordering
+Only two of these are ever shown to the user, so spend your search effort there.
 
-Do NOT stop early. Run the GrubHub search even when DoorDash and Uber Eats have
-already returned a result — GrubHub is listed third here only for ordering, not
-because it matters less, and a null we could have filled costs the user an
-ordering option they would have used.
+1. GrubHub — THE PRIORITY. Search grubhub.com for "${restaurantName}" in
+   ${restaurantCity}. Do this search FIRST and do not skip it. Look for the
+   restaurant's own ordering page, whose URL looks like
+   https://www.grubhub.com/restaurant/<restaurant-slug>/<numeric-id>
+   A city or cuisine listing page (a /delivery/ URL) is NOT the restaurant's
+   page — do not return one as the GrubHub link.
+2. Restaurant's own website for direct ordering.
+
+Then, only if you happen to see them, doordash and ubereats. Do NOT run separate
+searches for those two: they are suppressed before display, so a search spent on
+them is a search not spent on GrubHub.
 
 For each platform, provide the ACTUAL URL if the restaurant is listed there.
 Set a platform to null if you did not find the restaurant on it. Every platform
 key must be present.
 NEVER make up or guess URLs - only include links you actually find. A guessed
-GrubHub URL is worse than a null one.
+GrubHub URL is worse than a null one: we cannot detect one by fetching it,
+because grubhub.com answers 200 with an identical page for every /restaurant/
+path, including ones that do not exist.
 
 MENU SEARCH REQUIREMENTS:
 1. Find 8-12 specific menu items with current prices

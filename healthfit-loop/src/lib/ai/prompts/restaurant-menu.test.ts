@@ -40,18 +40,43 @@ test('the search prompt carries the allergies', () => {
 test('the search prompt still carries what it always carried', () => {
   const p = createMenuSearchPrompt(restaurant, survey);
   assert.match(p, /Sakura Ramen House/);
-  assert.match(p, /doordash\.com/);
-  assert.match(p, /ubereats\.com/);
   assert.match(p, /grubhub\.com/);
 });
 
-test('the search prompt tells the model not to stop once it has found a platform', () => {
-  // GrubHub is listed third, and a model that treats the list as ranked stops
-  // after DoorDash and Uber Eats answer. The links are then permanently absent
-  // for that restaurant, so the UI has nothing to show no matter how it renders.
+test('the search prompt spends its effort on the platforms we actually display', () => {
+  // Reversal of a previous rule, on evidence. The prompt used to list DoorDash
+  // and Uber Eats FIRST and call all four "equally important" — but
+  // DISPLAYED_PLATFORMS is ['grubhub','direct'], so those two are nulled out
+  // before the user ever sees them. We were buying searches we then threw away,
+  // which is the likeliest reason GrubHub coverage was thin: measured on the
+  // 2026-08-27 plan, only 2 of 5 restaurants had a GrubHub link.
   const p = createMenuSearchPrompt(restaurant, survey);
-  assert.match(p, /Do NOT stop early/i);
-  assert.match(p, /equally important/i);
+  assert.match(p, /THE PRIORITY/);
+  assert.match(p, /Do NOT run separate\s+searches for those two/i);
+  assert.doesNotMatch(p, /equally important/i);
+  // GrubHub must be named before the suppressed platforms are mentioned at all.
+  assert.ok(
+    p.indexOf('grubhub.com') < p.indexOf('doordash'),
+    'GrubHub must come first in the search instruction'
+  );
+});
+
+test('the search prompt rejects a city listing as the GrubHub link', () => {
+  // Measured: asked for Piccolo Forno, which is genuinely not on GrubHub, the
+  // model answered with /delivery/ca_san_francisco/piccolo-forno — a city index.
+  // That renders as an Order button that lands the user nowhere useful.
+  const p = createMenuSearchPrompt(restaurant, survey);
+  assert.match(p, /\/delivery\/ URL/);
+  assert.match(p, /restaurant-slug/);
+});
+
+test('the search prompt says why a guessed GrubHub URL cannot be caught later', () => {
+  // grubhub.com answers 200 with a byte-identical SPA shell for every
+  // /restaurant/ path, including fabricated ones, so the link prober cannot
+  // detect a hallucinated URL. The prompt is the only place this is preventable.
+  const p = createMenuSearchPrompt(restaurant, survey);
+  assert.match(p, /200/);
+  assert.match(p, /NEVER make up or guess URLs/i);
 });
 
 test('the search prompt no longer asks the model to re-check distance', () => {

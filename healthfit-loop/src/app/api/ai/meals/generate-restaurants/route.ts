@@ -7,7 +7,7 @@ import { cookies } from 'next/headers';
 import { prisma } from '@/lib/db';
 import { googlePlacesClient, Restaurant } from '@/lib/external/places-client';
 import { perplexityClient } from '@/lib/external/perplexity-client';
-import { verifyLinks, verifyLinksDetailed, isUsableLink, suppressUndisplayablePlatforms } from '@/lib/external/link-check';
+import { verifyLinks, verifyLinksDetailed, isUsableLink, suppressUndisplayablePlatforms, orderabilityScore } from '@/lib/external/link-check';
 import { radiusMilesFor, milesBetween } from '@/lib/utils/distance';
 import { buildRestaurantFacts, uniqueSelectedCuisines } from '@/lib/utils/restaurant-facts';
 import { runVerification, verifyRestaurantPayload } from '@/lib/verification';
@@ -490,8 +490,18 @@ async function extractMenuInformation(restaurants: Restaurant[], surveyData: any
   // the candidates costs nothing, adds no prompt tokens, and removes no option:
   // a restaurant with no link is still in the list, just further down.
   //
+  // Ranking on orderability rather than raw link count, because the user's ask
+  // is specifically GrubHub: a GrubHub page is the one surface that takes an
+  // order, while `direct` is often just a homepage with a phone number.
+  //
   // Sort is stable, so the upstream ranking survives within each group.
-  const usable = [...withMenu].sort((a, b) => (b.linksFound ?? 0) - (a.linksFound ?? 0));
+  const usable = [...withMenu].sort(
+    (a, b) => orderabilityScore(b.orderingLinks) - orderabilityScore(a.orderingLinks)
+  );
+  const withGrubhub = usable.filter(
+    r => isUsableLink((r.orderingLinks as Record<string, string> | undefined)?.grubhub)
+  ).length;
+  console.log(`[MENU-EXTRACTION] 🛒 ${withGrubhub}/${usable.length} candidates have a GrubHub page`);
   const failed = noMenu.filter(r => r.lookupFailed);
   const genuinelyEmpty = noMenu.filter(r => !r.lookupFailed);
 

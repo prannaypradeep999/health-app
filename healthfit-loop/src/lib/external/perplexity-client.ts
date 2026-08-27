@@ -13,7 +13,7 @@ import { createMenuSearchPrompt, createMenuStructuringPrompt } from '@/lib/ai/pr
 import { parseChoice } from '@/lib/ai/validate';
 import { logUsage } from '@/lib/ai/usage';
 import { createLimiter } from '@/lib/utils/concurrency';
-import { corroborate, mergeOrderingLinks, isNonEmptyLink } from '@/lib/external/link-check';
+import { corroborate, mergeOrderingLinks, isNonEmptyLink, harvestOrderingLinksFromCitations } from '@/lib/external/link-check';
 import { parseReceipt, sourceHostsFrom, type SearchItem } from '@/lib/verification/receipt';
 import { computeStoreTotals, planPriceChunks, snapStoreNames } from '@/lib/utils/store-totals';
 import { fillMissingPriceEstimates, unpricedReason, meaningfulReason, chunkPriceCoverage } from '@/lib/utils/grocery-price-estimates';
@@ -354,9 +354,23 @@ export class PerplexityClient {
       // So hop 2 wins where it produced something, and hop 1's receipt fills
       // the gaps. Both came from the same search, so this adds no claim that
       // was not already made — it just stops discarding half of it.
+      // `c.url || c` used to push a whole citation object into sources when it
+      // had no url key, which rendered downstream as [object Object].
+      //
+      // Computed before the merge rather than after it, because the citation
+      // list is now a link source and not only a provenance check.
+      const citationUrls: string[] = citations
+        .map((c: any) => (typeof c === 'string' ? c : c?.url))
+        .filter((u: any): u is string => typeof u === 'string' && u.length > 0);
+
+      // Third source, weakest, so it goes in the fallback slot: a GrubHub page
+      // that a search actually returned. Measured 2026-08-27 on the La Oaxaqueña
+      // plan — the restaurant filled 6 of 28 cards with NO LINK at all, while
+      // its GrubHub page sat in hop 1's own citation list, unread. Costs no
+      // request; the citations are already here.
       const orderingLinks = mergeOrderingLinks(
         structuredData.orderingLinks,
-        receipt?.orderingLinks
+        mergeOrderingLinks(receipt?.orderingLinks, harvestOrderingLinksFromCitations(citationUrls))
       );
       const hop2Links = (structuredData.orderingLinks ?? {}) as Record<string, unknown>;
       const recoveredFromReceipt = Object.keys(orderingLinks).filter(
@@ -377,12 +391,6 @@ export class PerplexityClient {
           console.log(`[PERPLEXITY]   ✅ ${platform}: ${url.substring(0, 50)}...`);
         }
       });
-
-      // `c.url || c` used to push a whole citation object into sources when it
-      // had no url key, which rendered downstream as [object Object].
-      const citationUrls: string[] = citations
-        .map((c: any) => (typeof c === 'string' ? c : c?.url))
-        .filter((u: any): u is string => typeof u === 'string' && u.length > 0);
 
       const corroboration = corroborate(orderingLinks, citationUrls);
       const uncited = Object.entries(corroboration)
