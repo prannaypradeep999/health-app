@@ -43,6 +43,17 @@ test('the counter falls back to primary.source rather than miscounting', () => {
   assert.match(SRC, /const source = meal\?\.source \?\? meal\?\.primary\?\.source;/);
 });
 
+test('planData carries restaurantFacts, which is the only path to the client', () => {
+  // MealPlanPage reads `mealPlan.planData.restaurantFacts` and keys it by
+  // lowercased restaurant name. `planData` is assembled here from an explicit
+  // field list; while `restaurantFacts` was missing from it, `factsFor(name)`
+  // returned `{}` for every card, so the Places rating, review count, distance
+  // and phone rendered as nothing at all.
+  const planData = SRC.slice(SRC.indexOf('planData: {'));
+  const block = planData.slice(0, planData.indexOf('},'));
+  assert.match(block, /restaurantFacts/);
+});
+
 test('the merged meal carries the Places phone through to the client', () => {
   // Same explicit-field-list trap: joinRestaurantDetails and buildRestaurantFacts
   // both carry `phone` now, and a list here that omits it drops it again.

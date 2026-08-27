@@ -388,6 +388,11 @@ export async function GET() {
         days: days, // 7-day calendar structure
         weeklyPlan: weeklyPlan, // Flat array for compatibility
         restaurantMeals: restaurantMeals,
+        // Places-sourced facts, keyed by lowercased restaurant name. The card
+        // reads them via `planData.restaurantFacts`; omitting the key here made
+        // `factsFor(name)` return `{}` for every restaurant, so rating, review
+        // count, distance and phone all rendered as nothing.
+        restaurantFacts: userContext?.restaurantFacts || {},
         metadata: metadata,
         format: '7-day-structured'
       },

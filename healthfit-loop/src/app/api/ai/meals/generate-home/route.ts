@@ -1617,6 +1617,17 @@ async function handleGenerate_home(requestData: HomeGenerationRequest) {
           where: { id: requestData.mealPlanId },
           data: {
             userContext: {
+              // Base is what is ALREADY stored, not this route's own object.
+              // This route usually writes last (home generation is the slowest
+              // phase), so spreading `initialMealPlan` alone silently dropped
+              // every key only the restaurant phase writes. `restaurantFacts`
+              // — the sole carrier of the Places rating, review count, distance
+              // and phone — was lost on every completed plan that way, which is
+              // why `factsFor(name)` returned `{}` for every restaurant card.
+              //
+              // `initialMealPlan` is spread second and still wins all ten keys
+              // it defines, so nothing this route owns changes.
+              ...existingContext,
               ...initialMealPlan,
               // Preserve existing restaurant meals
               restaurantMeals: existingContext.restaurantMeals || [],
