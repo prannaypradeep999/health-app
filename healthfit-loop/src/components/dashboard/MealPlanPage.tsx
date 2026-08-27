@@ -35,6 +35,11 @@ import { collectAllMeals, CollectedMeal } from '@/lib/utils/meal-utils';
 import { orderOptionsFor } from '@/lib/utils/restaurant-links';
 import { flattenGroceryItemNames } from '@/lib/utils/grocery-list';
 import { mealFeedbackKey, dishNameOf } from '@/lib/utils/meal-feedback-key';
+import {
+  displayCalories,
+  sumDisplayCalories,
+  sumDisplayMacro
+} from '@/lib/utils/meal-nutrition';
 import Logo from '@/components/logo';
 import { getPlanDayIndex, getCurrentMealPeriod, getPlanDays, getDayStatus, isPlanExpired, getBrowserTimezone, type MealPeriod } from '@/lib/utils/date-utils';
 
@@ -588,61 +593,58 @@ export function MealPlanPage({ onNavigate, generationStatus, nutritionTargets: n
   const mealTargets = (resolvedTargets as any)?.mealTargets || (mealData?.mealPlan?.planData as any)?.nutritionTargets?.mealTargets || null;
   const dailySummaries = mealData?.mealPlan?.dailySummaries || null;
 
-  const getPlannedCaloriesForDay = (dayId: string) => {
+  /**
+   * The options a day's totals should be built from.
+   *
+   * Every total goes through here so that it can only ever sum the objects the
+   * cards actually rendered. Reading `meals[type].primary` directly — which is
+   * what the totals used to do — silently disagreed with the card in two real
+   * cases: a custom-swapped slot (the card shows the swapped meal,
+   * `.primary` is still the original) and a slot with no alternative (57% of
+   * slots in production; the card falls back to showing the primary, `.primary`
+   * is undefined and contributed 0). That is the reported bug where marking a
+   * meal eaten moved the day total by the wrong number.
+   *
+   * `mode: 'eaten'` returns only what the user checked off; `mode: 'planned'`
+   * returns the currently-selected option for every slot.
+   */
+  const getDayOptions = (dayId: string, mode: 'eaten' | 'planned'): any[] => {
     const dayData = mealData?.mealPlan?.planData?.days?.find((day: any) => day.day === dayId);
-    if (!dayData?.meals) return 0;
+    if (!dayData?.meals) return [];
 
-    let total = 0;
+    const options: any[] = [];
     (['breakfast', 'lunch', 'dinner'] as const).forEach(mealType => {
-      const meal = dayData.meals?.[mealType];
-      if (!meal) return;
-      const selected = getSelectedOption(dayId, mealType);
-      const option = meal[selected] || meal.primary || meal.alternative;
-      if (option) {
-        total += option.calories ?? option.estimatedCalories ?? 0;
+      if (!dayData.meals?.[mealType]) return;
+
+      if (mode === 'planned') {
+        const option = getMealForSlot(dayId, mealType);
+        if (option) options.push(option);
+        return;
       }
+
+      (['primary', 'alternative'] as const).forEach(optionType => {
+        if (!eatenMeals[`${dayId}-${mealType}-${optionType}-0`]) return;
+        const option = getMealForSlot(dayId, mealType, optionType);
+        // A slot without an alternative renders the primary in both cards.
+        // Counting it twice would inflate the day; identity is enough to tell,
+        // because getMealForSlot hands back the same object reference.
+        if (option && !options.includes(option)) options.push(option);
+      });
     });
 
-    return total;
+    return options;
   };
+
+  const getPlannedCaloriesForDay = (dayId: string) =>
+    sumDisplayCalories(getDayOptions(dayId, 'planned'));
 
   const getDaySummary = (dayId: string) => {
     if (!Array.isArray(dailySummaries)) return null;
     return dailySummaries.find((summary: any) => summary.day === dayId) || null;
   };
 
-  const getConsumedCaloriesForDay = (dayId: string) => {
-    const dayData = mealData?.mealPlan?.planData?.days?.find((day: any) => day.day === dayId);
-    if (!dayData?.meals) return 0;
-
-    let total = 0;
-    (['breakfast', 'lunch', 'dinner'] as const).forEach(mealType => {
-      const meal = dayData.meals?.[mealType];
-      if (!meal) return;
-
-      const selected = getSelectedOption(dayId, mealType);
-
-      // Check if primary option is eaten
-      const primaryKey = `${dayId}-${mealType}-primary-0`;
-      if (eatenMeals[primaryKey]) {
-        const primaryOption = meal.primary || meal;
-        if (primaryOption) {
-          total += primaryOption.calories ?? primaryOption.estimatedCalories ?? 0;
-        }
-      }
-
-      // Check if alternative option is eaten
-      const alternativeKey = `${dayId}-${mealType}-alternative-0`;
-      if (eatenMeals[alternativeKey]) {
-        const alternativeOption = meal.alternative;
-        if (alternativeOption) {
-          total += alternativeOption.calories ?? alternativeOption.estimatedCalories ?? 0;
-        }
-      }
-    });
-
-    return total;
-  };
+  const getConsumedCaloriesForDay = (dayId: string) =>
+    sumDisplayCalories(getDayOptions(dayId, 'eaten'));
 
   const getMealTargetCalories = (mealType: string) => {
     const target = mealTargets?.[mealType]?.calories;
@@ -654,147 +656,36 @@ export function MealPlanPage({ onNavigate, generationStatus, nutritionTargets: n
     return dayData?.plannedMeals?.[mealType] === 'no-meal';
   };
 
-  // Calculate totals based on selected meals for current day
-  const getTotalCalories = () => {
-    let total = 0;
+  /**
+   * Meals the user logged by hand, as opposed to ticking off a planned slot.
+   * These are already flat objects carrying `calories`/`protein`/etc.
+   */
+  const getLoggedMealsForSelectedDay = () =>
+    loggedMeals.filter(meal => meal.day === selectedDay && meal.completed);
 
-    // Try both data structures (weeklyPlan and days)
-    const selectedDayInfo = days.find(d => d.id === selectedDay);
-    let dayData = mealData?.mealPlan?.planData?.weeklyPlan?.find((day: any) => {
-      return day.day === selectedDayInfo?.dayNumber;
-    });
+  // Totals for the currently selected day. Each of these sums exactly the
+  // objects the cards rendered, plus anything logged by hand.
+  //
+  // The previous versions searched `planData.weeklyPlan` first. That key does
+  // not exist — verified against the six most recent production plans, all of
+  // which store `days`. For calories and protein the code fell through to
+  // `days` and worked; carbs and fat had no fallback and so returned 0 for
+  // every user, always.
+  const getTotalCalories = () =>
+    sumDisplayCalories([
+      ...getDayOptions(selectedDay, 'eaten'),
+      ...getLoggedMealsForSelectedDay()
+    ]);
 
-    // Also check days structure
-    if (!dayData) {
-      dayData = mealData?.mealPlan?.planData?.days?.find((day: any) => day.day === selectedDay);
-    }
+  const getTotalMacro = (macro: 'protein' | 'carbs' | 'fat') =>
+    sumDisplayMacro([
+      ...getDayOptions(selectedDay, 'eaten'),
+      ...getLoggedMealsForSelectedDay()
+    ], macro);
 
-    if (dayData) {
-      // Check all possible eaten meal options for each meal type
-      ['breakfast', 'lunch', 'dinner'].forEach(mealType => {
-        const meal = dayData[mealType] || dayData.meals?.[mealType];
-
-        // Check primary option
-        if (isMealEaten(mealType, 0, 'primary')) {
-          total += meal?.primary?.calories ?? meal?.primary?.estimatedCalories ?? 0;
-        }
-
-        // Check alternative option
-        if (isMealEaten(mealType, 0, 'alternative')) {
-          total += meal?.alternative?.calories ?? meal?.alternative?.estimatedCalories ?? 0;
-        }
-      });
-    }
-
-    // Add logged meals for the selected day
-    loggedMeals
-      .filter(meal => meal.day === selectedDay && meal.completed)
-      .forEach(meal => {
-        total += meal.calories ?? 0;
-      });
-
-    return total;
-  };
-
-  // Calculate total protein for the selected day
-  const getTotalProtein = () => {
-    let total = 0;
-
-    // Try both data structures
-    let dayData = mealData?.mealPlan?.planData?.weeklyPlan?.find((day: any) => {
-      const selectedDayInfo = days.find(d => d.id === selectedDay);
-      return day.day === selectedDayInfo?.dayNumber;
-    });
-
-    if (!dayData) {
-      dayData = mealData?.mealPlan?.planData?.days?.find((day: any) => day.day === selectedDay);
-    }
-
-    if (dayData) {
-      ['breakfast', 'lunch', 'dinner'].forEach(mealType => {
-        const meal = dayData[mealType] || dayData.meals?.[mealType];
-
-        // Check primary option
-        if (meal?.primary?.protein && isMealEaten(mealType, 0, 'primary')) {
-          total += meal.primary.protein;
-        }
-
-        // Check alternative option
-        if (meal?.alternative?.protein && isMealEaten(mealType, 0, 'alternative')) {
-          total += meal.alternative.protein;
-        }
-      });
-    }
-
-    // Add logged meals for the selected day
-    loggedMeals
-      .filter(meal => meal.day === selectedDay && meal.completed)
-      .forEach(meal => {
-        total += meal.protein || 0;
-      });
-
-    return Math.round(total);
-  };
-
-  // Calculate total carbs for the selected day
-  const getTotalCarbs = () => {
-    let total = 0;
-
-    const dayData = mealData?.mealPlan?.planData?.weeklyPlan?.find((day: any) => {
-      const selectedDayInfo = days.find(d => d.id === selectedDay);
-      return day.day === selectedDayInfo?.dayNumber;
-    });
-
-    if (dayData) {
-      ['breakfast', 'lunch', 'dinner'].forEach(mealType => {
-        const meal = dayData[mealType];
-
-        // Check primary option
-        if (meal?.primary?.carbs && isMealEaten(mealType, 0, 'primary')) {
-          total += meal.primary.carbs;
-        }
-
-        // Check alternative options
-        meal?.alternatives?.forEach((alt: any, index: number) => {
-          if (alt?.carbs && isMealEaten(mealType, index, 'alternative')) {
-            total += alt.carbs;
-          }
-        });
-      });
-    }
-
-    return Math.round(total);
-  };
-
-  // Calculate total fat for the selected day
-  const getTotalFat = () => {
-    let total = 0;
-
-    const dayData = mealData?.mealPlan?.planData?.weeklyPlan?.find((day: any) => {
-      const selectedDayInfo = days.find(d => d.id === selectedDay);
-      return day.day === selectedDayInfo?.dayNumber;
-    });
-
-    if (dayData) {
-      ['breakfast', 'lunch', 'dinner'].forEach(mealType => {
-        const meal = dayData[mealType];
-
-        // Check primary option
-        if (meal?.primary?.fat && isMealEaten(mealType, 0, 'primary')) {
-          total += meal.primary.fat;
-        }
-
-        // Check alternative options
-        meal?.alternatives?.forEach((alt: any, index: number) => {
-          if (alt?.fat && isMealEaten(mealType, index, 'alternative')) {
-            total += alt.fat;
-          }
-        });
-      });
-    }
-
-    return Math.round(total);
-  };
+  const getTotalProtein = () => getTotalMacro('protein');
+  const getTotalCarbs = () => getTotalMacro('carbs');
+  const getTotalFat = () => getTotalMacro('fat');
 
   // Toggle meal eaten status for specific meal option
   const toggleMealEaten = async (mealType: string, optionIndex: number = 0, optionType: 'primary' | 'alternative' = 'primary') => {
@@ -1638,7 +1529,7 @@ export function MealPlanPage({ onNavigate, generationStatus, nutritionTargets: n
                             currentMeal.source === 'restaurant' ? 'text-amber-700' : 'text-green-700'
                           }`}>
                             {currentMeal.source === 'restaurant' ? '~' : ''}
-                            {currentMeal.estimatedCalories || currentMeal.calories || 0} cal
+                            {displayCalories(currentMeal)} cal
                             {currentMeal.source === 'restaurant' && (
                               <span className="text-amber-600 text-xs font-normal ml-1">(est.)</span>
                             )}
@@ -1888,7 +1779,7 @@ export function MealPlanPage({ onNavigate, generationStatus, nutritionTargets: n
                     <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
                       <div className="bg-white rounded-lg p-3 text-center border border-green-200">
                         <div className="text-lg font-semibold text-green-600">
-                          {currentMeal.estimatedCalories || currentMeal.calories || 0}
+                          {displayCalories(currentMeal)}
                         </div>
                         <div className="text-xs text-gray-600">Calories</div>
                       </div>
@@ -2225,7 +2116,7 @@ export function MealPlanPage({ onNavigate, generationStatus, nutritionTargets: n
                   <div className="flex justify-between items-center text-xs">
                     <span className="text-gray-600">Calories</span>
                     <span className="text-gray-800 font-medium">
-                      {roundToNearest10(getTotalCalories())}/{roundToNearest10(resolvedTargets.dailyCalories)} cal
+                      {getTotalCalories()}/{roundToNearest10(resolvedTargets.dailyCalories)} cal
                     </span>
                   </div>
                   <div className="w-full bg-gray-200 rounded-full h-2">
