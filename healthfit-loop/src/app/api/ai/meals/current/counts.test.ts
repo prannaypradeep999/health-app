@@ -25,6 +25,21 @@ const SRC = readFileSync(
   'utf8'
 );
 
+/**
+ * The `planData` object literal, ending at the `format:` line that closes it.
+ *
+ * Not `indexOf('},')`: `restaurantFacts: userContext?.restaurantFacts || {},`
+ * ends in `{},` and cut the block off two keys early, so a field added after it
+ * looked absent and the assertion failed for a reason that had nothing to do
+ * with the field.
+ */
+function planDataBlock(): string {
+  const from = SRC.indexOf('planData: {');
+  const to = SRC.indexOf("format: '7-day-structured'", from);
+  if (from === -1 || to === -1) throw new Error('planData literal not found in route.ts');
+  return SRC.slice(from, to);
+}
+
 test('a merged restaurant meal declares its source on the envelope', () => {
   // The envelope object, not the `primary:` block nested inside it.
   const formatted = SRC.slice(SRC.indexOf('const formattedMeal = {'));
@@ -49,9 +64,17 @@ test('planData carries restaurantFacts, which is the only path to the client', (
   // field list; while `restaurantFacts` was missing from it, `factsFor(name)`
   // returned `{}` for every card, so the Places rating, review count, distance
   // and phone rendered as nothing at all.
-  const planData = SRC.slice(SRC.indexOf('planData: {'));
-  const block = planData.slice(0, planData.indexOf('},'));
-  assert.match(block, /restaurantFacts/);
+  assert.match(planDataBlock(), /restaurantFacts/);
+});
+
+test('planData carries restrictionViolations, or the warning banner never shows', () => {
+  // MealPlanPage gates the amber "Some picks may not match your restrictions"
+  // banner on `planData.restrictionViolations.length`. Both meal routes compute
+  // the violations and store them on userContext; while this list omitted the
+  // key the banner was unreachable, so a dairy warning against a real dairy
+  // dislike was computed and then discarded on the way to the screen.
+  const block = planDataBlock();
+  assert.match(block, /restrictionViolations/);
 });
 
 test('the merged meal carries the Places phone through to the client', () => {

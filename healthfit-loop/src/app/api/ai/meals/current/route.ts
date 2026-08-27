@@ -393,6 +393,14 @@ export async function GET() {
         // `factsFor(name)` return `{}` for every restaurant, so rating, review
         // count, distance and phone all rendered as nothing.
         restaurantFacts: userContext?.restaurantFacts || {},
+        // The dietary warning banner on the Restaurants tab reads
+        // `planData.restrictionViolations`. Both meal routes compute these and
+        // store them on userContext, but this explicit field list never carried
+        // the key, so the banner has never rendered — validateRestrictions was
+        // doing its job and telling nobody. On production plan cmtb3l1j1 that
+        // silently hid three "description mentions yogurt" warnings against a
+        // dairy dislike.
+        restrictionViolations: userContext?.restrictionViolations || [],
         metadata: metadata,
         format: '7-day-structured'
       },
