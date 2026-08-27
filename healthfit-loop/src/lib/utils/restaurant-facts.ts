@@ -5,6 +5,8 @@ export interface RestaurantFacts {
   userRatingsTotal: number | null;
   distanceMiles: number | null;
   address: string | null;
+  /** From Places `formatted_phone_number`. Gates the card's Call button. */
+  phone: string | null;
 }
 
 /**
@@ -27,6 +29,9 @@ export function buildRestaurantFacts(
         typeof r.userRatingsTotal === 'number' && r.userRatingsTotal > 0 ? r.userRatingsTotal : null,
       distanceMiles: typeof r.distanceMiles === 'number' ? r.distanceMiles : null,
       address: r.address || null,
+      // Places names it phoneNumber; the card reads `phone`. Trimmed to a real
+      // null so `restaurant.phone &&` cannot open a tel: link to whitespace.
+      phone: typeof r.phoneNumber === 'string' && r.phoneNumber.trim() ? r.phoneNumber.trim() : null,
     };
   });
   return out;

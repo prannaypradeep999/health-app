@@ -27,7 +27,9 @@ test('the report carries a timestamp', () => {
 
 const items = [{ name: 'Chicken Shawarma Plate', price: 16.5, description: '', statedCalories: 720, sourceUrl: 'https://fanoossf.com/menu' }];
 const evidence = { fanoos: { searchItems: items, sourceHosts: ['fanoossf.com', 'grubhub.com'] } };
-const facts = { fanoos: { rating: 4.6, userRatingsTotal: 10, distanceMiles: 0.8, address: '123 Main St' } };
+// `phone` is part of RestaurantFacts but nothing in verification reads it;
+// it is present here so the fixture stays a complete RestaurantFacts.
+const facts = { fanoos: { rating: 4.6, userRatingsTotal: 10, distanceMiles: 0.8, address: '123 Main St', phone: null } };
 const slot = (over: any = {}) => ({
   day: 'monday', mealType: 'lunch',
   primary: {

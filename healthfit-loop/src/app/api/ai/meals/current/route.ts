@@ -285,6 +285,13 @@ export async function GET() {
           if (!existingMeal || !existingMeal.primary?.source || existingMeal.primary?.source !== 'restaurant') {
             // Format the restaurant meal to match expected structure
             const formattedMeal = {
+              // `userContext.days` holds only the home meals, each carrying
+              // `source: 'home'` on the envelope. The restaurant meals are
+              // merged in here, and this list set `source` on `primary` only —
+              // so the counting loop below, which reads the envelope, put every
+              // restaurant meal in the home bucket. Plan cmtayzto2 reported 14
+              // home and 0 restaurant for a week with seven of each.
+              source: 'restaurant',
               primary: {
                 source: 'restaurant',
                 restaurant: restaurantMeal.primary?.restaurant || restaurantMeal.restaurant,
@@ -297,6 +304,11 @@ export async function GET() {
                 price: restaurantMeal.primary?.price || restaurantMeal.price,
                 cuisine: restaurantMeal.primary?.cuisine || restaurantMeal.cuisine,
                 address: restaurantMeal.primary?.address || restaurantMeal.address,
+                // Looked-up Places facts. An explicit field list that omits
+                // them drops them again — the same way `phone` was dropped at
+                // every other hop between Places and the card.
+                phone: restaurantMeal.primary?.phone || restaurantMeal.phone || null,
+                city: restaurantMeal.primary?.city || restaurantMeal.city || '',
                 orderingLinks: restaurantMeal.primary?.orderingLinks || restaurantMeal.orderingLinks,
                 imageUrl: restaurantMeal.primary?.imageUrl || restaurantMeal.imageUrl
               },
@@ -328,9 +340,14 @@ export async function GET() {
       // Count from 7-day structure
       days.forEach((day: any) => {
         Object.values(day.meals || {}).forEach((meal: any) => {
-          if (meal && meal.source === 'restaurant') {
+          // Read `primary.source` as a fallback: a meal that only declares
+          // itself one level down is still a restaurant meal, and silently
+          // counting it as home is exactly what went wrong here before.
+          const source = meal?.source ?? meal?.primary?.source;
+          if (!meal) return;
+          if (source === 'restaurant') {
             restaurantMealCount++;
-          } else if (meal && meal.source !== 'restaurant') {
+          } else {
             homeMealCount++;
           }
         });

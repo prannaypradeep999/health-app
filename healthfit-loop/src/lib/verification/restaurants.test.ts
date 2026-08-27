@@ -61,12 +61,12 @@ test('R4 always reports macros unverified', () => {
 });
 
 test('R7 contradicts an address that disagrees with Places', () => {
-  const vs = verifyRestaurantMeal('w', at(), items, { rating: 4.6, userRatingsTotal: 10, distanceMiles: 0.8, address: '999 Other Ave' });
+  const vs = verifyRestaurantMeal('w', at(), items, { rating: 4.6, userRatingsTotal: 10, distanceMiles: 0.8, address: '999 Other Ave', phone: null });
   assert.equal(vs.find(v => v.check === 'R7-restaurant-identity')?.status, 'contradicted');
 });
 
 test('R7 verifies an address that matches Places despite punctuation', () => {
-  const vs = verifyRestaurantMeal('w', at({ address: '123 Main St.' }), items, { rating: 4.6, userRatingsTotal: 10, distanceMiles: 0.8, address: '123 Main St' });
+  const vs = verifyRestaurantMeal('w', at({ address: '123 Main St.' }), items, { rating: 4.6, userRatingsTotal: 10, distanceMiles: 0.8, address: '123 Main St', phone: null });
   assert.equal(vs.find(v => v.check === 'R7-restaurant-identity')?.status, 'verified');
 });
 

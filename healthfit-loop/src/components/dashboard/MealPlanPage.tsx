@@ -2443,6 +2443,11 @@ export function MealPlanPage({ onNavigate, generationStatus, nutritionTargets: n
                       userRatingsTotal: factsFor(primaryRestaurant).userRatingsTotal ?? null,
                       address: meal.primary.address || 'Address not available',
                       city: meal.primary.city || '',
+                      // Places fact, read the same way rating and distance are.
+                      // Gates the Call button, which is the only actionable
+                      // control left on a card whose restaurant has no usable
+                      // ordering link.
+                      phone: factsFor(primaryRestaurant).phone ?? meal.primary.phone ?? null,
                       orderingLinks: { ...meal.primary.orderingLinks },
                       sampleMenuItems: new Set([meal.primary.dish]),
                       distance: factsFor(primaryRestaurant).distanceMiles ?? null
@@ -2465,6 +2470,7 @@ export function MealPlanPage({ onNavigate, generationStatus, nutritionTargets: n
                       userRatingsTotal: factsFor(altRestaurant).userRatingsTotal ?? null,
                       address: meal.alternative.address || 'Address not available',
                       city: meal.alternative.city || '',
+                      phone: factsFor(altRestaurant).phone ?? meal.alternative.phone ?? null,
                       orderingLinks: { ...meal.alternative.orderingLinks },
                       sampleMenuItems: new Set([meal.alternative.dish]),
                       distance: factsFor(altRestaurant).distanceMiles ?? null
