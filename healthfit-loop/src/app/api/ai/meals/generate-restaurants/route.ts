@@ -728,7 +728,9 @@ async function triggerSelectionPhase(
   sessionId: string,
   mealPlanId: string | undefined,
   restaurantMenuData: any[],
-  restaurantsSearched: number
+  restaurantsSearched: number,
+  restaurantDiscoveryTime: number,
+  menuExtractionTime: number
 ): Promise<void> {
   console.log(
     `[RESTAURANT-GENERATION] 🎬 Handing off to the selection phase with ${restaurantMenuData.length} restaurant(s)...`
@@ -746,6 +748,10 @@ async function triggerSelectionPhase(
         mealPlanId,
         restaurantMenuData,
         restaurantsSearched,
+        // Phase 2 writes restaurantTimings but did not run either of these
+        // phases. Carried, not recomputed — same reason as restaurantsSearched.
+        restaurantDiscoveryTime,
+        menuExtractionTime,
       }),
     });
 
@@ -849,6 +855,8 @@ async function handleGenerate_restaurants(req: NextRequest) {
       mealPlanId?: string;
       restaurantMenuData?: any[];
       restaurantsSearched?: number;
+      restaurantDiscoveryTime?: number;
+      menuExtractionTime?: number;
     } = {};
     try {
       requestData = await req.json();
@@ -938,6 +946,8 @@ async function handleGenerate_restaurants(req: NextRequest) {
       // with them for time.
       restaurantMenuData = requestData.restaurantMenuData!;
       restaurantsSearched = requestData.restaurantsSearched ?? restaurantMenuData.length;
+      restaurantDiscoveryTime = requestData.restaurantDiscoveryTime ?? 0;
+      menuExtractionTime = requestData.menuExtractionTime ?? 0;
       console.log(
         `[RESTAURANT-GENERATION] 🎯 Selection phase: ${restaurantMenuData.length} enriched restaurant(s) handed over from extraction`
       );
@@ -1010,7 +1020,9 @@ async function handleGenerate_restaurants(req: NextRequest) {
           sessionId ?? '',
           requestData.mealPlanId,
           restaurantMenuData,
-          restaurantsSearched
+          restaurantsSearched,
+          restaurantDiscoveryTime,
+          menuExtractionTime
         );
       });
 

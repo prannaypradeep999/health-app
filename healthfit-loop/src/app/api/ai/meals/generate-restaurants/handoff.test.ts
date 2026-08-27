@@ -98,3 +98,39 @@ test('the re-entrant route cannot loop', () => {
     'the phase marker changed shape; the loop guard above no longer means anything'
   );
 });
+
+test('the phases that ran in the other invocation still report their timings', () => {
+  // Phase 2 writes restaurantTimings, but discovery and extraction happened in
+  // phase 1. Locals initialised to 0 in the phase-2 branch are still 0 at write
+  // time, so the row recorded {"discovery":"0ms","menuExtraction":"0ms"} — the
+  // two phases whose cost caused the invocation split in the first place became
+  // invisible in the only place anyone would look for it.
+  //
+  // Same reasoning as restaurantsSearched: reporting metadata that only phase 1
+  // can know has to travel across the hop.
+  const call = SRC.match(/async function triggerSelectionPhase[\s\S]*?\n\}/)?.[0] ?? '';
+  assert.ok(call, 'triggerSelectionPhase is gone');
+  assert.match(
+    call,
+    /restaurantDiscoveryTime/,
+    'the discovery timing is not sent across the hop, so phase 2 records it as 0ms'
+  );
+  assert.match(
+    call,
+    /menuExtractionTime/,
+    'the extraction timing is not sent across the hop, so phase 2 records it as 0ms'
+  );
+
+  const phase2 = SRC.match(/if \(isSelectionPhase\) \{[\s\S]*?\n    \} else \{/)?.[0] ?? '';
+  assert.ok(phase2, 'the phase-2 branch changed shape');
+  assert.match(
+    phase2,
+    /restaurantDiscoveryTime = requestData\.restaurantDiscoveryTime/,
+    'phase 2 never reads the carried discovery timing back out of the body'
+  );
+  assert.match(
+    phase2,
+    /menuExtractionTime = requestData\.menuExtractionTime/,
+    'phase 2 never reads the carried extraction timing back out of the body'
+  );
+});
