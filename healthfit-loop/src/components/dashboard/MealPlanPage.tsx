@@ -2423,16 +2423,36 @@ export function MealPlanPage({ onNavigate, generationStatus, nutritionTargets: n
         {/* Restaurants Tab Content */}
         {activeTab === 'restaurants' && (
           <>
-          {(mealData?.mealPlan?.planData?.restrictionViolations?.length ?? 0) > 0 && (
-            <div className="mb-4 rounded-md border border-amber-300 bg-amber-50 p-3 text-sm text-amber-900">
-              <p className="font-medium">Some picks may not match your restrictions</p>
-              <ul className="mt-1 list-disc pl-5">
-                {mealData.mealPlan.planData.restrictionViolations.slice(0, 5).map((v: any, i: number) => (
-                  <li key={i}>{v.mealName}: {v.violation} ({v.restriction})</li>
-                ))}
-              </ul>
-            </div>
-          )}
+          {(() => {
+            // One dish appearing on four days produced four byte-identical
+            // bullets — the same tzatziki warning repeated until the banner
+            // looked broken. The violations are per meal slot, which is right
+            // for the data and wrong for the reader, so collapse them on the
+            // text actually shown and say how many days each one covers.
+            const violations = mealData?.mealPlan?.planData?.restrictionViolations ?? [];
+            const grouped = new Map<string, { v: any; days: Set<string> }>();
+            for (const v of violations) {
+              const key = `${v.mealName}|${v.violation}|${v.restriction}`;
+              if (!grouped.has(key)) grouped.set(key, { v, days: new Set() });
+              if (v.day) grouped.get(key)!.days.add(v.day);
+            }
+            if (grouped.size === 0) return null;
+            return (
+              <div className="mb-4 rounded-md border border-amber-300 bg-amber-50 p-3 text-sm text-amber-900">
+                <p className="font-medium">Some picks may not match your restrictions</p>
+                <ul className="mt-1 list-disc pl-5">
+                  {[...grouped.values()].slice(0, 5).map(({ v, days }, i) => (
+                    <li key={i}>
+                      {v.mealName}: {v.violation} ({v.restriction})
+                      {days.size > 1 && (
+                        <span className="text-amber-700"> — on {days.size} days</span>
+                      )}
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            );
+          })()}
           <RestaurantListSection
             restaurants={(() => {
               const restaurantMeals = mealData?.mealPlan?.planData?.restaurantMeals || [];

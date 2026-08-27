@@ -76,6 +76,20 @@ export function RestaurantListSection({ restaurants, metadata }: RestaurantListS
     window.open(url, '_blank');
   };
 
+  /**
+   * Cuisines to show in the header badge.
+   *
+   * `metadata.cuisines` is the intended source but the generator never writes
+   * it, and the caller defaults it to []. Falling back to the cuisines of the
+   * restaurants actually listed keeps the badge truthful without inventing
+   * anything: those strings are already rendered on each card below.
+   */
+  const displayCuisines: string[] = (() => {
+    const fromMetadata = (metadata?.cuisines ?? []).filter(Boolean);
+    if (fromMetadata.length > 0) return fromMetadata;
+    return [...new Set((restaurants ?? []).map(r => r.cuisine).filter(Boolean))];
+  })();
+
   if (!restaurants || restaurants.length === 0) {
     return (
       <div className="bg-white border border-gray-200 rounded-2xl shadow-md overflow-hidden">
@@ -110,9 +124,15 @@ export function RestaurantListSection({ restaurants, metadata }: RestaurantListS
             </div>
           </div>
           <div className="flex items-center space-x-2">
-            {metadata?.cuisines && (
+            {/* `metadata.cuisines` is defaulted to [] by the caller and the
+                generator never writes it, so the old `metadata?.cuisines &&`
+                guard was always true — an empty array is truthy — and the badge
+                rendered as the bare word "cuisines" with nothing in front of it.
+                Guard on length, and fall back to the cuisines of the restaurants
+                actually on screen, which are real data we already hold. */}
+            {displayCuisines.length > 0 && (
               <Badge className="bg-gradient-to-r from-[#c1272d] to-red-600 text-white border-0 shadow-md">
-                {metadata.cuisines.slice(0, 2).join(' • ')} cuisines
+                {displayCuisines.slice(0, 2).join(' • ')} cuisines
               </Badge>
             )}
           </div>
@@ -216,7 +236,7 @@ export function RestaurantListSection({ restaurants, metadata }: RestaurantListS
                   <div className="space-y-2">
                     <p className="text-xs font-semibold text-gray-900 mb-2 flex items-center gap-1">
                       <Truck className="w-3 h-3 text-[#c1272d]" />
-                      Order from ({restaurant.linksFound} platforms found)
+                      Order from ({restaurant.linksFound} {restaurant.linksFound === 1 ? 'platform' : 'platforms'} found)
                     </p>
 
                     <div className="grid grid-cols-2 gap-2">
