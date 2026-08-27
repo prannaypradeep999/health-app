@@ -5,6 +5,10 @@ import { prisma } from '@/lib/db';
 import { getAuthUserId } from '@/lib/auth';
 import { MODELS } from '@/lib/ai/models';
 import { trace } from '@/lib/utils/run-trace';
+// Not bare `fetch`: these tools call our own routes, and a hardcoded
+// localhost origin is refused on Vercel and swallowed into a friendly
+// "I'm having trouble pulling up your plan data". See internal-calls.test.ts.
+import { internalFetch } from '@/lib/utils/internal-fetch';
 
 const openai = new OpenAI({
   apiKey: process.env.GPT_KEY,
@@ -131,7 +135,7 @@ async function executeToolCall(functionName: string, args: any, userContext: any
   switch (functionName) {
     case 'get_current_meal_plan':
       try {
-        const response = await fetch('http://localhost:3000/api/ai/meals/current', {
+        const response = await internalFetch('/api/ai/meals/current', {
           headers: {
             'Cookie': `user_id=${userId}; guest_session=${guestSession}; survey_id=${surveyId}; meal_plan_id=${mealPlanId}`
           }
@@ -153,7 +157,7 @@ async function executeToolCall(functionName: string, args: any, userContext: any
 
     case 'get_current_workout_plan':
       try {
-        const response = await fetch('http://localhost:3000/api/ai/workouts/current', {
+        const response = await internalFetch('/api/ai/workouts/current', {
           headers: {
             'Cookie': `user_id=${userId}; guest_session=${guestSession}; survey_id=${surveyId}; workout_plan_id=${workoutPlanId}`
           }
@@ -217,7 +221,7 @@ async function executeToolCall(functionName: string, args: any, userContext: any
 
     case 'get_nutrition_targets':
       try {
-        const response = await fetch('http://localhost:3000/api/user/nutrition-targets', {
+        const response = await internalFetch('/api/user/nutrition-targets', {
           headers: {
             'Cookie': `user_id=${userId}; guest_session=${guestSession}; survey_id=${surveyId}`
           }

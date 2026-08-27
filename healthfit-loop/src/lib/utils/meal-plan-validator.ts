@@ -126,7 +126,22 @@ export function validateMealPlan(
     });
 
     // 4. DAILY TOTAL CHECK
-    const dailyTarget = dayTargets.dailyTotals?.calories || 0;
+    //
+    // Against the slots we were actually given, NOT `dailyTotals`.
+    //
+    // This function is called on the home meals alone, while `dailyTotals`
+    // covers the whole day including anything eaten out. A user with a
+    // restaurant lunch and dinner leaves breakfast and snacks here — about a
+    // quarter of the day — and comparing that quarter against the whole
+    // produced `friday daily total: 75% off target (820 vs 3254 cal)` on five
+    // of seven days of an otherwise correct plan. Every meal had passed its own
+    // slot target immediately above.
+    //
+    // Summing the supplied slots' targets asks the question that is actually
+    // meant: do these meals add up to what these meals were for? It reduces to
+    // `dailyTotals` exactly when every slot is present, which is the all-home
+    // case this check was written against.
+    const dailyTarget = mealValidations.reduce((sum, m) => sum + m.target, 0);
     const dailyDeviationPercent = dailyTarget > 0 ? Math.abs(dayTotalCalories - dailyTarget) / dailyTarget * 100 : 0;
 
     if (dailyDeviationPercent > 10) {
