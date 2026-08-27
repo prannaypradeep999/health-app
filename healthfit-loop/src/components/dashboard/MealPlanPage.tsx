@@ -34,6 +34,7 @@ import { collectAllMeals, CollectedMeal } from '@/lib/utils/meal-utils';
 import { orderOptionsFor } from '@/lib/utils/restaurant-links';
 import { flattenGroceryItemNames } from '@/lib/utils/grocery-list';
 import { mealFeedbackKey, dishNameOf } from '@/lib/utils/meal-feedback-key';
+import { collectPrewarmTargets } from '@/lib/utils/recipe-prewarm';
 import {
   displayCalories,
   sumDisplayCalories,
@@ -460,6 +461,91 @@ export function MealPlanPage({ onNavigate, generationStatus, nutritionTargets: n
 
     loadExistingFeedback();
   }, [mealData?.mealPlan?.planData?.days]);
+
+  // Generate this week's recipes in the background, before anybody taps a meal.
+  //
+  // The recipe route caches on dish name + dietary restrictions, so the second
+  // request for a dish is a database read. The first is a model call — measured
+  // at 20-40s, and observed timing out at the route's own 45s inner limit, which
+  // caches nothing and leaves the user staring at a spinner that ends in an
+  // alert. A freshly generated week has twelve dishes in exactly that state.
+  //
+  // So pay the cost here instead, while the user is reading their plan. Nothing
+  // renders from this and nothing waits on it: it warms the shared cache so that
+  // handleRecipeClick, whose request body this deliberately mirrors, finds a row
+  // already written. Mirroring matters — the route skips a cached recipe whose
+  // calories are more than 15% off the requested target, so a prewarm that sent
+  // different targets would prime a row the real click then declines to use.
+  useEffect(() => {
+    const planData = mealData?.mealPlan?.planData;
+    const planId = mealData?.mealPlan?.id;
+    if (!planData?.days || !planId) return;
+
+    // Once per plan per tab. The server cache makes a repeat cheap, but not
+    // free, and re-running on every render of every visit is a lot of nothing.
+    const prewarmKey = `recipePrewarm:${planId}`;
+    try {
+      if (sessionStorage.getItem(prewarmKey)) return;
+      sessionStorage.setItem(prewarmKey, String(Date.now()));
+    } catch {
+      // Private browsing or a full quota. Prewarming is optional; skip it
+      // rather than let a storage error break the page.
+      return;
+    }
+
+    const targets = collectPrewarmTargets(planData);
+    if (targets.length === 0) return;
+
+    const abortController = new AbortController();
+    const groceryList = mealData?.mealPlan?.groceryList || planData?.groceryList;
+    const existingGroceryItems = flattenGroceryItemNames(groceryList);
+
+    // Two at a time. One is slower than the user can click through a week;
+    // twelve at once would put twelve concurrent model calls behind a single
+    // page load, and the route is the same one the user's own tap needs.
+    const CONCURRENCY = 2;
+    let cursor = 0;
+    let warmed = 0;
+    let alreadyCached = 0;
+
+    const worker = async () => {
+      while (cursor < targets.length && !abortController.signal.aborted) {
+        const target = targets[cursor++];
+        try {
+          const response = await fetch('/api/ai/recipes/generate', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              dishName: target.dishName,
+              description: target.description,
+              mealType: target.mealType,
+              nutritionTargets: target.nutritionTargets,
+              existingGroceryItems
+            }),
+            signal: abortController.signal
+          });
+          if (!response.ok) continue;
+          const data = await response.json();
+          if (data?.cached) alreadyCached++;
+          else if (data?.success) warmed++;
+        } catch {
+          // A failed prewarm costs the user nothing: tapping the meal still
+          // works, it is just slow again. Never surface this.
+        }
+      }
+    };
+
+    console.log(`🍳 [Prewarm] Warming ${targets.length} recipe(s) in the background`);
+    Promise.all(Array.from({ length: CONCURRENCY }, worker)).then(() => {
+      if (abortController.signal.aborted) return;
+      console.log(
+        `🍳 [Prewarm] Done — ${warmed} generated, ${alreadyCached} already cached, ` +
+        `${targets.length - warmed - alreadyCached} failed`
+      );
+    });
+
+    return () => abortController.abort();
+  }, [mealData?.mealPlan?.planData, mealData?.mealPlan?.id, mealData?.mealPlan?.groceryList]);
 
   // Auto-select current day when meal data loads
   useEffect(() => {
