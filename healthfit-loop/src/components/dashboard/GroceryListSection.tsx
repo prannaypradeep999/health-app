@@ -19,6 +19,7 @@ import {
   FileText,
   Warning
 } from '@phosphor-icons/react';
+import { unpricedReason } from '@/lib/utils/grocery-price-estimates';
 
 // Type definitions
 interface StoreOption {
@@ -29,6 +30,12 @@ interface StoreOption {
   reason?: string;
   storeAddress?: string;  // Street address only (e.g., "123 Main St")
   priceConfidence?: 'exact' | 'estimate';  // Whether this is an exact price or estimate
+  // Inferred by fillMissingPriceEstimates from the dearest real price the same
+  // item got at another store, for options that came back with no price at all.
+  // Kept separate from `price` so store totals and the cheapest-store ranking
+  // never see an inferred number.
+  estimatedPrice?: number;
+  estimatedFrom?: string;
 }
 
 interface GroceryItemWithPrices {
@@ -51,10 +58,25 @@ interface GroceryItemWithPrices {
 /**
  * A null price means the store was not priced for this item. Rendered as $0.00 it
  * reads as free, and the store that failed to price the item looks cheapest.
+ *
+ * Takes the whole option rather than a price and a confidence, so that
+ * `estimatedPrice` is picked up at every call site at once. That field is filled
+ * by fillMissingPriceEstimates for stores this item had no price at but others
+ * did — the alternative was showing "no price" for an item we had two real
+ * prices for. It is always rendered with the `~` prefix, and it is never written
+ * into `price`, so nothing that totals or ranks stores can see it.
  */
-function formatPrice(price: number | null | undefined, confidence?: 'exact' | 'estimate'): string {
-  if (typeof price !== 'number') return 'no price';
-  return `${confidence === 'estimate' ? '~' : ''}$${price.toFixed(2)}`;
+function formatPrice(
+  option:
+    | { price?: number | null; estimatedPrice?: number; priceConfidence?: 'exact' | 'estimate' }
+    | undefined
+): string {
+  if (!option) return 'no price';
+  if (typeof option.price === 'number') {
+    return `${option.priceConfidence === 'estimate' ? '~' : ''}$${option.price.toFixed(2)}`;
+  }
+  if (typeof option.estimatedPrice === 'number') return `~$${option.estimatedPrice.toFixed(2)}`;
+  return 'no price';
 }
 
 /**
@@ -65,16 +87,31 @@ function formatPrice(price: number | null | undefined, confidence?: 'exact' | 'e
 function PriceConfidenceBadge({
   confidence,
   sourceCount,
+  estimatedFrom,
   className = '',
 }: {
   confidence?: 'exact' | 'estimate';
   sourceCount: number;
+  /** Set when the number shown was carried over from another store's real price. */
+  estimatedFrom?: string;
   className?: string;
 }) {
   if (!confidence) return null;
 
   if (confidence !== 'exact') {
-    return (
+    // Two different kinds of estimate reach this badge. The model's own
+    // "estimate" self-report, and our carry-over from the dearest real price the
+    // same item got elsewhere. The second one we can be specific about, and
+    // saying "worst case" matters: it tells the user which way to trust it.
+    return estimatedFrom ? (
+      <Badge
+        variant="outline"
+        title={`Not priced at this store. Showing the dearest price this item had elsewhere (${estimatedFrom}), so the total is an upper bound rather than a guess at the middle.`}
+        className={`text-[9px] h-4 text-amber-600 border-amber-300 ${className}`}
+      >
+        est. worst case
+      </Badge>
+    ) : (
       <Badge
         variant="outline"
         title="Inferred from typical local pricing rather than read off a listing"
@@ -351,7 +388,7 @@ export function GroceryListSection({
       const perish = item.perishability ? ` | ${item.perishability} perishability` : '';
       text += `• ${itemName} (${item.quantity})${firstUse}${perish}`;
       if (bestOption) {
-        text += ` - ${formatPrice(bestOption.price, bestOption.priceConfidence)} at ${bestOption.store}`;
+        text += ` - ${formatPrice(bestOption)} at ${bestOption.store}`;
       }
       text += '\n';
     });
@@ -618,6 +655,25 @@ export function GroceryListSection({
               ? storeOptions
               : storeOptions.filter(o => o.store === selectedStore);
 
+            // Why this row shows no number at all. Null when at least one store
+            // priced it — in that case the other options carry an estimate from
+            // the dearest real price instead, and there is nothing to explain.
+            // Gated on hasRealPrices because when the whole price search failed
+            // every row is unpriced and the banner above already says so.
+            //
+            // Two different ways a row ends up with no price, and they need
+            // different sentences. An item with store options that all came back
+            // null was looked at and not priced, so the model's own reason is
+            // the honest one. An item with no store options at all was never in
+            // the response: generate-groceries carries those through unpriced
+            // rather than dropping them, and until now they rendered as a row
+            // with no prices and no explanation at all.
+            const noPriceReason = !hasRealPrices
+              ? null
+              : storeOptions.length === 0
+                ? 'the price search came back without this item'
+                : unpricedReason(item);
+
             const IconComponent = config?.icon || ShoppingCart;
 
             return (
@@ -692,7 +748,7 @@ export function GroceryListSection({
                           )}
                           <div className="flex items-center justify-center gap-1">
                             <p className={`font-bold ${option.isRecommended ? 'text-green-600' : 'text-gray-900'}`}>
-                              {formatPrice(option.price, option.priceConfidence)}
+                              {formatPrice(option)}
                               {option.isRecommended && <Star className="w-3 h-3 inline ml-1 text-yellow-500" weight="fill" />}
                             </p>
                           </div>
@@ -703,6 +759,7 @@ export function GroceryListSection({
                             <PriceConfidenceBadge
                               confidence={option.priceConfidence}
                               sourceCount={item.sources?.length ?? 0}
+                              estimatedFrom={option.estimatedFrom}
                             />
                             {option.reason && (
                               <Badge className="text-[10px] bg-green-100 text-green-700 border-0">
@@ -739,11 +796,12 @@ export function GroceryListSection({
                         <div className="text-right flex-shrink-0 ml-2">
                           <div className="flex items-center gap-1">
                             <p className={`font-bold ${option.isRecommended ? 'text-green-600' : 'text-gray-900'}`}>
-                              {formatPrice(option.price, option.priceConfidence)}
+                              {formatPrice(option)}
                             </p>
                             <PriceConfidenceBadge
                               confidence={option.priceConfidence}
                               sourceCount={item.sources?.length ?? 0}
+                              estimatedFrom={option.estimatedFrom}
                               className="ml-1"
                             />
                           </div>
@@ -769,13 +827,28 @@ export function GroceryListSection({
                       <span className={`font-bold ${
                         displayOptions[0].isRecommended ? 'text-green-600' : 'text-gray-900'
                       }`}>
-                        {formatPrice(displayOptions[0].price, displayOptions[0].priceConfidence)}
+                        {formatPrice(displayOptions[0])}
                       </span>
                       <PriceConfidenceBadge
                         confidence={displayOptions[0].priceConfidence}
                         sourceCount={item.sources?.length ?? 0}
+                        estimatedFrom={displayOptions[0].estimatedFrom}
                       />
                     </div>
+                  </div>
+                )}
+
+                {/* No store priced this one. Say why rather than printing a
+                    bare "no price", and do not invent a number — there is no
+                    real price on this row to infer one from. */}
+                {noPriceReason && (
+                  <div className="border-t border-gray-200 bg-white px-4 py-2 flex items-start gap-2">
+                    <Warning className="w-4 h-4 text-amber-500 flex-shrink-0 mt-0.5" weight="regular" />
+                    <p className="text-xs text-gray-600">
+                      <span className="font-medium text-gray-700">No price found</span>
+                      {' — '}
+                      {noPriceReason}
+                    </p>
                   </div>
                 )}
 

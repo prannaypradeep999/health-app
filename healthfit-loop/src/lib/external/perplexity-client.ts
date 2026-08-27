@@ -16,6 +16,7 @@ import { createLimiter } from '@/lib/utils/concurrency';
 import { corroborate } from '@/lib/external/link-check';
 import { parseReceipt, sourceHostsFrom, type SearchItem } from '@/lib/verification/receipt';
 import { computeStoreTotals, planPriceChunks } from '@/lib/utils/store-totals';
+import { fillMissingPriceEstimates, unpricedReason } from '@/lib/utils/grocery-price-estimates';
 import { reservingBudget, MENU_STRUCTURING_RESERVE_MS } from '@/lib/utils/route-budget';
 
 /**
@@ -600,9 +601,29 @@ Return as JSON only, no other text:
     console.log(`[PERPLEXITY-GROCERY] ✅ Got prices for ${pricedItems.length} items`);
     console.log(`[PERPLEXITY-GROCERY] 💡 Recommended store: ${cheapest?.store || 'none'}`);
 
+    // Estimates are filled in AFTER the totals above, and deliberately so.
+    // computeStoreTotals ranks stores on real prices over the intersection of
+    // items they all priced; feeding it inferred numbers would turn the
+    // cheapest-store recommendation back into the coverage ranking it used to
+    // be. fillMissingPriceEstimates never writes `price` — it only adds
+    // `estimatedPrice` — so this ordering is belt and braces rather than the
+    // only thing keeping the two apart.
+    //
+    // What it buys: an item priced at two of its three stores used to render
+    // "no price" at the third, as though we knew nothing about it. Now it
+    // renders "~$6.49", marked as an estimate, taken from the dearest store
+    // that did answer.
+    const itemsForDisplay = fillMissingPriceEstimates(pricedItems);
+    const stillUnpriced = itemsForDisplay.filter(i => unpricedReason(i) !== null).length;
+    if (stillUnpriced > 0) {
+      // These are the ones no store priced at all. They keep a null price and
+      // carry a reason instead, which the UI shows in place of a number.
+      console.log(`[PERPLEXITY-GROCERY] 🏷️ ${stillUnpriced}/${itemsForDisplay.length} item(s) had no price at any store — showing the reason rather than a guess`);
+    }
+
     const chunksFailed = failures.length;
     return {
-      items: pricedItems,
+      items: itemsForDisplay,
       stores,
       storeTotals,
       comparableItemCount,
