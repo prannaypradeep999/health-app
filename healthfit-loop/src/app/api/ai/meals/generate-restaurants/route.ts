@@ -1,5 +1,8 @@
 import { NextRequest, NextResponse, after } from 'next/server';
-import { withRouteBudget, reservingBudget, MEAL_SELECTION_RESERVE_MS } from '@/lib/utils/route-budget';
+// No reservingBudget / MEAL_SELECTION_RESERVE_MS: selection no longer shares
+// this invocation with extraction, so there is nothing to reserve it from.
+// handoff.test.ts fails if they come back.
+import { withRouteBudget } from '@/lib/utils/route-budget';
 import { cookies } from 'next/headers';
 import { prisma } from '@/lib/db';
 import { googlePlacesClient, Restaurant } from '@/lib/external/places-client';
@@ -702,6 +705,73 @@ function validateRestaurantMeals(
 }
 
 /**
+ * Hands menu extraction's output to a second invocation of THIS route, which
+ * runs selection onwards with a fresh 53s budget.
+ *
+ * Why the route re-enters itself rather than calling a new endpoint: both phases
+ * need identical setup — the same cookies, the same survey row, the same
+ * `buildNutritionTargets`, the same schedule extraction. A separate route would
+ * have to duplicate all of it and then drift from it. The phases differ only in
+ * which half of the body they run, so the body branches and the setup is shared
+ * by construction.
+ *
+ * The recursion terminates because phase 2 is entered only when
+ * `restaurantMenuData` is present in the body, and phase 2 never calls this
+ * function — it falls through to the home-meals hop instead.
+ *
+ * The payload is the enriched restaurants: ~6 restaurants of ~8 dishes, low tens
+ * of KB of JSON. Re-sending it costs one HTTP body; re-deriving it costs six
+ * Perplexity searches and the 26s that caused this whole problem.
+ */
+async function triggerSelectionPhase(
+  surveyId: string,
+  sessionId: string,
+  mealPlanId: string | undefined,
+  restaurantMenuData: any[],
+  restaurantsSearched: number
+): Promise<void> {
+  console.log(
+    `[RESTAURANT-GENERATION] 🎬 Handing off to the selection phase with ${restaurantMenuData.length} restaurant(s)...`
+  );
+
+  try {
+    const res = await internalFetch('/api/ai/meals/generate-restaurants', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Cookie': `survey_id=${surveyId}; guest_session=${sessionId}`,
+      },
+      body: JSON.stringify({
+        backgroundGeneration: true,
+        mealPlanId,
+        restaurantMenuData,
+        restaurantsSearched,
+      }),
+    });
+
+    trace(mealPlanId, 'restaurants', res.ok ? 'ok' : 'fail', {
+      step: 'handoff-to-selection',
+      httpStatus: res.status,
+      restaurantsHandedOver: restaurantMenuData.length,
+    });
+
+    if (res.ok) {
+      console.log('[RESTAURANT-GENERATION] ✅ Selection phase accepted the handoff');
+    } else {
+      // Nothing downstream runs if this fails: no restaurant meals, and no home
+      // meals either, because the home hop lives on the far side of selection.
+      console.error('[RESTAURANT-GENERATION] ❌ Selection handoff rejected:', res.status);
+    }
+  } catch (error) {
+    trace(mealPlanId, 'restaurants', 'fail', {
+      step: 'handoff-to-selection',
+      error: error instanceof Error ? error.message.slice(0, 120) : 'unknown',
+    });
+    console.error('[RESTAURANT-GENERATION] ❌ Selection handoff threw:', error);
+  }
+}
+
+/**
  * Second hop of the generation relay.
  *
  * Home meals need the restaurant calories to size the remaining daily budget,
@@ -770,12 +840,23 @@ async function handleGenerate_restaurants(req: NextRequest) {
 
   try {
     // Parse request data for coordinated meal plan ID
-    let requestData: { backgroundGeneration?: boolean; mealPlanId?: string } = {};
+    //
+    // `restaurantMenuData` is the phase marker. This route is re-entrant: see
+    // triggerSelectionPhase. Absent = phase 1 (discovery + menu extraction),
+    // present = phase 2 (selection onwards, with the menus phase 1 found).
+    let requestData: {
+      backgroundGeneration?: boolean;
+      mealPlanId?: string;
+      restaurantMenuData?: any[];
+      restaurantsSearched?: number;
+    } = {};
     try {
       requestData = await req.json();
     } catch {
       console.log(`[RESTAURANT-GENERATION] 📄 Empty request body, using defaults`);
     }
+
+    const isSelectionPhase = Array.isArray(requestData.restaurantMenuData);
 
     trace(requestData.mealPlanId, 'restaurants', 'start', {
       background: requestData.backgroundGeneration ?? false,
@@ -841,70 +922,112 @@ async function handleGenerate_restaurants(req: NextRequest) {
       });
     }
     
-    // Phase 1: Find restaurants
-    const restaurantDiscoveryStart = Date.now();
-    const selectedRestaurants = await findAndSelectBestRestaurants(surveyData);
-    const restaurantDiscoveryTime = Date.now() - restaurantDiscoveryStart;
-    
-    // Validate we have restaurants before proceeding
-    if (selectedRestaurants.length === 0) {
-      console.warn('[RESTAURANT-GENERATION] ⚠️ No restaurants found, returning empty result');
+    let restaurantDiscoveryTime = 0;
+    let menuExtractionTime = 0;
+    let restaurantMenuData: any[];
+    // Carried across the hop rather than recomputed: phase 2 never runs
+    // discovery, so "how many did we search" is only knowable from phase 1. It
+    // is reporting metadata, not a decision input.
+    let restaurantsSearched = 0;
+
+    if (isSelectionPhase) {
+      // ---- PHASE 2 ----------------------------------------------------------
+      // A fresh invocation with a fresh 53s budget, carrying the menus phase 1
+      // already paid for. Discovery and extraction are skipped entirely; this
+      // hop exists so that selection — which is all-or-nothing — never competes
+      // with them for time.
+      restaurantMenuData = requestData.restaurantMenuData!;
+      restaurantsSearched = requestData.restaurantsSearched ?? restaurantMenuData.length;
+      console.log(
+        `[RESTAURANT-GENERATION] 🎯 Selection phase: ${restaurantMenuData.length} enriched restaurant(s) handed over from extraction`
+      );
+      trace(requestData.mealPlanId, 'restaurants', 'start', {
+        step: 'selection-phase',
+        restaurantsReceived: restaurantMenuData.length,
+      });
+    } else {
+      // ---- PHASE 1 ----------------------------------------------------------
+      // Phase 1: Find restaurants
+      const restaurantDiscoveryStart = Date.now();
+      const selectedRestaurants = await findAndSelectBestRestaurants(surveyData);
+      restaurantDiscoveryTime = Date.now() - restaurantDiscoveryStart;
+      restaurantsSearched = selectedRestaurants.length;
+
+      // Validate we have restaurants before proceeding
+      if (selectedRestaurants.length === 0) {
+        console.warn('[RESTAURANT-GENERATION] ⚠️ No restaurants found, returning empty result');
+        return NextResponse.json({
+          success: true,
+          restaurantMeals: [],
+          message: 'No restaurants found in your area'
+        });
+      }
+
+      // Phase 2: Extract menus.
+      //
+      // NOT wrapped in reservingBudget any more, and that is the fix. It used to
+      // hold back MEAL_SELECTION_RESERVE_MS for a selection call that ran later
+      // in this same function. Extraction issues six Perplexity lookups 1200ms
+      // apart and each clamps to what the route has left when it opens, so the
+      // reserve came out of the TAIL of the wave: windows of 9716, 8516, 7314,
+      // 6116, 4916, 3716ms against a search observed needing ~8516ms. Exactly one
+      // returned a menu, nine discovered restaurants became one, and all 14 meals
+      // came from it.
+      //
+      // No reserve value fixed that, because three phases did not fit in one 60s
+      // function at all — discovery 9.5s + extraction's 9s floor + selection's
+      // 34.8s p95 is 53.2s against a 53s budget. Vercel Hobby caps each
+      // INVOCATION at 60s, not a chain of them, so selection was moved to its own
+      // hop (see triggerSelectionPhase) and extraction got its 26s back. The wave
+      // now opens with 34.5s and its last member still has 28.5s.
+      //
+      // route-budget.test.ts pins that arithmetic; handoff.test.ts pins the fact
+      // that the reserve did not creep back in here.
+      const menuExtractionStart = Date.now();
+      restaurantMenuData = await extractMenuInformation(selectedRestaurants, surveyData);
+      menuExtractionTime = Date.now() - menuExtractionStart;
+
+      if (restaurantMenuData.length === 0) {
+        console.warn('[RESTAURANT-GENERATION] ⚠️ No restaurants with menus found');
+        return NextResponse.json({
+          success: true,
+          restaurantMeals: [],
+          restaurantData: [],
+          message: 'No restaurants with online ordering found in your area. Your meal plan will focus on home-cooked meals.'
+        });
+      }
+
+      console.log(
+        `[RESTAURANT-GENERATION] 🔀 Extraction done in ${menuExtractionTime}ms with ${restaurantMenuData.length} restaurant(s) — handing selection to its own invocation`
+      );
+
+      // after() keeps this instance alive past the response so the hop is
+      // actually issued. Awaiting the hop inline would defeat the split: this
+      // function would still be holding the 60s that selection needs.
+      after(async () => {
+        await triggerSelectionPhase(
+          surveyId ?? '',
+          sessionId ?? '',
+          requestData.mealPlanId,
+          restaurantMenuData,
+          restaurantsSearched
+        );
+      });
+
       return NextResponse.json({
         success: true,
-        restaurantMeals: [],
-        message: 'No restaurants found in your area'
+        phase: 'extraction',
+        restaurantsEnriched: restaurantMenuData.length,
+        message: 'Menus extracted; meal selection continues in a follow-on invocation',
       });
     }
-    
-    // Phase 2: Extract menus (filters out restaurants without ordering links)
+
+    // Phase 3: Select specific meals for schedule.
     //
-    // Reserved rather than plain-budgeted. On the 2026-08-19 run this fan-out
-    // spent the whole route budget enriching 10 restaurants, and Phase 3 — the
-    // call that actually picks the meals — started with -82ms and was refused.
-    // The route returned 200 with 0 restaurant meals: every menu fetched,
-    // nothing chosen. Enrichment is worthless without the selection that
-    // consumes it, so it gets "everything except what Phase 3 needs".
-    //
-    // How much Phase 3 is promised is MEAL_SELECTION_RESERVE_MS, which lives in
-    // route-budget.ts beside the measurement that justifies it. It was an
-    // inline 22_000 here, chosen when selection took ~18s; selection's p95 at
-    // seven eating-out slots was 22.8s, so the reserve had quietly fallen below
-    // the p95 of the phase it reserves for. Fewer enriched menus is a smaller
-    // loss than no meals at all.
-    //
-    // ⚠️ 26_000 is better than 22_000 but is NOT known to be sufficient. That
-    // 22.8s was measured against a bench fixture of three restaurants of three
-    // dishes. Re-measured 2026-08-26 against six of eight — which is what this
-    // prompt's own `.slice(0, 8)` cap admits, so it is the real ceiling — the
-    // same seven-slot fixture gives p50 30.9s and p95 34.8s. A controlled A/B in
-    // one session: old fixture p50 20.2s, new p50 30.9s, so menu size causes it.
-    //
-    // At that size the three phases do not fit the route budget at all:
-    // discovery 9.5s + this phase's 9s floor + selection 34.8s = 53.2s against
-    // ROUTE_TOTAL_BUDGET_MS of 53s. No reserve value fixes that; there is
-    // nothing left to take. It is survivable today only because link filtering
-    // leaves far fewer than six (2 of 9 on the one observed run) — so fixing
-    // the restaurant pool size would surface this as total loss of the
-    // restaurant half.
-    // See docs/superpowers/specs/2026-08-26-restaurant-remaining-defects-design.md.
-    const menuExtractionStart = Date.now();
-    const restaurantMenuData = await reservingBudget(MEAL_SELECTION_RESERVE_MS, () =>
-      extractMenuInformation(selectedRestaurants, surveyData)
-    );
-    const menuExtractionTime = Date.now() - menuExtractionStart;
-    
-    // Check if we have any restaurants with ordering links
-    if (restaurantMenuData.length === 0) {
-      console.warn('[RESTAURANT-GENERATION] ⚠️ No restaurants with ordering links found');
-      return NextResponse.json({
-        success: true,
-        restaurantMeals: [],
-        restaurantData: [],
-        message: 'No restaurants with online ordering found in your area. Your meal plan will focus on home-cooked meals.'
-      });
-    }
-    
-    // Phase 3: Select specific meals for schedule
+    // Reached only in the selection phase, where it owns the whole 53s budget
+    // rather than the 26s it used to be promised. Selection does not degrade —
+    // it either returns a week of meals or returns [] — which is precisely why
+    // it is the phase that got its own invocation.
     const mealSelectionStart = Date.now();
     const selectedRestaurantMeals = await selectRestaurantMealsForSchedule(restaurantMenuData, restaurantMealsSchedule, surveyData, nutritionTargets);
     const mealSelectionTime = Date.now() - mealSelectionStart;
@@ -977,7 +1100,11 @@ async function handleGenerate_restaurants(req: NextRequest) {
     //
     // Computed once here rather than inside each persistence branch, because
     // both branches store the same report.
-    const restaurantFactsForPlan = buildRestaurantFacts(selectedRestaurants);
+    // Built from the enriched list rather than the raw discovery list. Both work
+    // — this is a name-keyed lookup and enrichment spreads the original record —
+    // but only these restaurants can appear in the plan, so only these can be
+    // looked up.
+    const restaurantFactsForPlan = buildRestaurantFacts(restaurantMenuData);
     const menuEvidence: Record<string, { searchItems?: any[]; sourceHosts?: string[] }> = {};
     // `?? []` guards the one statement in this block that sits outside
     // runVerification's catch. Verification must not be able to fail a
@@ -1085,7 +1212,7 @@ async function handleGenerate_restaurants(req: NextRequest) {
             ...existingContext.metadata,
             restaurantsStatus: restaurantPhaseStatus,
             restaurantsWithLinks: restaurantMenuData.length,
-            totalRestaurantsSearched: selectedRestaurants.length,
+            totalRestaurantsSearched: restaurantsSearched,
             restaurantTimings: {
               discovery: `${restaurantDiscoveryTime}ms`,
               menuExtraction: `${menuExtractionTime}ms`,
@@ -1118,7 +1245,7 @@ async function handleGenerate_restaurants(req: NextRequest) {
             generationMethod: 'split_pipeline_phase2',
             restaurantsStatus: restaurantPhaseStatus,
             restaurantsWithLinks: restaurantMenuData.length,
-            totalRestaurantsSearched: selectedRestaurants.length
+            totalRestaurantsSearched: restaurantsSearched
           }
         };
         
@@ -1156,7 +1283,7 @@ async function handleGenerate_restaurants(req: NextRequest) {
     // is the exact failure that emptied a plan on 2026-08-26.
     trace(requestData.mealPlanId, 'restaurants', restaurantPhaseStatus === 'completed' ? 'ok' : 'fail', {
       ms: Date.now() - startTime,
-      searched: selectedRestaurants.length,
+      searched: restaurantsSearched,
       withLinks: restaurantMenuData.length,
       mealsSelected: (selectedRestaurantMeals || []).length,
     });
@@ -1181,7 +1308,7 @@ async function handleGenerate_restaurants(req: NextRequest) {
     const totalTime = Date.now() - startTime;
     console.log(`[RESTAURANT-GENERATION] 🏁 Restaurant generation completed in ${totalTime}ms (${(totalTime/1000).toFixed(2)}s)`);
     console.log(`[RESTAURANT-GENERATION] 📊 Summary:`);
-    console.log(`[RESTAURANT-GENERATION]   - Restaurants searched: ${selectedRestaurants.length}`);
+    console.log(`[RESTAURANT-GENERATION]   - Restaurants searched: ${restaurantsSearched}`);
     console.log(`[RESTAURANT-GENERATION]   - Restaurants with ordering links: ${restaurantMenuData.length}`);
     console.log(`[RESTAURANT-GENERATION]   - Restaurant meals selected: ${selectedRestaurantMeals.length}`);
     
@@ -1190,7 +1317,7 @@ async function handleGenerate_restaurants(req: NextRequest) {
       restaurantMeals: selectedRestaurantMeals,
       restaurantData: restaurantMenuData,
       summary: {
-        totalSearched: selectedRestaurants.length,
+        totalSearched: restaurantsSearched,
         withOrderingLinks: restaurantMenuData.length,
         mealsSelected: selectedRestaurantMeals.length
       },

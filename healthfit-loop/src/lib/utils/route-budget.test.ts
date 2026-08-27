@@ -37,12 +37,28 @@ test('the selection reserve clears the measured p95 of selection', () => {
   );
 });
 
+test('selection gets a whole invocation, and it clears its p95 with real margin', () => {
+  // Selection no longer runs in the same function as discovery and extraction.
+  // It is the second phase of a re-entrant route: phase 1 does discovery and
+  // menu extraction and hands the menus to a fresh invocation, which does
+  // nothing but select, validate and persist.
+  //
+  // So the question this test asks changed. It used to be "is the slice we
+  // reserved for selection big enough", and the answer was 26s against a p95 of
+  // 22.8s — a 14% margin that the 2026-08-26 run missed by 11ms. Now selection
+  // owns the whole budget and the margin is the thing worth pinning.
+  const leftForSelection = ROUTE_TOTAL_BUDGET_MS;
+  assert.ok(
+    leftForSelection > SELECTION_P95_MS * 2,
+    `selection's own invocation gives it ${leftForSelection}ms against a p95 of ` +
+      `${SELECTION_P95_MS}ms. Below 2x, the split has stopped buying what it was for`
+  );
+});
+
 test('the restaurant route budget still adds up', () => {
-  // discovery + what extraction is left + what selection is promised must fit
-  // inside the route, or one of them is being written a cheque the route
-  // cannot cash.
-  const leftForExtraction =
-    ROUTE_TOTAL_BUDGET_MS - OBSERVED_RESTAURANT_DISCOVERY_MS - MEAL_SELECTION_RESERVE_MS;
+  // Phase 1 is discovery + extraction only. Nothing is held back for selection
+  // any more, so everything the route has after discovery belongs to extraction.
+  const leftForExtraction = ROUTE_TOTAL_BUDGET_MS - OBSERVED_RESTAURANT_DISCOVERY_MS;
   assert.ok(
     leftForExtraction > MENU_STRUCTURING_RESERVE_MS,
     `extraction gets ${leftForExtraction}ms, which cannot even cover its own ` +
@@ -83,8 +99,9 @@ const OBSERVED_SEARCH_CUTOFF_MS = 8_516;
 
 /** The window the Nth restaurant of the wave gets for its Perplexity search. */
 function searchWindowForPosition(position: number): number {
-  const extractionMs =
-    ROUTE_TOTAL_BUDGET_MS - OBSERVED_RESTAURANT_DISCOVERY_MS - MEAL_SELECTION_RESERVE_MS;
+  // No MEAL_SELECTION_RESERVE_MS term. That subtraction is what starved this
+  // wave, and it is gone because selection is gone — to its own invocation.
+  const extractionMs = ROUTE_TOTAL_BUDGET_MS - OBSERVED_RESTAURANT_DISCOVERY_MS;
   return extractionMs - position * PERPLEXITY_MIN_INTERVAL_MS - MENU_STRUCTURING_RESERVE_MS;
 }
 
@@ -105,16 +122,16 @@ test('at least one restaurant in the extraction wave can finish a search', () =>
       `feature returns nothing`
   );
 
-  // How close that is: the head of the wave clears the cut-off by 18ms at the
-  // current constants. Adding 2s to MEAL_SELECTION_RESERVE_MS takes this count
-  // to zero. The restaurant feature is one small budget change away from
-  // returning nothing at all, which is why the reserve cannot be raised again
-  // without first lowering what selection actually needs.
+  // The margin used to be 18ms on the head of the wave and negative on the
+  // other five. Now the TAIL — the worst-off position — clears the cut-off by
+  // more than the cut-off itself. That is the entire point of the split, so it
+  // is asserted rather than merely recorded.
+  const tail = searchWindowForPosition(MENU_LOOKUP_WAVE_SIZE - 1);
   assert.ok(
-    viable[0] - OBSERVED_SEARCH_CUTOFF_MS < 1_000,
-    `the head of the wave now clears the cut-off by ${viable[0] - OBSERVED_SEARCH_CUTOFF_MS}ms ` +
-      `rather than the 18ms measured on 2026-08-27 — the margin has genuinely improved and ` +
-      `this guard should be retightened around the new value`
+    tail >= OBSERVED_SEARCH_CUTOFF_MS * 2,
+    `the last restaurant of the wave gets ${tail}ms against an observed cut-off of ` +
+      `${OBSERVED_SEARCH_CUTOFF_MS}ms. Below 2x, the wave is drifting back towards the ` +
+      `starvation the invocation split was made to fix`
   );
 });
 
@@ -135,12 +152,21 @@ test('at least one restaurant in the extraction wave can finish a search', () =>
  * instead of at the budget. The starvation is the primary cause of
  * no-usable-link; DoorDash/UberEats 403ing datacenter IPs is real but secondary.
  *
- * The lever is not a quiet trim of MEAL_SELECTION_RESERVE_MS — extraction
+ * The lever was never a quiet trim of MEAL_SELECTION_RESERVE_MS — extraction
  * degrades one restaurant at a time but selection fails whole, so a reserve
- * below selection's true p95 trades a partial loss for a total one. The reserve
- * can only come down if selection's actual demand comes down with it.
+ * below selection's true p95 trades a partial loss for a total one. The route's
+ * own comment reached the end of that road: at six restaurants of eight dishes,
+ * discovery 9.5s + extraction's 9s floor + selection's 34.8s p95 came to 53.2s
+ * against a 53s budget. No value of the reserve fits three phases into one
+ * function, because the three phases do not fit.
+ *
+ * So the phases were separated instead. Vercel Hobby caps a function at 60s and
+ * that is not negotiable (checked 2026-08-27: the account is on `hobby`), but it
+ * caps each INVOCATION, not a request chain — and this repo already relays
+ * restaurants -> home -> groceries for exactly that reason. Selection moving to
+ * its own hop returns extraction's 26s.
  */
-test('the measured survivor count of the extraction wave has not silently changed', () => {
+test('the whole extraction wave now clears the observed search cost', () => {
   const windows = Array.from({ length: MENU_LOOKUP_WAVE_SIZE }, (_, i) =>
     searchWindowForPosition(i)
   );
@@ -149,16 +175,16 @@ test('the measured survivor count of the extraction wave has not silently change
 
   assert.equal(
     clearsCutoff,
-    1,
-    `${clearsCutoff} of ${MENU_LOOKUP_WAVE_SIZE} positions now clear the ${OBSERVED_SEARCH_CUTOFF_MS}ms ` +
-      `cut-off (was 1). If this went up the budget work is paying off and the number here ` +
-      `should be raised; if it went down the restaurant half is about to return nothing`
+    MENU_LOOKUP_WAVE_SIZE,
+    `${clearsCutoff} of ${MENU_LOOKUP_WAVE_SIZE} positions clear the ${OBSERVED_SEARCH_CUTOFF_MS}ms ` +
+      `cut-off. Before the invocation split this was 1, and the user got a week of meals from ` +
+      `a single restaurant. Anything less than all six means the wave is being starved again`
   );
   assert.equal(
     clearsBestCase,
-    2,
-    `${clearsBestCase} of ${MENU_LOOKUP_WAVE_SIZE} positions clear even the best observed ` +
-      `search cost of ${OBSERVED_SEARCH_COMPLETED_MS}ms (was 2)`
+    MENU_LOOKUP_WAVE_SIZE,
+    `${clearsBestCase} of ${MENU_LOOKUP_WAVE_SIZE} positions clear the best observed search ` +
+      `cost of ${OBSERVED_SEARCH_COMPLETED_MS}ms (was 2 before the split)`
   );
 });
 
