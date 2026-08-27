@@ -9,6 +9,7 @@ import { googlePlacesClient, Restaurant } from '@/lib/external/places-client';
 import { perplexityClient } from '@/lib/external/perplexity-client';
 import { verifyLinks, verifyLinksDetailed, isUsableLink, suppressUndisplayablePlatforms, orderabilityScore } from '@/lib/external/link-check';
 import { radiusMilesFor, milesBetween } from '@/lib/utils/distance';
+import { repeatedComponents } from '@/lib/utils/dish-composition';
 import { buildRestaurantFacts, uniqueSelectedCuisines } from '@/lib/utils/restaurant-facts';
 import { runVerification, verifyRestaurantPayload } from '@/lib/verification';
 import { getAuthUserId } from '@/lib/auth';
@@ -756,6 +757,30 @@ function validateRestaurantMeals(
     console.log(
       `[RESTAURANT-VALIDATOR] Dish variety: ${Object.keys(dishCounts).length} distinct dishes across ${restaurantMeals.length} meals ✓`
     );
+  }
+
+  // Repeats WITHIN one order, which is a different failure from repeats across
+  // the week and was invisible to the check above: "Mighty Kale Salad + Mighty
+  // Kale Salad + Mighty Kale Salad" is a single distinct dish string, so dish
+  // variety scored it as fine. Measured at 17 of 28 options on plan
+  // cmtblvky6 before prompt rule 5 forbade it; this is how we tell whether the
+  // rule took, rather than assuming it did.
+  const stacked: string[] = [];
+  restaurantMeals.forEach((meal: any) => {
+    for (const key of ['primary', 'alternative']) {
+      const dish = meal?.[key]?.dish;
+      const repeats = repeatedComponents(dish);
+      if (repeats.length > 0) stacked.push(`"${dish}" (repeats ${repeats.join(', ')})`);
+    }
+  });
+  if (stacked.length > 0) {
+    warningCount += 1;
+    console.warn(
+      `[RESTAURANT-VALIDATOR] Stacked portions: ${stacked.length} option(s) order the same item more than once — ` +
+        `${stacked.slice(0, 3).join('; ')}${stacked.length > 3 ? ` and ${stacked.length - 3} more` : ''} ⚠️ WARNING`
+    );
+  } else {
+    console.log(`[RESTAURANT-VALIDATOR] Stacked portions: none — every combined order uses distinct items ✓`);
   }
 
   Object.entries(mealsByDay).forEach(([day, calories]) => {
