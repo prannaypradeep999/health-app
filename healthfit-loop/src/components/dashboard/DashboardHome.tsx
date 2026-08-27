@@ -7,6 +7,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Progress } from "@/components/ui/progress";
 import { Badge } from "@/components/ui/badge";
 import { ImageWithFallback } from "@/components/ui/ImageWithFallback";
+import { mealImageUrl } from "@/lib/external/fallback-images";
 import {
   ChartLineUp,
   Target,
@@ -399,7 +400,7 @@ export function DashboardHome({ user, onNavigate, generationStatus, nutritionTar
             </div>
           ) : (
             <ImageWithFallback
-              src={meal.image || "https://images.unsplash.com/photo-1546793665-c74683f339c1"}
+              src={mealImageUrl(meal, mealType)}
               alt={meal.name}
               className="w-12 h-12 sm:w-14 sm:h-14 object-cover rounded-lg shadow-sm"
             />
@@ -1786,7 +1787,7 @@ export function DashboardHome({ user, onNavigate, generationStatus, nutritionTar
                               </div>
                             ) : (
                               <ImageWithFallback
-                                src={currentOption.image || "https://images.unsplash.com/photo-1506084868230-bb9d95c24759"}
+                                src={mealImageUrl(currentOption, 'breakfast')}
                                 alt={currentOption.name}
                                 className="w-16 h-16 object-cover rounded-xl shadow-md"
                               />

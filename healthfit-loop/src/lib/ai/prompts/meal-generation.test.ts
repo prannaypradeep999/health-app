@@ -208,3 +208,39 @@ test('benched dish macros agree with their stated calories', () => {
     }
   }
 });
+
+/**
+ * Restaurant variety and dish variety are different constraints, and only the
+ * first was ever stated. Plan cmtb3l1j10001l504ho0x51g3 obeyed the restaurant
+ * cap and still served "Super Burrito + Kale Salad" on three separate days,
+ * which is what the user actually noticed.
+ */
+test('the prompt forbids repeating a dish, not just a restaurant', () => {
+  const prompt = promptFor([
+    {
+      name: 'La Oaxaqueña',
+      cuisine: 'mexican',
+      address: '2128 Mission St',
+      menuData: [{ name: 'Super Burrito', price: 12, estimatedCalories: 800 }],
+    },
+  ]);
+  assert.match(prompt, /VARIETY — DISHES/);
+  assert.match(prompt, /Never select the same dish twice/);
+});
+
+test('the dish rule tells the model what to do when a restaurant has only one fit', () => {
+  // Without this the rule is unactionable and the model will repeat anyway.
+  const prompt = promptFor([
+    { name: 'Solo', cuisine: 'thai', address: '1 Main St', menuData: [] },
+  ]);
+  assert.match(prompt, /pick a different restaurant for the second slot rather than repeating the dish/);
+});
+
+test('the restaurant cap survives alongside the new dish rule', () => {
+  // The two rules are independent; adding 8b must not have replaced 8.
+  const prompt = promptFor([
+    { name: 'A', cuisine: 'thai', address: '1 Main St', menuData: [] },
+  ]);
+  assert.match(prompt, /VARIETY — RESTAURANTS/);
+  assert.match(prompt, /may be the primary pick for more than/);
+});

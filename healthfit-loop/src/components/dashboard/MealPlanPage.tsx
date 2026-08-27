@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { ImageWithFallback } from "@/components/ui/ImageWithFallback";
+import { mealImageUrl } from "@/lib/external/fallback-images";
 import {
   ArrowLeft,
   Clock,
@@ -1347,7 +1348,7 @@ export function MealPlanPage({ onNavigate, generationStatus, nutritionTargets: n
           {/* Image - Left aligned */}
           <div className="flex-shrink-0">
             <ImageWithFallback
-              src={mealOption.imageUrl || mealOption.image || "https://images.unsplash.com/photo-1662993924949-2b2d68c08cee"}
+              src={mealImageUrl(mealOption, type)}
               alt={mealName || `${type} meal`}
               className="w-16 h-16 object-cover rounded-lg"
             />
@@ -1596,7 +1597,7 @@ export function MealPlanPage({ onNavigate, generationStatus, nutritionTargets: n
                 {/* Large Image */}
                 <div className="flex-shrink-0">
                   <ImageWithFallback
-                    src={currentMeal.imageUrl || currentMeal.image || "https://images.unsplash.com/photo-1662993924949-2b2d68c08cee"}
+                    src={mealImageUrl(currentMeal, type)}
                     alt={currentMeal.name || currentMeal.dish || `${type} meal`}
                     className="w-full sm:w-24 h-48 sm:h-24 object-cover rounded-xl shadow-md"
                   />

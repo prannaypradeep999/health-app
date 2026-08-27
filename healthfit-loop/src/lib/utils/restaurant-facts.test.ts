@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { buildRestaurantFacts } from './restaurant-facts';
+import { buildRestaurantFacts, uniqueSelectedCuisines } from './restaurant-facts';
 
 const places = [
   { name: "Fanoos", rating: 4.6, userRatingsTotal: 820, address: '1000 Shattuck Ave', distanceMiles: 0.8 },
@@ -58,4 +58,46 @@ test('no phone is null, so the Call button stays hidden rather than dialling not
 test('an empty phone string is not a number to call', () => {
   const facts = buildRestaurantFacts([{ name: 'Fanoos', phoneNumber: '  ' }] as any[]);
   assert.equal(facts['fanoos'].phone, null);
+});
+
+/**
+ * `metadata.cuisines` was never written by the generator. The dashboard read it
+ * anyway and defaulted it to [], which is truthy, so the badge rendered as the
+ * bare word "cuisines" with nothing in front of it.
+ */
+test('uniqueSelectedCuisines reads the cuisine off each selected meal', () => {
+  const out = uniqueSelectedCuisines([
+    { primary: { cuisine: 'Mediterranean' } },
+    { primary: { cuisine: 'Italian' } },
+  ]);
+  assert.deepEqual(out, ['Mediterranean', 'Italian']);
+});
+
+test('uniqueSelectedCuisines dedupes case-insensitively, keeping the first spelling', () => {
+  // Six restaurants over fourteen meals means the same cuisine recurs; the
+  // badge must not read "Italian • Italian".
+  const out = uniqueSelectedCuisines([
+    { primary: { cuisine: 'Italian' } },
+    { primary: { cuisine: 'italian' } },
+    { primary: { cuisine: 'ITALIAN' } },
+  ]);
+  assert.deepEqual(out, ['Italian']);
+});
+
+test('uniqueSelectedCuisines ignores blank and non-string cuisines', () => {
+  const out = uniqueSelectedCuisines([
+    { primary: { cuisine: '  ' } },
+    { primary: { cuisine: null } },
+    { primary: {} },
+    { primary: { cuisine: 'Thai' } },
+  ]);
+  assert.deepEqual(out, ['Thai']);
+});
+
+test('uniqueSelectedCuisines returns [] rather than throwing on junk input', () => {
+  // The caller checks length. Returning [] here is what makes that check the
+  // only guard the UI needs.
+  assert.deepEqual(uniqueSelectedCuisines(undefined), []);
+  assert.deepEqual(uniqueSelectedCuisines(null), []);
+  assert.deepEqual(uniqueSelectedCuisines([]), []);
 });

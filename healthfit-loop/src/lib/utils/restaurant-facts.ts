@@ -36,3 +36,32 @@ export function buildRestaurantFacts(
   });
   return out;
 }
+
+/**
+ * The distinct cuisines of the restaurant meals actually chosen for the week.
+ *
+ * Written to `metadata.cuisines`, which the Restaurants tab badge renders. The
+ * survey's `preferredCuisines` is the tempting source and the wrong one: it is
+ * what the user asked for, not what the week contains, so a preference nothing
+ * matched would still appear on the badge. Deriving from the selection means
+ * the badge can only name a cuisine that is on the screen below it.
+ *
+ * Returns [] when nothing is known, and the caller must check length — an empty
+ * array is truthy, which is exactly the bug that made the badge render as the
+ * bare word "cuisines".
+ */
+export function uniqueSelectedCuisines(meals: unknown): string[] {
+  if (!Array.isArray(meals)) return [];
+  const seen = new Map<string, string>();
+  for (const meal of meals) {
+    const raw = (meal as any)?.primary?.cuisine ?? (meal as any)?.cuisine;
+    if (typeof raw !== 'string') continue;
+    const trimmed = raw.trim();
+    if (!trimmed) continue;
+    // Dedupe case-insensitively but keep the first spelling seen, so the badge
+    // shows "Mediterranean" rather than a lowercased key.
+    const key = trimmed.toLowerCase();
+    if (!seen.has(key)) seen.set(key, trimmed);
+  }
+  return [...seen.values()];
+}

@@ -9,7 +9,7 @@ import { googlePlacesClient, Restaurant } from '@/lib/external/places-client';
 import { perplexityClient } from '@/lib/external/perplexity-client';
 import { verifyLinks, isUsableLink, suppressUndisplayablePlatforms } from '@/lib/external/link-check';
 import { radiusMilesFor, milesBetween } from '@/lib/utils/distance';
-import { buildRestaurantFacts } from '@/lib/utils/restaurant-facts';
+import { buildRestaurantFacts, uniqueSelectedCuisines } from '@/lib/utils/restaurant-facts';
 import { runVerification, verifyRestaurantPayload } from '@/lib/verification';
 import { getAuthUserId } from '@/lib/auth';
 import {
@@ -693,6 +693,33 @@ function validateRestaurantMeals(
     console.log(`[RESTAURANT-VALIDATOR] Variety: ${distinct} of ${pool} available restaurant(s) across ${restaurantMeals.length} meals, max ${Math.max(0, ...Object.values(primaryCounts))}/${cap} ✓`);
   }
 
+  // Dish repetition, which the restaurant check above cannot see. Plan
+  // cmtb3l1j10001l504ho0x51g3 stayed inside the restaurant cap and still served
+  // "Super Burrito + Kale Salad" on three separate days: two slots at the same
+  // restaurant are allowed, ordering the identical plate at them is what the
+  // user actually notices. Prompt rule 8b asks for this; this measures it.
+  const dishCounts: Record<string, number> = {};
+  restaurantMeals.forEach((meal: any) => {
+    const dish = meal.primary?.dish;
+    if (typeof dish === 'string' && dish.trim()) {
+      const key = dish.trim().toLowerCase();
+      dishCounts[key] = (dishCounts[key] || 0) + 1;
+    }
+  });
+  const repeatedDishes = Object.entries(dishCounts).filter(([, n]) => n > 1);
+  if (repeatedDishes.length > 0) {
+    warningCount += 1;
+    console.warn(
+      `[RESTAURANT-VALIDATOR] Dish variety: ${repeatedDishes
+        .map(([d, c]) => `"${d}" x${c}`)
+        .join(', ')} repeated across the week ⚠️ WARNING`
+    );
+  } else {
+    console.log(
+      `[RESTAURANT-VALIDATOR] Dish variety: ${Object.keys(dishCounts).length} distinct dishes across ${restaurantMeals.length} meals ✓`
+    );
+  }
+
   Object.entries(mealsByDay).forEach(([day, calories]) => {
     const dailyTotal = calories.reduce((sum, value) => sum + value, 0);
     if (dailyTarget > 0 && dailyTotal / dailyTarget > 0.6) {
@@ -1222,6 +1249,14 @@ async function handleGenerate_restaurants(req: NextRequest) {
           },
           metadata: {
             ...existingContext.metadata,
+            // `goal` and `cuisines` are read by the dashboard but were never
+            // written here, so the client masked the absence with `|| 'wellness'`
+            // and `|| []` — and an empty array is truthy, which rendered the
+            // cuisines badge as the bare word "cuisines". Derive cuisines from
+            // the restaurants actually selected rather than from the survey's
+            // preferences, so the badge can only name a cuisine that is on screen.
+            goal: surveyData.goal,
+            cuisines: uniqueSelectedCuisines(selectedRestaurantMeals),
             restaurantsStatus: restaurantPhaseStatus,
             restaurantsWithLinks: restaurantMenuData.length,
             totalRestaurantsSearched: restaurantsSearched,
@@ -1255,6 +1290,11 @@ async function handleGenerate_restaurants(req: NextRequest) {
           metadata: {
             type: 'restaurant_meals_only',
             generationMethod: 'split_pipeline_phase2',
+            // Same two fields as the update branch above. This literal is the
+            // path taken when no partial plan exists, and it drifted from the
+            // other one — keep them together.
+            goal: surveyData.goal,
+            cuisines: uniqueSelectedCuisines(selectedRestaurantMeals),
             restaurantsStatus: restaurantPhaseStatus,
             restaurantsWithLinks: restaurantMenuData.length,
             totalRestaurantsSearched: restaurantsSearched

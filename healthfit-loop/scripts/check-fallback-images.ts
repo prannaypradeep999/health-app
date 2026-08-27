@@ -1,4 +1,4 @@
-import { FOOD_FALLBACKS, WORKOUT_FALLBACKS } from '../src/lib/external/fallback-images';
+import { FOOD_FALLBACKS, WORKOUT_FALLBACKS, CUISINE_FALLBACKS } from '../src/lib/external/fallback-images';
 
 async function check(label: string, url: string): Promise<boolean> {
   try {
@@ -15,6 +15,7 @@ async function main() {
   const entries = [
     ...Object.entries(FOOD_FALLBACKS).map(([k, v]) => [`food/${k}`, v] as const),
     ...Object.entries(WORKOUT_FALLBACKS).map(([k, v]) => [`workout/${k}`, v] as const),
+    ...Object.entries(CUISINE_FALLBACKS).map(([k, v]) => [`cuisine/${k}`, v] as const),
   ];
   const results = await Promise.all(entries.map(([k, v]) => check(k, v)));
   const dead = results.filter(r => !r).length;
