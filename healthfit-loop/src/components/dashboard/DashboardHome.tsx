@@ -402,8 +402,8 @@ export function DashboardHome({ user, onNavigate, generationStatus, nutritionTar
               meal={meal}
               mealType={mealType}
               alt={meal.name}
-              className="w-12 h-12 sm:w-14 sm:h-14 rounded-lg shadow-sm"
-              iconClassName="text-xl sm:text-2xl"
+              size="sm"
+              className="shadow-sm"
             />
           )}
         </div>
@@ -1791,8 +1791,8 @@ export function DashboardHome({ user, onNavigate, generationStatus, nutritionTar
                                 meal={currentOption}
                                 mealType="breakfast"
                                 alt={currentOption.name}
-                                className="w-16 h-16 rounded-xl shadow-md"
-                                iconClassName="text-3xl"
+                                size="md"
+                                className="shadow-md"
                               />
                             )}
                           </div>

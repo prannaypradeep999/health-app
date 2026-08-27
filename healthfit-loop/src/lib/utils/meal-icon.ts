@@ -119,19 +119,3 @@ export function mealIcon(meal: unknown, mealType?: string | null): string {
 
   return DEFAULT_MEAL_ICON;
 }
-
-/**
- * Whether a real photo of this dish was actually fetched, as opposed to a
- * category fallback standing in for one.
- *
- * `mealImageUrl` deliberately never returns empty — it always has a stock URL
- * to fall back on — so callers cannot tell a real photo from a placeholder by
- * looking at its return value. This is that missing distinction, and it is what
- * decides whether a card shows a photograph or an icon.
- */
-export function hasFetchedPhoto(meal: unknown): boolean {
-  const m = meal as Record<string, unknown> | null | undefined;
-  if (!m || typeof m !== 'object') return false;
-  const fetched = m.imageUrl ?? m.image;
-  return typeof fetched === 'string' && fetched.trim().length > 0;
-}

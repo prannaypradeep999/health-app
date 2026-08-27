@@ -1,6 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { mealIcon, hasFetchedPhoto, DEFAULT_MEAL_ICON } from './meal-icon';
+import { mealIcon, DEFAULT_MEAL_ICON } from './meal-icon';
+import { MEAL_VISUAL_SIZES } from '../../components/ui/MealVisual';
 
 test('a dish keyword beats the cuisine, because it is more specific', () => {
   // A salad at an Italian restaurant is a salad, not a plate of pasta.
@@ -58,13 +59,32 @@ test('word boundaries stop a substring from hijacking the icon', () => {
   assert.equal(mealIcon({ dish: 'Beefsteak Tomato Salad' }), '🥗');
 });
 
-test('hasFetchedPhoto distinguishes a real photo from a category placeholder', () => {
-  // mealImageUrl always returns a URL, so its return value cannot answer this.
-  assert.equal(hasFetchedPhoto({ imageUrl: 'https://images.pexels.com/x.jpg' }), true);
-  assert.equal(hasFetchedPhoto({ image: 'https://images.pexels.com/x.jpg' }), true);
-  assert.equal(hasFetchedPhoto({ imageUrl: '' }), false);
-  assert.equal(hasFetchedPhoto({ imageUrl: '   ' }), false);
-  assert.equal(hasFetchedPhoto({}), false);
-  assert.equal(hasFetchedPhoto(null), false);
-  assert.equal(hasFetchedPhoto(undefined), false);
+test('every size variant sets both a box and a glyph', () => {
+  // Box and glyph are one decision. A variant that sets only one of them is how
+  // the sizes drifted out of proportion when they lived at the call sites.
+  for (const [name, variant] of Object.entries(MEAL_VISUAL_SIZES)) {
+    assert.ok(variant.box.trim(), `${name} has no box classes`);
+    assert.ok(variant.glyph.trim(), `${name} has no glyph classes`);
+  }
+});
+
+test('every size variant is square, so no card renders a letterboxed icon', () => {
+  // The lg variant was previously `w-full ... h-48` on mobile: a full-width
+  // 192px panel sized to flatter a photograph, with a small glyph adrift in it.
+  for (const [name, { box }] of Object.entries(MEAL_VISUAL_SIZES)) {
+    const widths = box.match(/(?:^|\s)(?:sm:)?w-(\S+)/g) ?? [];
+    const heights = box.match(/(?:^|\s)(?:sm:)?h-(\S+)/g) ?? [];
+    assert.equal(
+      widths.length,
+      heights.length,
+      `${name} has ${widths.length} width(s) but ${heights.length} height(s)`
+    );
+    widths.forEach((w, i) => {
+      assert.equal(
+        w.trim().replace('w-', ''),
+        heights[i].trim().replace('h-', ''),
+        `${name} is not square at breakpoint ${i}`
+      );
+    });
+  }
 });

@@ -1244,7 +1244,7 @@ export function MealPlanPage({ onNavigate, generationStatus, nutritionTargets: n
               meal={mealOption}
               mealType={type}
               alt={mealName || `${type} meal`}
-              className="w-16 h-16 rounded-lg"
+              size="md"
             />
           </div>
 
@@ -1494,8 +1494,8 @@ export function MealPlanPage({ onNavigate, generationStatus, nutritionTargets: n
                     meal={currentMeal}
                     mealType={type}
                     alt={currentMeal.name || currentMeal.dish || `${type} meal`}
-                    className="w-full sm:w-24 h-48 sm:h-24 rounded-xl shadow-md"
-                    iconClassName="text-5xl sm:text-3xl"
+                    size="lg"
+                    className="shadow-md"
                   />
                 </div>
 
