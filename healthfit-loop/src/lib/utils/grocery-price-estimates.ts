@@ -98,6 +98,38 @@ export function unpricedReason(item: PricedItemLike): string | null {
   if (!Array.isArray(options) || options.length === 0) return null;
   if (options.some(option => isRealPrice(option.price))) return null;
 
-  const stated = options.map(o => o.reason).find(r => typeof r === 'string' && r.trim().length > 0);
-  return stated ? stated.trim() : 'no shelf price was found for this item';
+  // Mapped through meaningfulReason rather than a blank check: a junk reason
+  // sitting in front of a real one must not hide it.
+  const stated = options.map(o => meaningfulReason(o.reason)).find(r => r !== null);
+  return stated ?? 'no shelf price was found for this item';
+}
+
+/**
+ * A reason the user can read, or null.
+ *
+ * The model is asked for a sentence and sometimes returns its own debris. On
+ * the 2026-08-27 production run a whole price chunk answered ":null" for all
+ * fifteen of its items. ":null" is non-blank, so it passed the check that used
+ * to live in `unpricedReason`, and GroceryListSection — which renders
+ * `option.reason` verbatim — printed ":null" under fifteen grocery items where
+ * an explanation belonged.
+ *
+ * The test is whether anything survives removing punctuation, plus an explicit
+ * list for the spelled-out null literals: "null" survives as a word but is not
+ * an explanation.
+ */
+const NON_REASONS = new Set(['null', 'undefined', 'none', 'na']);
+
+export function meaningfulReason(value: unknown): string | null {
+  if (typeof value !== 'string') return null;
+  const trimmed = value.trim();
+  if (trimmed === '') return null;
+
+  // What is left after dropping everything that is not a letter or digit is the
+  // information content: ":null," leaves "null", "/" leaves "", "Best value"
+  // leaves "bestvalue".
+  const bare = trimmed.replace(/[^\p{L}\p{N}]/gu, '').toLowerCase();
+  if (bare === '' || NON_REASONS.has(bare)) return null;
+
+  return trimmed;
 }

@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import {
   fillMissingPriceEstimates,
   unpricedReason,
+  meaningfulReason,
   type StoreOptionLike,
 } from './grocery-price-estimates';
 
@@ -97,4 +98,57 @@ test('estimating does not change how many items or options there are', () => {
   assert.equal(out.length, 2);
   assert.equal(out[0].storeOptions.length, 3);
   assert.equal(out[1].storeOptions.length, 2);
+});
+
+/**
+ * Production run cmtayzto20003ji04znsqp55s, 2026-08-27: one price chunk came
+ * back with `price: null` for all 15 of its items and a `reason` of ":null" —
+ * the model's own truncated output, not a sentence. `unpricedReason` takes the
+ * first non-blank reason, ":null" is non-blank, and GroceryListSection renders
+ * `option.reason` verbatim, so the user read ":null" underneath fifteen grocery
+ * items where an explanation was supposed to be.
+ *
+ * A reason has to say something. Punctuation and the spelled-out null literals
+ * are the model failing to answer, and the honest default sentence is better
+ * than passing its debris through to a shopper.
+ */
+test('a reason made only of punctuation is not an explanation', () => {
+  for (const junk of [':null', ':null,', '/', '-', 'null', 'NULL', 'undefined', '::', ' , ']) {
+    const item = {
+      item: 'Chicken breast',
+      storeOptions: [
+        { store: 'Safeway', price: null, reason: junk },
+        { store: 'Whole Foods Market', price: null, reason: junk },
+      ],
+    };
+    assert.equal(
+      unpricedReason(item as any),
+      'no shelf price was found for this item',
+      `"${junk}" was passed through to the user as the reason there is no price`
+    );
+  }
+});
+
+test('a real stated reason still wins over the default', () => {
+  const item = {
+    item: 'Beef sirloin',
+    storeOptions: [
+      { store: 'Safeway', price: null, reason: ':null' },
+      { store: 'Whole Foods Market', price: null, reason: 'sold only at the butcher counter' },
+    ],
+  };
+  // The junk one comes first; skipping it must not mean skipping the real one
+  // behind it.
+  assert.equal(unpricedReason(item as any), 'sold only at the butcher counter');
+});
+
+test('meaningfulReason keeps text and rejects debris', () => {
+  assert.equal(meaningfulReason('Best value'), 'Best value');
+  assert.equal(meaningfulReason('  Best value  '), 'Best value');
+  assert.equal(meaningfulReason(':null'), null);
+  assert.equal(meaningfulReason('/'), null);
+  assert.equal(meaningfulReason(''), null);
+  assert.equal(meaningfulReason(null), null);
+  assert.equal(meaningfulReason(undefined), null);
+  assert.equal(meaningfulReason(42 as any), null);
 });

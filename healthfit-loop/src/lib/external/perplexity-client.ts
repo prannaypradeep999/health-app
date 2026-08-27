@@ -16,7 +16,7 @@ import { createLimiter } from '@/lib/utils/concurrency';
 import { corroborate } from '@/lib/external/link-check';
 import { parseReceipt, sourceHostsFrom, type SearchItem } from '@/lib/verification/receipt';
 import { computeStoreTotals, planPriceChunks, snapStoreNames } from '@/lib/utils/store-totals';
-import { fillMissingPriceEstimates, unpricedReason } from '@/lib/utils/grocery-price-estimates';
+import { fillMissingPriceEstimates, unpricedReason, meaningfulReason } from '@/lib/utils/grocery-price-estimates';
 import { reservingBudget, MENU_STRUCTURING_RESERVE_MS } from '@/lib/utils/route-budget';
 
 /**
@@ -744,7 +744,11 @@ Return as JSON only, no other text:
           displayName: o.displayName,
           price: o.price,
           isRecommended: o.isRecommended,
-          reason: o.reason ?? undefined,
+          // Sanitised here, not at render time, because two places render it:
+          // GroceryListSection prints `option.reason` verbatim next to a price,
+          // and `unpricedReason` reads it when there is none. The 2026-08-27
+          // run stored ":null" for fifteen items and the user read it.
+          reason: meaningfulReason(o.reason) ?? undefined,
           // Joined from the Google Places result rather than asked of the
           // model. Matched case-insensitively because the model echoes the
           // store name back in whatever casing it likes, and an exact-match
