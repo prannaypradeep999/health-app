@@ -34,6 +34,7 @@ import { MealSwapDialog } from './MealSwapDialog';
 import { collectAllMeals, CollectedMeal } from '@/lib/utils/meal-utils';
 import { orderOptionsFor } from '@/lib/utils/restaurant-links';
 import { flattenGroceryItemNames } from '@/lib/utils/grocery-list';
+import { mealFeedbackKey, dishNameOf } from '@/lib/utils/meal-feedback-key';
 import Logo from '@/components/logo';
 import { getPlanDayIndex, getCurrentMealPeriod, getPlanDays, getDayStatus, isPlanExpired, getBrowserTimezone, type MealPeriod } from '@/lib/utils/date-utils';
 
@@ -170,7 +171,7 @@ export function MealPlanPage({ onNavigate, generationStatus, nutritionTargets: n
 
   // ADD: Meal feedback state
   const [mealFeedback, setMealFeedback] = useState<{
-    [mealOptionId: string]: 'loved' | 'disliked' | 'neutral' | null
+    [feedbackKey: string]: 'loved' | 'disliked' | 'neutral' | null
   }>({});
   const [showFeedbackFor, setShowFeedbackFor] = useState<string | null>(null);
 
@@ -421,24 +422,27 @@ export function MealPlanPage({ onNavigate, generationStatus, nutritionTargets: n
       if (!mealData?.mealPlan?.planData?.days) return;
 
       try {
-        // Get all meal option IDs from current plan
-        const mealOptionIds: string[] = [];
+        // Build a key per meal slot in the plan. This used to collect
+        // `meal.primary.id`, which is undefined on every generated meal, so the
+        // array was always empty and the request returned before it was sent.
+        const mealKeys: string[] = [];
         mealData.mealPlan.planData.days.forEach((day: any) => {
-          if (day.meals) {
-            Object.values(day.meals).forEach((meal: any) => {
-              if (meal?.primary?.id) mealOptionIds.push(meal.primary.id);
-              if (meal?.alternative?.id) mealOptionIds.push(meal.alternative.id);
-            });
-          }
+          if (!day?.meals) return;
+          Object.entries(day.meals).forEach(([mealType, meal]: [string, any]) => {
+            for (const option of [meal?.primary, meal?.alternative]) {
+              const key = mealFeedbackKey(day.day, mealType, dishNameOf(option));
+              if (key) mealKeys.push(key);
+            }
+          });
         });
 
-        if (mealOptionIds.length === 0) return;
+        if (mealKeys.length === 0) return;
 
-        // Query feedback for these IDs
+        // Query feedback for these keys
         const response = await fetch('/api/meals/feedback/batch', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ mealOptionIds })
+          body: JSON.stringify({ mealKeys })
         });
 
         if (response.ok) {
@@ -845,20 +849,16 @@ export function MealPlanPage({ onNavigate, generationStatus, nutritionTargets: n
     });
     window.dispatchEvent(event);
 
-    // Show feedback prompt after marking as eaten (not unmarking)
+    // Show feedback prompt after marking as eaten (not unmarking).
+    //
+    // This read `mealOption[optionType].id`, which is always undefined, so the
+    // `if` never passed and the "How was it?" panel was unreachable — the only
+    // thing that sets showFeedbackFor to a non-null value.
     if (newEatenState) {
-      // Get the meal option ID for feedback
-      const meals = getCurrentMeals();
-      const mealOption = meals[mealType as keyof typeof meals];
-      let mealOptionId = null;
-
-      if (mealOption && mealOption[optionType]) {
-        mealOptionId = mealOption[optionType].id;
-      }
-
-      if (mealOptionId) {
+      const feedbackKey = mealFeedbackKey(selectedDay, mealType, dishNameOf(meal));
+      if (feedbackKey) {
         setTimeout(() => {
-          setShowFeedbackFor(mealOptionId);
+          setShowFeedbackFor(feedbackKey);
         }, 300);
       }
     }
@@ -909,7 +909,7 @@ export function MealPlanPage({ onNavigate, generationStatus, nutritionTargets: n
 
   // Handle meal feedback (Love it / Meh)
   const handleMealFeedback = async (
-    mealOptionId: string,
+    feedbackKey: string,
     feedbackType: 'loved' | 'disliked',
     mealInfo: {
       dishName: string;
@@ -920,7 +920,7 @@ export function MealPlanPage({ onNavigate, generationStatus, nutritionTargets: n
     }
   ) => {
     console.log('[MEAL-PLAN] ❤️ Meal reaction:', {
-      mealOptionId,
+      feedbackKey,
       feedbackType,
       mealType: mealInfo.mealType,
       dishName: mealInfo.dishName,
@@ -931,14 +931,13 @@ export function MealPlanPage({ onNavigate, generationStatus, nutritionTargets: n
 
     try {
       // Optimistic update
-      setMealFeedback(prev => ({ ...prev, [mealOptionId]: feedbackType }));
+      setMealFeedback(prev => ({ ...prev, [feedbackKey]: feedbackType }));
       setShowFeedbackFor(null);
 
       const response = await fetch('/api/meals/feedback', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          mealOptionId,
           feedbackType,
           dishName: mealInfo.dishName,
           restaurantName: mealInfo.restaurantName,
@@ -959,7 +958,7 @@ export function MealPlanPage({ onNavigate, generationStatus, nutritionTargets: n
     } catch (error) {
       console.error('[Feedback] Error:', error);
       // Revert on error
-      setMealFeedback(prev => ({ ...prev, [mealOptionId]: null }));
+      setMealFeedback(prev => ({ ...prev, [feedbackKey]: null }));
     }
   };
 
@@ -978,10 +977,12 @@ export function MealPlanPage({ onNavigate, generationStatus, nutritionTargets: n
     day: string;
     weekNumber?: number;
   }) => {
-    const mealOptionId = `${day}-${mealType}-${dishName}`;
+    // Same helper the batch load and the Love it / Meh buttons use, so all
+    // three agree on the string. They previously built it three different ways.
+    const feedbackKey = mealFeedbackKey(day, mealType, dishName) ?? '';
 
     // Load existing rating from mealFeedback state (populated on page load)
-    const existingFeedback = mealFeedback[mealOptionId];
+    const existingFeedback = mealFeedback[feedbackKey];
     const initialRating = existingFeedback === 'loved' ? 5
       : existingFeedback === 'disliked' ? 1
       : existingFeedback === 'neutral' ? 3
@@ -1008,12 +1009,12 @@ export function MealPlanPage({ onNavigate, generationStatus, nutritionTargets: n
       if (savedRatings) {
         try {
           const parsed = JSON.parse(savedRatings);
-          if (parsed[mealOptionId]) {
-            setRating(parsed[mealOptionId]);
+          if (parsed[feedbackKey]) {
+            setRating(parsed[feedbackKey]);
           }
         } catch (e) {}
       }
-    }, [mealOptionId]);
+    }, [feedbackKey]);
 
     const handleRate = async (value: number) => {
       if (saving) return;
@@ -1025,7 +1026,6 @@ export function MealPlanPage({ onNavigate, generationStatus, nutritionTargets: n
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
-            mealOptionId,
             feedbackType: value >= 4 ? 'loved' : value <= 2 ? 'disliked' : 'neutral',
             rating: value,
             dishName,
@@ -1041,12 +1041,12 @@ export function MealPlanPage({ onNavigate, generationStatus, nutritionTargets: n
         // Update local mealFeedback state so it persists across renders
         setMealFeedback(prev => ({
           ...prev,
-          [mealOptionId]: value >= 4 ? 'loved' : value <= 2 ? 'disliked' : 'neutral'
+          [feedbackKey]: value >= 4 ? 'loved' : value <= 2 ? 'disliked' : 'neutral'
         }));
 
         // Save to localStorage as backup
         const savedRatings = JSON.parse(localStorage.getItem('mealRatings') || '{}');
-        savedRatings[mealOptionId] = value;
+        savedRatings[feedbackKey] = value;
         localStorage.setItem('mealRatings', JSON.stringify(savedRatings));
 
         console.log(`[RATING] ${dishName}: ${value} stars`);
@@ -1296,7 +1296,6 @@ export function MealPlanPage({ onNavigate, generationStatus, nutritionTargets: n
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
-            mealOptionId: `${selectedDay}-${type}-${dishName}`,
             feedbackType: rating >= 4 ? 'loved' : rating <= 2 ? 'disliked' : 'neutral',
             dishName,
             restaurantName: isRestaurant ? mealOption.restaurant : null,
@@ -1338,6 +1337,10 @@ export function MealPlanPage({ onNavigate, generationStatus, nutritionTargets: n
       const description = isRestaurant ?
         (mealOption.dish_description || mealOption.description) :
         (mealOption.description || mealOption.dish_description);
+
+      // Identity for this slot's feedback. Everything below used
+      // `mealOption.id`, which generated meals do not carry.
+      const feedbackKey = mealFeedbackKey(selectedDay, type, mealName) ?? '';
 
       // Get goal reasoning and customer feedback from API
       const goalReasoning = mealOption.goalReasoning;
@@ -1432,24 +1435,24 @@ export function MealPlanPage({ onNavigate, generationStatus, nutritionTargets: n
                   <span className="text-xs text-gray-600">Eaten</span>
 
                   {/* Show saved feedback icon */}
-                  {mealFeedback[mealOption.id] === 'loved' && (
+                  {mealFeedback[feedbackKey] === 'loved' && (
                     <span className="text-red-500 text-sm">❤️</span>
                   )}
-                  {mealFeedback[mealOption.id] === 'disliked' && (
+                  {mealFeedback[feedbackKey] === 'disliked' && (
                     <span className="text-gray-400 text-sm">👎</span>
                   )}
                 </div>
 
                 {/* Feedback prompt - shows after marking eaten */}
-                {showFeedbackFor === mealOption.id && isMealEaten(type, optionIndex, optionType) && (
+                {feedbackKey && showFeedbackFor === feedbackKey && isMealEaten(type, optionIndex, optionType) && (
                   <div className="mt-2 p-2 bg-gray-50 rounded-lg border animate-fadeIn w-full">
                     <p className="text-xs text-gray-500 mb-2">How was it?</p>
                     <div className="flex gap-2">
                       <button
-                        onClick={() => handleMealFeedback(mealOption.id, 'loved', {
-                          dishName: mealOption.dishName || mealOption.recipeName || 'Unknown Dish',
-                          restaurantName: mealOption.restaurantName,
-                          isHomemade: !mealOption.restaurantName,
+                        onClick={() => handleMealFeedback(feedbackKey, 'loved', {
+                          dishName: mealName,
+                          restaurantName: isRestaurant ? mealOption.restaurant : undefined,
+                          isHomemade: !isRestaurant,
                           mealType: type,
                           day: selectedDay
                         })}
@@ -1458,10 +1461,10 @@ export function MealPlanPage({ onNavigate, generationStatus, nutritionTargets: n
                         <span>❤️</span> Love it
                       </button>
                       <button
-                        onClick={() => handleMealFeedback(mealOption.id, 'disliked', {
-                          dishName: mealOption.dishName || mealOption.recipeName || 'Unknown Dish',
-                          restaurantName: mealOption.restaurantName,
-                          isHomemade: !mealOption.restaurantName,
+                        onClick={() => handleMealFeedback(feedbackKey, 'disliked', {
+                          dishName: mealName,
+                          restaurantName: isRestaurant ? mealOption.restaurant : undefined,
+                          isHomemade: !isRestaurant,
                           mealType: type,
                           day: selectedDay
                         })}

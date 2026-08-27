@@ -1,11 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/db';
 import { cookies } from 'next/headers';
+import { mealFeedbackKey, feedbackOwnerKey } from '@/lib/utils/meal-feedback-key';
 
 export async function POST(req: NextRequest) {
   try {
     const {
-      mealOptionId,
       feedbackType,  // 'loved' | 'disliked' | 'neutral'
       rating,        // 1-5 star rating
       dishName,
@@ -17,7 +17,14 @@ export async function POST(req: NextRequest) {
       weekOf
     } = await req.json();
 
-    if (!mealOptionId || !feedbackType || !dishName) {
+    // The key is derived here rather than trusted from the body. The client
+    // sends day, mealType and dishName anyway, so deriving server-side means
+    // the two sides cannot drift into different key formats — which is how the
+    // star rating and the Love it button ended up writing rows that could
+    // never find each other.
+    const mealKey = mealFeedbackKey(day, mealType, dishName);
+
+    if (!mealKey || !feedbackType) {
       return NextResponse.json(
         { error: 'Missing required fields' },
         { status: 400 }
@@ -26,7 +33,7 @@ export async function POST(req: NextRequest) {
 
     // Get user or session
     const cookieStore = await cookies();
-    const sessionId = cookieStore.get('session_id')?.value;
+    const sessionId = cookieStore.get('session_id')?.value ?? null;
 
     // Try to get userId from session
     let userId: string | null = null;
@@ -38,9 +45,11 @@ export async function POST(req: NextRequest) {
       userId = session?.userId || null;
     }
 
+    const ownerKey = feedbackOwnerKey(userId, sessionId);
+
     // Upsert feedback (update if exists, create if not)
     const feedback = await prisma.mealFeedbackLog.upsert({
-      where: { mealOptionId },
+      where: { ownerKey_mealKey: { ownerKey, mealKey } },
       update: {
         feedbackType,
         rating,
@@ -49,7 +58,8 @@ export async function POST(req: NextRequest) {
       create: {
         userId,
         sessionId: userId ? null : sessionId,
-        mealOptionId,
+        mealKey,
+        ownerKey,
         feedbackType,
         rating,
         dishName,
@@ -62,14 +72,11 @@ export async function POST(req: NextRequest) {
       }
     });
 
-    // Also update MealOption.userRating for quick access
-    const ratingValue = rating || (feedbackType === 'loved' ? 5 : feedbackType === 'disliked' ? 1 : 3);
-    await prisma.mealOption.update({
-      where: { id: mealOptionId },
-      data: { userRating: ratingValue }
-    });
+    // There is deliberately no MealOption.userRating write here. That table has
+    // never had a row, so the update threw P2025 and took the whole request
+    // down with it after the feedback had already been written.
 
-    console.log(`[FEEDBACK] ${feedbackType} - "${dishName}"`);
+    console.log(`[FEEDBACK] ${feedbackType} - "${dishName}" (${mealKey})`);
 
     return NextResponse.json({
       success: true,
@@ -112,12 +119,27 @@ export async function GET(req: NextRequest) {
     const weeksAgo = new Date();
     weeksAgo.setDate(weeksAgo.getDate() - (weeksBack * 7));
 
+    // Build the ownership filter conditionally. `{ userId: undefined }` is not
+    // "userId is null" to Prisma — it is "no condition", so an unidentified
+    // caller used to get an OR of two empty objects and match every row in the
+    // table, which is every other user's feedback.
+    const ownerFilter = [
+      ...(userId ? [{ userId }] : []),
+      ...(sessionId ? [{ sessionId }] : []),
+    ];
+
+    if (ownerFilter.length === 0) {
+      return NextResponse.json({
+        success: true,
+        summary: { lovedCount: 0, dislikedCount: 0, totalFeedback: 0 },
+        lovedMeals: [],
+        dislikedMeals: []
+      });
+    }
+
     const feedback = await prisma.mealFeedbackLog.findMany({
       where: {
-        OR: [
-          { userId: userId || undefined },
-          { sessionId: sessionId || undefined }
-        ],
+        OR: ownerFilter,
         createdAt: { gte: weeksAgo }
       },
       orderBy: { createdAt: 'desc' }

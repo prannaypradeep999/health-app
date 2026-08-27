@@ -162,7 +162,6 @@ model MealOption {
   updatedAt       DateTime       @updatedAt
   selectedForMeal Meal[]         @relation("SelectedOption")
   feedback        MealFeedback[]
-  feedbackLogs    MealFeedbackLog[]
   meal            Meal           @relation(fields: [mealId], references: [id], onDelete: Cascade)
 
   @@unique([mealId, optionNumber])
@@ -448,7 +447,19 @@ model MealFeedbackLog {
   id              String      @id @default(cuid())
   userId          String?
   sessionId       String?     // For guest users
-  mealOptionId    String
+
+  // Identity of the meal being rated.
+  //
+  // This was `mealOptionId`, a foreign key into MealOption. That table has
+  // never held a row — the generator writes the week as JSON into
+  // MealPlan.userContext — so every write failed the constraint and every read
+  // matched nothing. `mealKey` is derived from day + meal type + dish by
+  // src/lib/utils/meal-feedback-key.ts, which is data a generated meal
+  // actually carries. `ownerKey` scopes it: the derived key is the same string
+  // for every user, so without an owner one person's rating overwrites
+  // another's.
+  mealKey         String
+  ownerKey        String      @default("anon")
 
   // Feedback data
   feedbackType    String      // 'loved' | 'disliked' | 'neutral'
@@ -468,9 +479,8 @@ model MealFeedbackLog {
   createdAt       DateTime    @default(now())
 
   user            User?       @relation(fields: [userId], references: [id], onDelete: Cascade)
-  mealOption      MealOption  @relation(fields: [mealOptionId], references: [id], onDelete: Cascade)
 
-  @@unique([mealOptionId])  // One feedback per meal option
+  @@unique([ownerKey, mealKey])  // One feedback per user per meal slot
   @@index([userId])
   @@index([sessionId])
   @@index([dishName])
