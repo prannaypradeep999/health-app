@@ -1124,11 +1124,37 @@ async function generateHomeMealsParallel(
     // response. Match case-insensitively or every chunk silently comes back
     // empty and the user gets a successful response with a blank week.
     const dayOf = (m: any) => String(m?.day ?? '').toLowerCase();
-    const chunks = [
-      { name: "Chunk A (Mon-Tue)", meals: plannedMeals.filter((m: any) => ['monday', 'tuesday'].includes(dayOf(m))) },
-      { name: "Chunk B (Wed-Thu)", meals: plannedMeals.filter((m: any) => ['wednesday', 'thursday'].includes(dayOf(m))) },
-      { name: "Chunk C (Fri-Sun)", meals: plannedMeals.filter((m: any) => ['friday', 'saturday', 'sunday'].includes(dayOf(m))) }
-    ].filter(chunk => chunk.meals.length > 0);
+
+    // Chunk by meal count, not by weekday.
+    //
+    // The old split was Mon-Tue / Wed-Thu / Fri-Sun, which is three days' worth
+    // of meals in the last chunk and two in each of the others — so chunk C
+    // carried 6 of the 12 meals while A and B carried 3 apiece. These run in
+    // parallel, so the slowest chunk gates the whole phase, and the slowest
+    // chunk was always the one doing double the work.
+    //
+    // Latency here tracks output tokens almost linearly. Measured 2026-08-27
+    // against the detail model on a realistic prompt: ~9-10k output tokens took
+    // 46-59s, and the phase only has ~36s left after planning spends ~17s of
+    // the 53s route budget. Every chunk timed out at the ceiling, home meals
+    // produced nothing, and groceries then had no list to price.
+    //
+    // Two meals per chunk is ~3k output tokens, which lands well inside the
+    // window. More chunks cost nothing in wall-clock because they are parallel,
+    // and nothing in quality either: variety and the week's shape are decided
+    // in the planning phase above, so a detail call only fleshes out meals that
+    // were already chosen. Smaller calls also truncate less.
+    const MEALS_PER_CHUNK = 2;
+    const chunks: Array<{ name: string; meals: any[] }> = [];
+    for (let i = 0; i < plannedMeals.length; i += MEALS_PER_CHUNK) {
+      const slice = plannedMeals.slice(i, i + MEALS_PER_CHUNK);
+      if (slice.length === 0) continue;
+      const days = Array.from(new Set(slice.map((m: any) => dayOf(m) || '?')));
+      chunks.push({
+        name: `Chunk ${chunks.length + 1} (${days.join('/')})`,
+        meals: slice,
+      });
+    }
 
     console.log(`[HOME-MEALS-7DAY] 📋 Phase 2: Generating details for ${chunks.length} chunks in parallel...`);
 

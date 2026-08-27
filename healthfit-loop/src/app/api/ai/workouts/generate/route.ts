@@ -628,16 +628,23 @@ async function generateWorkoutPlan(surveyData: any): Promise<WorkoutPlan> {
 
   // Split into 3 chunks for parallel Phase 2 calls
   const allDayNames = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday'];
-  const chunkDefs = [
-    { label: 'Mon-Tue', days: ['monday', 'tuesday'] },
-    { label: 'Wed-Thu', days: ['wednesday', 'thursday'] },
-    { label: 'Fri-Sun', days: ['friday', 'saturday', 'sunday'] }
-  ];
-
-  const chunks = chunkDefs.map(def => ({
-    label: def.label,
-    outlines: weeklyOutline.filter(d => def.days.includes(d.day?.toLowerCase()))
-  })).filter(c => c.outlines.length > 0);
+  // One day per detail call, not two-or-three.
+  //
+  // Same defect as the home-meal chunks: Fri-Sun carried three days while the
+  // other two carried two, and since the chunks run in parallel the biggest one
+  // set the wall-clock for the phase. On 2026-08-27 planning spent ~26s of the
+  // 53s route budget and all three detail calls then died together at the ~27s
+  // that was left, and the top-up pass could not recover any of the seven days.
+  //
+  // Detail latency tracks output tokens, so a one-day call is roughly a third
+  // of the work of the Fri-Sun chunk and finishes well inside the remaining
+  // window. Seven parallel calls cost no more wall-clock than three did. The
+  // week's structure — which days train, which rest, what each day targets — is
+  // already fixed by the planning phase above, so a per-day call cannot drift
+  // from the plan; it only fills in exercises for a day already decided.
+  const chunks = weeklyOutline
+    .filter(d => typeof d?.day === 'string' && d.day.length > 0)
+    .map(d => ({ label: d.day, outlines: [d] }));
 
   console.log(`[GPT-WORKOUT] 🚀 Phase 2: Running ${chunks.length} parallel detail calls...`);
 
